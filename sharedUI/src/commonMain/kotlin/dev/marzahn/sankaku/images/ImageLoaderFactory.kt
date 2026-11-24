@@ -18,8 +18,7 @@ import kotlin.time.Clock
 
 internal expect fun platformImageDecoders(): List<Decoder.Factory>
 
-private const val MEMORY_CACHE_BYTES = 256L * 1024 * 1024
-
+internal expect fun imageMemoryCache(context: PlatformContext): MemoryCache
 
 @OptIn(ExperimentalCoilApi::class)
 fun createImageLoader(
@@ -46,7 +45,7 @@ fun createImageLoader(
       add(network)
       platformImageDecoders().forEach(::add)
     }
-    .memoryCache { MemoryCache.Builder().maxSizeBytes(MEMORY_CACHE_BYTES).build() }
+    .memoryCache { imageMemoryCache(context) }
     .diskCache {
       ResizableDiskCache(diskCacheBytes) { DiskCache.Builder().directory(cacheDir).maxSizeBytes(it).build() }
     }

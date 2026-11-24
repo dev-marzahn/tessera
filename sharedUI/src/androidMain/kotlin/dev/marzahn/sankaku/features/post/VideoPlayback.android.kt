@@ -34,11 +34,12 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.SimpleCache
-import dev.marzahn.sankaku.data.CacheSettings
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.compose.runtime.snapshotFlow
+import dev.marzahn.sankaku.data.CacheSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
@@ -66,7 +67,9 @@ private object VideoDiskCache {
   }
 }
 
-private val MovieAudio =AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
+private const val VIDEO_TARGET_BUFFER_BYTES = 16 * 1024 * 1024
+
+private val MovieAudio = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
 
 @OptIn(UnstableApi::class)
 @Stable
@@ -80,7 +83,8 @@ private class ExoVideoPlayback(context: Context) : VideoPlayback {
           .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR),
       ),
     )
-    .setAudioAttributes(MovieAudio,true)
+    .setLoadControl(DefaultLoadControl.Builder().setTargetBufferBytes(VIDEO_TARGET_BUFFER_BYTES).build())
+    .setAudioAttributes(MovieAudio, true)
     .setHandleAudioBecomingNoisy(true)
     .build()
     .apply { repeatMode = Player.REPEAT_MODE_ALL }
@@ -112,7 +116,7 @@ private class ExoVideoPlayback(context: Context) : VideoPlayback {
       val heard = volumeState > 0f
       volumeState = value.coerceIn(0f, 1f)
       player.volume = volumeState
-      if (heard != volumeState > 0f) player.setAudioAttributes(MovieAudio,volumeState > 0f)
+      if (heard != volumeState > 0f) player.setAudioAttributes(MovieAudio, volumeState > 0f)
     }
 
   private var draggingState by mutableStateOf(false)
@@ -204,6 +208,8 @@ private class ExoVideoPlayback(context: Context) : VideoPlayback {
     player.seekTo((position * duration * 1000).toLong())
   }
 
+  override fun release() = player.release()
+
   fun follow() {
     if (player.isPlaying && !dragging && duration > 0.0) {
       position = (player.currentPosition / 1000.0 / duration).toFloat().coerceIn(0f, 1f)
@@ -212,10 +218,9 @@ private class ExoVideoPlayback(context: Context) : VideoPlayback {
 }
 
 @Composable
-internal actual fun rememberVideoPlayback(): VideoPlayback {
+internal actual fun rememberPlatformVideoPlayback(): VideoPlayback {
   val context = LocalContext.current
   val playback = remember { ExoVideoPlayback(context) }
-  DisposableEffect(playback) { onDispose { playback.player.release() } }
   LaunchedEffect(playback) {
     snapshotFlow { playback.isPlaying }.collectLatest { playing ->
       while (playing) withFrameMillis { playback.follow() }

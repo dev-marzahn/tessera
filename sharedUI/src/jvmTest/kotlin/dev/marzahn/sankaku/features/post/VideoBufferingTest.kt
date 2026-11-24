@@ -54,6 +54,8 @@ class VideoBufferingTest {
     override fun seekTo(fraction: Float) {
       position = fraction
     }
+
+    override fun release() {}
   }
 
   @Test

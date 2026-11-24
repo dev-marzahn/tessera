@@ -58,6 +58,8 @@ class VideoRotationTest {
       seeks += fraction
       position = fraction
     }
+
+    override fun release() {}
   }
 
   private var registry by mutableStateOf(SaveableStateRegistry(null) { true })

@@ -11,13 +11,12 @@ import dev.marzahn.sankaku.tabs.COUNT_PILL
 import dev.marzahn.sankaku.tabs.PREVIOUS_ITEM
 import dev.marzahn.sankaku.data.AccessibilitySettings
 import dev.marzahn.sankaku.tabs.LocalOpenTabList
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.marzahn.sankaku.features.post.PlayerPreferences
-import dev.marzahn.sankaku.features.post.VideoPlayback
+import dev.marzahn.sankaku.features.post.FakeVideoPlayers
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -204,11 +203,7 @@ class BookReaderTest {
             touch = touch,
             onClose = { closed++ },
             navigator = navigator,
-            videoPlayback = {
-              val player = remember { FakePlayback().also { players += it } }
-              DisposableEffect(player) { onDispose { player.released = true } }
-              player
-            },
+            videoPlayback = players.playback,
           )
         }
         under()
@@ -225,41 +220,13 @@ class BookReaderTest {
   private var bookJson = BOOK_JSON
   @Volatile private var bookUnreachable = false
   private var queueOpened = 0
-  private val players = mutableListOf<FakePlayback>()
-
-  private class FakePlayback : VideoPlayback {
-    override val hasMedia = false
-    override var isPlaying by mutableStateOf(false)
-    override val failed = false
-    override val firstFrameShown = false
-    override val duration = 10.0
-    override val position = 0f
-    override var volume = 1f
-    override var dragging = false
-    var opened = 0
-    var released = false
-
-    override fun open(url: String, cacheKey: String, play: Boolean) {
-      opened++
-      isPlaying = play
-    }
-
-    override fun play() {
-      isPlaying = true
-    }
-
-    override fun pause() {
-      isPlaying = false
-    }
-
-    override fun seekTo(fraction: Float) = Unit
-  }
+  private val players = FakeVideoPlayers()
 
   @Test
   fun aVideoPagePlaysMutedOnScreenAndStopsOutOfView() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showBook(json = VIDEO_BOOK_JSON, firstPage = "Page 1 of 2")
-    waitUntil(timeoutMillis = 5_000) { players.any { it.opened > 0 } }
-    val player = players.single()
+    waitUntil(timeoutMillis = 5_000) { players.all.any { it.opened > 0 } }
+    val player = players.all.single()
     assertTrue(player.isPlaying, "plays in place on screen")
     assertEquals(0f, player.volume, "muted")
 
@@ -270,7 +237,7 @@ class BookReaderTest {
     }
     assertTrue(onAllNodesWithContentDescription("Page 1 of 2").fetchSemanticsNodes().isEmpty(), "scrolled out of view")
     assertTrue(!player.isPlaying || player.released, "paused or released out of view")
-    assertEquals(1, players.size, "no other player")
+    assertEquals(1, players.all.size, "no other player")
   }
 
   @Test
@@ -279,7 +246,7 @@ class BookReaderTest {
     startFixtureKoin(gOnly = false)
     var open by mutableStateOf(true)
     setContent {
-      if (open) BookReaderScreen(OpenBook(BOOK, "Fixture"), onClose = { open = false }, navigator = navigator, videoPlayback = { FakePlayback() })
+      if (open) BookReaderScreen(OpenBook(BOOK, "Fixture"), onClose = { open = false }, navigator = navigator, videoPlayback = players.playback)
     }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Page 1 of 4", substring = true).fetchSemanticsNodes().isNotEmpty() }
     val seen = GlobalContext.get().get<SeenStore>()

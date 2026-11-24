@@ -3,9 +3,7 @@ package dev.marzahn.sankaku.features.grid
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -56,7 +54,8 @@ import dev.marzahn.sankaku.di.shellModule
 import dev.marzahn.sankaku.features.post.DirectorySaveFolder
 import dev.marzahn.sankaku.features.post.LocalVideoPlayback
 import dev.marzahn.sankaku.features.post.SaveFolder
-import dev.marzahn.sankaku.features.post.VideoPlayback
+import dev.marzahn.sankaku.features.post.FakeVideoPlayback
+import dev.marzahn.sankaku.features.post.Seek
 import dev.marzahn.sankaku.tabs.FileTabStateStore
 import dev.marzahn.sankaku.tabs.TabStateStore
 import dev.marzahn.sankaku.tabs.TabsController
@@ -101,36 +100,7 @@ class VideoKeyModesTest {
     return """{"meta":{"next":null,"prev":null},"data":[$posts]}"""
   }
 
-  private class FakePlayback : VideoPlayback {
-    override var isPlaying by mutableStateOf(false)
-    override val hasMedia = false
-    override val failed = false
-    override val firstFrameShown = false
-    override val duration = 10.0
-    override var position by mutableStateOf(0.5f)
-    override var volume = 1f
-    override var dragging = false
-    val seeks = mutableListOf<Float>()
-
-    override fun open(url: String, cacheKey: String, play: Boolean) {
-      isPlaying = play
-    }
-
-    override fun play() {
-      isPlaying = true
-    }
-
-    override fun pause() {
-      isPlaying = false
-    }
-
-    override fun seekTo(fraction: Float) {
-      position = fraction.coerceIn(0f, 1f)
-      seeks += position
-    }
-  }
-
-  private val player = FakePlayback()
+  private val player = FakeVideoPlayback(position = 0.5f)
   private val grid = Route.Grid(listOf("fixture_tag"))
 
   @BeforeTest
@@ -222,7 +192,7 @@ class VideoKeyModesTest {
     press(Key.D)
     press(Key.A)
 
-    assertEquals(listOf(1f, 1f, 0.5f), player.seeks)
+    assertEquals(listOf(1f, 1f, 0.5f), player.seeks.map(Seek::to))
     assertEquals(4, viewerPost(), "A/D stepped posts while scrubbing")
   }
 
@@ -246,7 +216,7 @@ class VideoKeyModesTest {
     press(Key.Escape)
     press(Key.A)
 
-    assertEquals(listOf(0f), player.seeks)
+    assertEquals(listOf(0f), player.seeks.map(Seek::to))
     assertEquals(3, viewerPost())
   }
 }

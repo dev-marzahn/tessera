@@ -120,6 +120,7 @@ import dev.marzahn.sankaku.features.auth.SignInController
 import dev.marzahn.sankaku.features.post.AnimatedSample
 import dev.marzahn.sankaku.features.post.PostVideo
 import dev.marzahn.sankaku.features.post.VideoPlayback
+import dev.marzahn.sankaku.features.post.rememberPlatformVideoPlayback
 import dev.marzahn.sankaku.features.post.rememberVideoPlayback
 import dev.marzahn.sankaku.features.post.aspectRatio
 import dev.marzahn.sankaku.features.post.isAnimated
@@ -184,7 +185,7 @@ internal fun BookReaderScreen(
   books: BooksRepository = koinInject(),
   progress: ReadingProgress = koinInject(),
   tagPages: TagPages = koinInject(),
-  videoPlayback: @Composable () -> VideoPlayback = { rememberVideoPlayback() },
+  videoPlayback: @Composable () -> VideoPlayback = { rememberPlatformVideoPlayback() },
 ) {
   val viewModel = koinViewModel<BookReaderViewModel> { parametersOf(open.id) }
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -535,7 +536,7 @@ private fun StripPage(
     }
     when {
       isFlash(page) || (isVideo(page) && !platformPlaysVideo(page)) -> Unplayable(Modifier.align(Alignment.Center))
-      isVideo(page) -> PostVideo(page, Modifier.fillMaxSize(), play = playing, shown = true, bookPage = true, player = videoPlayback())
+      isVideo(page) -> PostVideo(page, Modifier.fillMaxSize(), play = playing, shown = true, bookPage = true, player = rememberVideoPlayback(videoPlayback))
       isAnimated(page) -> if (playing) AnimatedSample(page, Modifier.fillMaxSize(), onShown = {})
       else -> FullFile(page, width, scale)
     }

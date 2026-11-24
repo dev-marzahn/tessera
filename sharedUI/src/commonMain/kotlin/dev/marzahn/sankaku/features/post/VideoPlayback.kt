@@ -1,6 +1,7 @@
 package dev.marzahn.sankaku.features.post
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -36,12 +37,21 @@ interface VideoPlayback {
   var dragging: Boolean
 
   fun seekTo(fraction: Float)
+
+  fun release()
 }
 
 @Composable
-internal expect fun rememberVideoPlayback(): VideoPlayback
+internal expect fun rememberPlatformVideoPlayback(): VideoPlayback
 
-internal val LocalVideoPlayback = staticCompositionLocalOf<@Composable () -> VideoPlayback> { { rememberVideoPlayback() } }
+@Composable
+internal fun rememberVideoPlayback(create: @Composable () -> VideoPlayback = LocalVideoPlayback.current): VideoPlayback {
+  val playback = create()
+  DisposableEffect(playback) { onDispose { playback.release() } }
+  return playback
+}
+
+internal val LocalVideoPlayback = staticCompositionLocalOf<@Composable () -> VideoPlayback> { { rememberPlatformVideoPlayback() } }
 
 @Composable
 internal expect fun VideoPlaybackSurface(playback: VideoPlayback, modifier: Modifier = Modifier)

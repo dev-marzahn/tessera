@@ -8,34 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class VideoDragTest {
-  private class FakePlayback : VideoPlayback {
-    override val hasMedia = true
-    override var isPlaying = true
-    override val failed = false
-    override val firstFrameShown = true
-    override val duration = 120.0
-    override var position = 0.25f
-    override var volume = 1f
-    override var dragging = false
-    val seeks = mutableListOf<Pair<Float, Boolean>>()
-
-    override fun open(url: String, cacheKey: String, play: Boolean) {}
-
-    override fun play() {
-      isPlaying = true
-    }
-
-    override fun pause() {
-      isPlaying = false
-    }
-
-    override fun seekTo(fraction: Float) {
-      seeks += fraction to dragging
-      position = fraction
-    }
-  }
-
-  private val player = FakePlayback()
+  private val player = FakeVideoPlayback(playing = true, position = 0.25f, hasMedia = true, firstFrameShown = true, duration = 120.0)
   private val keys = VideoKeys(PlayerPreferences(InMemoryTextFile())).also { it.register(player) }
 
   @Test
@@ -47,7 +20,7 @@ class VideoDragTest {
 
     keys.release()
 
-    assertEquals(listOf(0.5f to true, 0.6f to true, 0.6f to false), player.seeks)
+    assertEquals(listOf(Seek(0.5f, dragging = true), Seek(0.6f, dragging = true), Seek(0.6f, dragging = false)), player.seeks)
     assertFalse(player.dragging)
     assertNull(keys.draggedTo)
     assertTrue(player.isPlaying, "it plays on, as it was playing")
@@ -64,7 +37,7 @@ class VideoDragTest {
 
     keys.release()
 
-    assertEquals(listOf(0.6f to false), player.seeks)
+    assertEquals(listOf(Seek(0.6f, dragging = false)), player.seeks)
     assertNull(keys.draggedTo)
     assertTrue(player.isPlaying)
   }

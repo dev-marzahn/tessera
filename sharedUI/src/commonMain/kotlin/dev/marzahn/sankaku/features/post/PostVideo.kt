@@ -265,7 +265,7 @@ fun PostVideo(
   preferences: PlayerPreferences = koinInject(),
   onFirstFrame: () -> Unit = {},
   bookPage: Boolean = false,
-  player: VideoPlayback = LocalVideoPlayback.current(),
+  player: VideoPlayback = rememberVideoPlayback(),
 ) {
   val url = videoUrl(post) ?: return
   val volume = if (bookPage) 0f else preferences.playedVolume
@@ -480,7 +480,7 @@ internal const val VideoDetailsDescription = "Details"
 fun VideoScrubPreview(keys: VideoKeys, post: PostDto, shown: Boolean, modifier: Modifier = Modifier) {
   val url = videoUrl(post) ?: return
   val source = videoSource(url)
-  val player = LocalVideoPlayback.current()
+  val player = rememberVideoPlayback()
   LaunchedEffect(player, source) {
     player.volume = 0f
     player.open(url, videoCacheKey(post, source), play = false)

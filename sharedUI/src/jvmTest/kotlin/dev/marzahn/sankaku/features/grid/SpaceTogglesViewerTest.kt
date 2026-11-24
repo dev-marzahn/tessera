@@ -1,13 +1,10 @@
 package dev.marzahn.sankaku.features.grid
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import dev.marzahn.sankaku.Route
-import dev.marzahn.sankaku.features.post.VideoPlayback
+import dev.marzahn.sankaku.features.post.FakeVideoPlayback
 import dev.marzahn.sankaku.shell.BackOverrides
 import dev.marzahn.sankaku.ui.components.Shortcuts
 import org.koin.core.context.GlobalContext
@@ -20,33 +17,8 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class SpaceTogglesViewerTest {
-  private class FakePlayback : VideoPlayback {
-    override var isPlaying by mutableStateOf(false)
-    override val hasMedia = false
-    override val failed = false
-    override val firstFrameShown = false
-    override val duration = 10.0
-    override val position = 0f
-    override var volume = 1f
-    override var dragging = false
-
-    override fun open(url: String, cacheKey: String, play: Boolean) {
-      isPlaying = play
-    }
-
-    override fun play() {
-      isPlaying = true
-    }
-
-    override fun pause() {
-      isPlaying = false
-    }
-
-    override fun seekTo(fraction: Float) {}
-  }
-
-  private val player = FakePlayback()
-  private val fixture = GridScreenFixture(types = mapOf(2 to "image/gif", 4 to "video/mp4"), player = player)
+  private val player = FakeVideoPlayback()
+  private val fixture = GridScreenFixture(types = mapOf(2 to "image/gif", 4 to "video/mp4"), playback = { player })
 
   @BeforeTest
   fun start() = fixture.start()
