@@ -30,7 +30,6 @@ class OpenOnClickTest {
     var tab by mutableStateOf("first")
     val closed = mutableListOf<String>()
     setContent {
-      // The handler captures the value at composition, as TabStrip's `{ controller.close(tab.id) }` does.
       val current = tab
       Box(Modifier.size(100.dp).testTag("tab").openOnClick(onOpen = {}, onOpenInNewTab = { closed += current }))
     }
@@ -109,11 +108,6 @@ class OpenOnClickTest {
     assertEquals(listOf("menu"), calls)
   }
 
-  /**
-   * #324: on touch a tap opens in the frame its finger lifts in, with no frame advanced after the release. The grid's
-   * cells took a double-tap through the same detector until then, so every tap waited out the double-tap timeout
-   * (about 300 ms) before opening.
-   */
   @Test
   fun onTouchATapOpensAsTheFingerLifts() = runComposeUiTest {
     val calls = mutableListOf<String>()

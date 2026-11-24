@@ -6,7 +6,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The action that opened sign-in runs once when it succeeds, and never once the dialog closed another way. */
 class SignInControllerTest {
   @Test
   fun theReasonShowsWhileOpen() {
@@ -61,7 +60,6 @@ class SignInControllerTest {
     var first = 0
     controller.open("to vote") { first++ }
 
-    // The session-expired snackbar, say: a plain sign-in that carries nothing.
     controller.open()
     controller.succeeded()
 

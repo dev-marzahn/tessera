@@ -30,12 +30,6 @@ import com.google.fonts.icons.check
 import com.google.fonts.icons.chevron_right
 import dev.marzahn.sankaku.api.dto.BookDto
 
-/**
- * What a book's end card offers after "Finished" (#503): the [nextVolume] of its series, when the reader knows it
- * (#377 decision 13: only a book opened from its series' row or list), the [nextResult] of the list it was opened from,
- * and [back], the name of the reader's close: "Back to Books" over a list, "Close" for a book opened on its own or kept.
- * With the rating [locked], the covers of other ratings stay grey, as on the rows.
- */
 internal class BookEnd(
   val nextVolume: BookDto? = null,
   val onNextVolume: () -> Unit = {},
@@ -45,11 +39,6 @@ internal class BookEnd(
   val locked: Boolean = true,
 )
 
-/**
- * The strip's end (#503, replacing #382's "Next" card): "Finished", the book's [title] and [pages], then the choices
- * [end] has, the next volume first, and the way back ([onBack]). Clear of the count pill and the navigation bar, so
- * it's whole on screen at the strip's end.
- */
 @Composable
 internal fun EndCard(title: String, pages: Int, end: BookEnd, onBack: () -> Unit) {
   Surface(
@@ -91,7 +80,6 @@ internal fun EndCard(title: String, pages: Int, end: BookEnd, onBack: () -> Unit
   }
 }
 
-/** One way on: [heading] over the [book]'s title and pages, its cover beside them. [label] is what it's read as. */
 @Composable
 private fun EndChoice(heading: String, book: BookDto, locked: Boolean, primary: Boolean, onClick: () -> Unit, label: String) {
   Surface(
@@ -123,14 +111,11 @@ private fun EndChoice(heading: String, book: BookDto, locked: Boolean, primary: 
 
 private fun BookDto.titleOrUntitled() = title.ifBlank { UNTITLED }
 
-/** "Title · 32 pages", leaving out what isn't known. */
 private fun titleAndPages(title: String?, pages: Int) =
   listOfNotNull(title, pagesLabel(pages).takeIf { pages > 0 }).joinToString(" · ")
 
-/** The next volume's choice, as read aloud. */
 internal fun nextVolumeLabel(title: String) = "$NEXT_VOLUME: $title"
 
-/** The next result's choice, as read aloud. */
 internal fun nextResultLabel(title: String) = "$NEXT_RESULT: $title"
 
 internal const val FINISHED = "Finished"
@@ -140,8 +125,6 @@ internal const val BACK_TO_BOOKS = "Back to Books"
 internal const val CLOSE_BOOK = "Close"
 internal const val END_CARD_TAG = "book-end"
 
-/** The strip's end item's key: not a page. */
 internal const val END_KEY = "end"
 
-/** Room under the end card for the queue's count pill (#483). */
 private val END_CARD_BOTTOM = 96.dp

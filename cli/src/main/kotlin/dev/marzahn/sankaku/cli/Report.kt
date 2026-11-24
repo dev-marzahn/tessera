@@ -15,7 +15,6 @@ data class StepResult(
   val skipped: Boolean = false,
 )
 
-/** Every value printed or written is a status, a header name or a JSON key; never a token, password or user field. */
 class Report(private val outDir: File) {
   private val rows = mutableListOf<Pair<String, StepResult>>()
 
@@ -31,7 +30,6 @@ class Report(private val outDir: File) {
     println("[$mark] $step")
   }
 
-  /** Writes the keys and value types of [json], so the file is safe to share. */
   fun writeShape(step: String, json: JsonElement?) {
     json ?: return
     val dir = File(outDir, "shapes").apply { mkdirs() }

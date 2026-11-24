@@ -61,6 +61,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
 import dev.marzahn.sankaku.READING_FILE
@@ -120,10 +121,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #381: the reader over a fixture book from a fake `/pools/{id}`, no network. State, semantics and layout bounds only:
- * the pages' order and size, the chrome, the G only band, pinch zoom, closing and "Open this page as a post".
- */
 @OptIn(ExperimentalTestApi::class)
 class BookReaderTest {
   private val opened = mutableListOf<Route>()
@@ -140,11 +137,9 @@ class BookReaderTest {
     override fun openInNewTab(route: Route): Int? = null
   }
 
-  /** The methods of the ♡ calls (`/pools/{id}/favorite`), in the order sent. */
   private val favouriteCalls = Collections.synchronizedList(mutableListOf<HttpMethod>())
 
   private fun startFixtureKoin(gOnly: Boolean, signedIn: Boolean = false) {
-    // zoomimage checks its gestures run on the main thread; a UI test sends them from the test's thread.
     setMainThreadChecker { true }
     val cache = Files.createTempDirectory("book-reader").toFile()
     val now = Clock.System.now()
@@ -154,7 +149,7 @@ class BookReaderTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags(safeOnly = gOnly) }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -177,10 +172,8 @@ class BookReaderTest {
         }
       }
       single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
-      // At full volume, so a muted page shows it's the page that mutes.
       single { PlayerPreferences(get(PLAYER_FILE)) }
     }
-    // The shell's, for the count pill a touch reader shows (#483).
     startKoin { modules(sharedModule, platform, booksModule, authModule, shellModule, fixtures) }
   }
 
@@ -213,13 +206,11 @@ class BookReaderTest {
             navigator = navigator,
             videoPlayback = {
               val player = remember { FakePlayback().also { players += it } }
-              // As the platforms' players are released when their page leaves the composition.
               DisposableEffect(player) { onDispose { player.released = true } }
               player
             },
           )
         }
-        // After the reader, so its request comes last in the frame, as a tab loading under the reader does.
         under()
       }
     }
@@ -236,9 +227,7 @@ class BookReaderTest {
   private var queueOpened = 0
   private val players = mutableListOf<FakePlayback>()
 
-  /** Records what [PostVideo] asks of a video page's player. */
   private class FakePlayback : VideoPlayback {
-    // No media, so no surface: the desktop surface draws only its own player.
     override val hasMedia = false
     override var isPlaying by mutableStateOf(false)
     override val failed = false
@@ -274,7 +263,6 @@ class BookReaderTest {
     assertTrue(player.isPlaying, "plays in place on screen")
     assertEquals(0f, player.volume, "muted")
 
-    // Scrolled until the video page is out of view: it pauses, or leaves the composition with the player.
     repeat(3) {
       onRoot().performKeyInput { pressKey(Key.Spacebar) }
       mainClock.advanceTimeBy(1_000)
@@ -300,14 +288,12 @@ class BookReaderTest {
     onNodeWithContentDescription("Close").performClick()
     waitForIdle()
 
-    // #385: kept apart from posts, so a post with the book's id isn't seen.
     assertTrue(seen.isSeen(bookSeenId(BOOK)), "seen once left")
     assertFalse(seen.isSeen(BOOK))
   }
 
   @Test
   fun aBookThatCouldNotBeReachedLoadsWhenTheNetworkIsBack() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #491: as its pages do.
     bookUnreachable = true
     showBook(await = false)
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Retry").fetchSemanticsNodes().isNotEmpty() }
@@ -330,7 +316,6 @@ class BookReaderTest {
     showBook()
     val first = onNodeWithContentDescription("Page 1 of 4").getBoundsInRoot()
     val second = onNodeWithContentDescription("Page 2 of 4").getBoundsInRoot()
-    // Sequence 0 is the square page, sequence 1 the one twice as tall, whatever order the API sent them in.
     assertEquals(first.width, first.height)
     assertEquals(first.width, second.width)
     assertEquals(first.bottom, second.top, "no gap")
@@ -347,7 +332,6 @@ class BookReaderTest {
     waitForIdle()
     assertTrue(!chromeShown(), "hidden by the first scroll")
     onRoot().performMouseInput { click(Offset(width / 2f, height / 2f)) }
-    // zoomimage reports a single tap once a double-tap is ruled out.
     mainClock.advanceTimeBy(500)
     waitForIdle()
     assertTrue(chromeShown(), "a tap shows it again")
@@ -377,12 +361,10 @@ class BookReaderTest {
     assertTrue(after.width > before.width * 1.5f, "zoomed: ${before.width} → ${after.width}")
     assertEquals(after.width, second.width, 0.5f, "the strip zooms as a whole")
     assertEquals(after.bottom, second.top, 0.5f, "still no gap")
-    // Zoomed about the pinch's centre, not scrolled: the pages keep their places relative to it.
     val zoom = after.width / before.width
     assertEquals(secondBefore.top * zoom + (after.top - before.top * zoom), second.top, 1f)
   }
 
-  /** Where [description]'s page is drawn in the window, in px, with the zoom and unclipped by the viewport. */
   private fun ComposeUiTest.shownRect(description: String): Rect {
     val coordinates = onNodeWithContentDescription(description).fetchSemanticsNode().layoutInfo.coordinates
     val size = coordinates.size
@@ -391,7 +373,6 @@ class BookReaderTest {
 
   @Test
   fun theReaderKeepsTheKeysWhenAScreenUnderItTakesFocus() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // As a restored post's KeyFocusHolder does on desktop: it asks for focus in the same frame as the reader.
     showBook(under = {
       val focus = remember { FocusRequester() }
       LaunchedEffect(Unit) { focus.requestFocus() }
@@ -449,7 +430,6 @@ class BookReaderTest {
   @Test
   fun rOpensTheMenuWithItsItemFocusedAndSpaceChoosesIt() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showBook()
-    // Hidden by a scroll first: R shows the top row again to open its ⋮ (#443).
     onRoot().performMouseInput { scroll(3f) }
     waitForIdle()
     onRoot().performKeyInput { pressKey(Key.R) }
@@ -460,7 +440,6 @@ class BookReaderTest {
     assertEquals(1, opened.size)
   }
 
-  /** The top row's ⓘ (#484), which TalkBack names "Book details". */
   private fun ComposeUiTest.tapDetails() {
     onNodeWithContentDescription(BOOK_SHEET).performClick()
     waitForIdle()
@@ -479,7 +458,6 @@ class BookReaderTest {
     onNodeWithText("Fixture Artist").assertExists()
     onNodeWithText("Comedy").assertExists()
     onNodeWithText("4 pages").assertExists()
-    // Not opened from a series, so there's none to show.
     assertTrue(onAllNodesWithText("Series").fetchSemanticsNodes().isEmpty())
   }
 
@@ -496,7 +474,6 @@ class BookReaderTest {
 
   @Test
   fun onTouchTheCountPillOpensTheQueuePage() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #483: a book in its own tab, as a lone post, keeps the queue one tap away.
     showBook(tab = TabId("kept"), touch = true)
 
     onNodeWithTag(COUNT_PILL).performClick()
@@ -508,7 +485,6 @@ class BookReaderTest {
 
   @Test
   fun overTheWindowTheCountPillClosesTheReaderForTheQueuePage() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // The queue page is under the reader there.
     showBook(touch = true)
 
     onNodeWithTag(COUNT_PILL).performClick()
@@ -520,7 +496,6 @@ class BookReaderTest {
 
   @Test
   fun overTheWindowThePillOffersNoQueueButtons() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #485 review: ✕ and ‹ › would act on the item under the reader, which would stay.
     startFixtureKoinWithButtons()
     showBook(touch = true, koin = false)
     assertTrue(onAllNodesWithContentDescription("Close", substring = true).fetchSemanticsNodes().size == 1, "only the top row's ✕")
@@ -559,7 +534,6 @@ class BookReaderTest {
 
   @Test
   fun aTagInTheSheetOpensItsPageOverTheReader() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #486: the tag's page, with its posts and books, comes over the reader, which stays.
     showBook()
     tapDetails()
 
@@ -574,13 +548,11 @@ class BookReaderTest {
 
   @Test
   fun aKeptBookStaysInTheQueueWhenItsSheetOpensASearch() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #385: in a kept book's tab, the series opens without closing the item.
     showBook(series = SheetSeries("s1", listed = true), tab = TabId("kept"))
     tapDetails()
     onNodeWithText("Fixture series").performClick()
     waitForIdle()
 
-    // Its series opens too, even one it was listed in: a kept book wasn't opened from that list.
     assertEquals(Route.BookSeries("s1", "Fixture series"), opened.last())
     assertEquals(0, closed)
   }
@@ -616,7 +588,6 @@ class BookReaderTest {
     onRoot().performKeyInput { pressKey(Key.F) }
     waitForIdle()
 
-    // Signing in then runs it: BookActionsTest.signedOutItOpensSignInAndFavouritesOnceSignedIn.
     val signIn = GlobalContext.get().get<SignInController>()
     assertTrue(signIn.isOpen.value)
     assertEquals("to favourite", signIn.reason.value)
@@ -629,7 +600,6 @@ class BookReaderTest {
 
     onRoot().performKeyInput { pressKey(Key.F) }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Unfavourite").fetchSemanticsNodes().isNotEmpty() }
-    // The ♡ flips before the call goes out.
     waitUntil(timeoutMillis = 5_000) { favouriteCalls.size == 1 }
     assertEquals(listOf(HttpMethod.Post), favouriteCalls.toList())
 
@@ -637,11 +607,9 @@ class BookReaderTest {
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Favourite").fetchSemanticsNodes().isNotEmpty() }
     waitUntil(timeoutMillis = 5_000) { favouriteCalls.size == 2 }
     assertEquals(listOf(HttpMethod.Post, HttpMethod.Delete), favouriteCalls.toList())
-    // Still the book: F isn't a key that closes or scrolls it.
     assertEquals(0, closed)
   }
 
-  /** Whether the heart burst plays, and as [favourited]'s heart (filled or broken), if given. */
   private fun ComposeUiTest.burstShown(favourited: Boolean? = null): Boolean {
     val heart = hasTestTag(FAVOURITE_BURST_TAG).let { tag ->
       favourited?.let { tag and SemanticsMatcher.expectValue(BurstFavourited, it) } ?: tag
@@ -649,7 +617,6 @@ class BookReaderTest {
     return onAllNodes(heart, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
   }
 
-  /** Steps the paused clock a frame at a time until the burst plays [favourited]'s heart. */
   private fun ComposeUiTest.awaitBurst(favourited: Boolean) {
     val deadline = System.currentTimeMillis() + 5_000
     while (!burstShown(favourited)) {
@@ -663,19 +630,16 @@ class BookReaderTest {
   fun fPlaysTheFilledHeartThenTheBrokenOne() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showBook(signedIn = true)
     assertFalse(burstShown())
-    // Frame by frame from here, or waiting for idle would run each heart to its end.
     mainClock.autoAdvance = false
 
     onRoot().performKeyInput { pressKey(Key.F) }
     awaitBurst(favourited = true)
-    // Over the strip, in the window's centre.
     val heart = onNode(hasTestTag(FAVOURITE_BURST_TAG), useUnmergedTree = true).getBoundsInRoot()
     assertEquals(WIDTH.dp / 2, (heart.left + heart.right) / 2)
     assertEquals(HEIGHT.dp / 2, (heart.top + heart.bottom) / 2)
 
     onRoot().performKeyInput { pressKey(Key.F) }
     awaitBurst(favourited = false)
-    // It pops and fades, then leaves nothing behind.
     mainClock.advanceTimeBy(3_000)
     assertFalse(burstShown())
   }
@@ -696,7 +660,6 @@ class BookReaderTest {
     mainClock.autoAdvance = false
 
     onRoot().performKeyInput { pressKey(Key.F) }
-    // Sign-in opens instead; the heart waits for the favourite to run (BookActionsTest).
     repeat(10) {
       mainClock.advanceTimeByFrame()
       Thread.sleep(5)
@@ -711,7 +674,6 @@ class BookReaderTest {
   @Test
   fun aHeldFTogglesOnce() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showBook(signedIn = true)
-    // Held, F's auto-repeats arrive as more key downs before its key up (#432 review).
     val scene = (this as SkikoComposeUiTest).scene
     listOf(KeyEventType.KeyDown, KeyEventType.KeyDown, KeyEventType.KeyDown, KeyEventType.KeyUp).forEach { type ->
       runOnIdle { scene.sendKeyEvent(KeyEvent(Key.F, type)) }
@@ -732,7 +694,6 @@ class BookReaderTest {
     val scene = (this as SkikoComposeUiTest).scene
     runOnIdle { scene.sendKeyEvent(KeyEvent(Key.F, KeyEventType.KeyDown)) }
     waitUntil(timeoutMillis = 5_000) { favouriteCalls.size == 1 }
-    // Something takes the focus, and F's release with it (as sign-in or the sheet would); the reader takes it back.
     runOnIdle { elsewhere.requestFocus() }
     waitForIdle()
     runOnIdle { scene.sendKeyEvent(KeyEvent(Key.F, KeyEventType.KeyDown)) }
@@ -759,7 +720,6 @@ class BookReaderTest {
   internal companion object {
     const val BOOK = "fixturebook"
 
-    // Narrow and tall, so the first two pages are both laid out.
     const val WIDTH = 600
     const val HEIGHT = 1000
 
@@ -769,7 +729,6 @@ class BookReaderTest {
         "sample_url": "https://fixture.invalid/$id.${if (type == "video/mp4") "mp4" else "png"}" }
     """.trimIndent()
 
-    // A video first page, then a page tall enough to scroll the video out of view.
     val VIDEO_BOOK_JSON = """
       { "id": "$BOOK", "name_en": "Fixture book", "rating": "s", "post_count": 2,
         "posts": [
@@ -778,16 +737,13 @@ class BookReaderTest {
         ] }
     """.trimIndent()
 
-    // A pending book can come with no pages.
     val EMPTY_BOOK_JSON = """{ "id": "$BOOK", "name_en": "Fixture book", "rating": "s", "status": "pending", "posts": [] }"""
 
-    // The series the book is the second of (#383), as `BooksApi.series` answers it.
     val SERIES_JSON = """
       { "data": { "series": { "id": "s1", "name_en": "Fixture series", "pool_count": 6,
         "books": [ { "id": "first", "sequence": 1 }, { "id": "$BOOK", "sequence": 2 } ] } } }
     """.trimIndent()
 
-    // Sent out of order: the reader sorts by sequence.
     val BOOK_JSON = """
       { "id": "$BOOK", "name_en": "Fixture book", "rating": "s", "post_count": 5, "fav_count": 7,
         "description_en": "A fixture description",

@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `open_in_new` (weight 400, grade 0, optical size 24). */
 public val open_in_new: ImageVector
   get() {
     if (_open_in_new != null) {

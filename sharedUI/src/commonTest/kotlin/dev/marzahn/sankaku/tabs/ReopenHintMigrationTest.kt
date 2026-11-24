@@ -8,7 +8,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The old top-line hint's `reopen-hint.json`, folded into [Tip.ReopenHold] (#344). */
 class ReopenHintMigrationTest {
   @Test
   fun anInstallThatHadUsedTheHoldNeverSeesTheTip() {
@@ -17,7 +16,6 @@ class ReopenHintMigrationTest {
       val file = InMemoryTextFile()
       migrateReopenHint(old, Tips(file, touch = true))
       assertNull(old.read())
-      // Across a restart, with the old file gone.
       val restarted = Tips(file, touch = true).also { migrateReopenHint(old, it) }
       assertFalse(restarted.offer(Tip.ReopenHold))
     }

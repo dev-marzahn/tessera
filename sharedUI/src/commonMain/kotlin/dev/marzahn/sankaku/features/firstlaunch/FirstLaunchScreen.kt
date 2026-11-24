@@ -41,14 +41,9 @@ internal const val FirstLaunchRisk =
     "that risk is yours."
 internal const val FirstLaunchAge = "Sankaku is an adult site. I'm 18 or older."
 
-/**
- * The first-launch screen (#210), shown once and in place of the whole app until Continue, so nothing loads before
- * it. There is no account check behind the age line. Quit closes the app; it asks again at the next launch.
- */
 @Composable
 internal fun FirstLaunchScreen(onContinue: () -> Unit, onQuit: () -> Unit) {
   Surface(Modifier.fillMaxSize().testTag(FirstLaunchTag), color = MaterialTheme.colorScheme.background) {
-    // Centred when it fits; scrolls on a short window or with large text.
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
       Box(
         contentAlignment = Alignment.Center,
@@ -63,11 +58,9 @@ internal fun FirstLaunchScreen(onContinue: () -> Unit, onQuit: () -> Unit) {
           Text(FirstLaunchRisk, style = MaterialTheme.typography.bodyLarge)
           Text(FirstLaunchAge, style = MaterialTheme.typography.titleMedium)
           Row(
-            // Room for the focus ring (7 dp out; one button has it at a time) between them.
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
           ) {
-            // Enter acts on the focused one, so focus shows (#418).
             TextButton(onClick = onQuit, modifier = Modifier.focusRing(ButtonDefaults.textShape).testTag(FirstLaunchQuitTag)) { Text("Quit") }
             Button(onClick = onContinue, modifier = Modifier.focusRing(ButtonDefaults.shape).testTag(FirstLaunchContinueTag)) { Text("Continue") }
           }

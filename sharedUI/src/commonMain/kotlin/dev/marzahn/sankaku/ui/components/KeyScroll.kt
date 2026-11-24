@@ -7,16 +7,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** How far a line key (W/S, ↑/↓) scrolls: the reader's strip and Settings (#423). */
 val KeyScrollLine = 120.dp
 
-/** How much of the viewport's height a screen key (Space, Page Down, Shift+W/S) scrolls, so a little stays in view. */
 const val KEY_SCROLL_SCREEN = 0.85f
 
-/**
- * The keys' scrolling of [state]: each step animates, and a key pressed while one runs adds to what's left of it rather
- * than cutting it short, so two presses of S go two lines.
- */
 class KeyScroll(private val state: ScrollableState) {
   private var left = 0f
   private var job: Job? = null

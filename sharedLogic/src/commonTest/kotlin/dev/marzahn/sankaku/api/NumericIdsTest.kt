@@ -9,7 +9,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** With an Android User-Agent the API answers ids as JSON numbers (docs/api.md → Browser fingerprint, #204). */
 class NumericIdsTest {
   private fun numeric(post: String) = post
     .replace("\"id\": \"p1\"", "\"id\": 12345678")

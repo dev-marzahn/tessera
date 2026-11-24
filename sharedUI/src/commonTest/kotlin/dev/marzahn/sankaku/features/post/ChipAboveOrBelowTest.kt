@@ -8,7 +8,6 @@ import kotlin.test.assertNull
 class ChipAboveOrBelowTest {
   private fun chip(left: Float, top: Float, width: Float = 60f) = Rect(left, top, left + width, top + 24f)
 
-  // Row 0: 0, 1, 2. Row 1: 3, 4 (a wide one). Then a type's header, and row 2: 5.
   private val chips = listOf(
     chip(0f, 0f), chip(65f, 0f), chip(130f, 0f),
     chip(0f, 29f), chip(65f, 29f, width = 120f),
@@ -38,6 +37,13 @@ class ChipAboveOrBelowTest {
   fun theTopAndBottomRowsGoNowhere() {
     assertNull(chipAboveOrBelow(chips, 1, down = false))
     assertNull(chipAboveOrBelow(chips, 5, down = true))
+  }
+
+  @Test
+  fun aChipWithNoHeightIsARowOfItsOwn() {
+    val flat = Rect(0f, 29f, 60f, 29f)
+    assertEquals(1, chipAboveOrBelow(listOf(chip(0f, 0f), flat), 0, down = true))
+    assertEquals(0, chipAboveOrBelow(listOf(chip(0f, 0f), flat), 1, down = false))
   }
 
   @Test

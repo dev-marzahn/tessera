@@ -30,10 +30,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * The switcher's queue list (#502): Q changes the view, the rows group by block with what's left, W/S move, Space goes,
- * X closes an item, Shift+X its block, and `/` finds.
- */
 @OptIn(ExperimentalTestApi::class)
 class SwitcherQueueListTest {
   private val tabs = TabsController()
@@ -55,7 +51,6 @@ class SwitcherQueueListTest {
 
   private fun id(title: String) = tabs.tabs.value.single { it.title == title }.id
 
-  // A row's picture may make Coil's singleton loader; later classes set their own.
   @AfterTest
   fun tearDown() = SingletonImageLoader.reset()
 
@@ -106,7 +101,6 @@ class SwitcherQueueListTest {
     row("Landscape").assert(hasContentDescription("1 of 2 left", substring = true))
     row("l2").assert(hasContentDescription("Kept from Landscape", substring = true))
     row("l1").assert(hasContentDescription("seen", substring = true))
-    // It opens on the current item.
     row("Cat").assertIsSelected()
   }
 
@@ -128,14 +122,12 @@ class SwitcherQueueListTest {
     press(Key.S)
     press(Key.X)
     assertEquals(listOf("Browse", "Landscape", "l1", "l2", "Cat"), tabs.tabs.value.map { it.title })
-    // The selection took the closed one's place. Shift+X on l2 closes the whole Landscape block.
     row("Cat").assertIsSelected()
     press(Key.W)
     row("l2").assertIsSelected()
     press(Key.X, shift = true)
     assertEquals(listOf("Browse", "Cat"), tabs.tabs.value.map { it.title })
     assertTrue(open)
-    // Z brings the block back as one.
     press(Key.Z)
     assertEquals(listOf("Browse", "Landscape", "l1", "l2", "Cat"), tabs.tabs.value.map { it.title })
   }

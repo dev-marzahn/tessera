@@ -43,6 +43,7 @@ import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
 import dev.marzahn.sankaku.READING_FILE
@@ -94,14 +95,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
-/**
- * #384: reading progress through the real [BookReader] and [dev.marzahn.sankaku.data.ReadingProgress], signed in, over
- * a fake `/pools/{id}` that records each `PUT /pools/{id}/reading`. It's sent once per trigger (a close, a move to
- * another book, the app going to the background) and never per page; a saved place offers the chip.
- */
 @OptIn(ExperimentalTestApi::class)
 class ReadingProgressReaderTest {
-  /** The sequence of each PUT, by book id, in the order sent. */
   private val puts = Collections.synchronizedList(mutableListOf<Pair<String, Int>>())
   private var bookJson = BookReaderTest.BOOK_JSON
 
@@ -120,7 +115,7 @@ class ReadingProgressReaderTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TextFile>(READING_FILE) { InMemoryTextFile(readings) }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
@@ -165,7 +160,6 @@ class ReadingProgressReaderTest {
 
   private fun reader(): BookReader = KoinPlatform.getKoin().get()
 
-  /** Opens the fixture book, waiting for its strip to show [page], where it opens. */
   private fun ComposeUiTest.openBook(json: String = BookReaderTest.BOOK_JSON, signedIn: Boolean = true, readings: String? = null, page: Int = 1) {
     bookJson = json
     startFixtureKoin(signedIn, readings)
@@ -183,7 +177,6 @@ class ReadingProgressReaderTest {
     waitForIdle()
   }
 
-  /** Waits for the sends to arrive, then a little longer, so one more would be counted too. */
   private fun ComposeUiTest.sent(count: Int): List<Pair<String, Int>> {
     waitUntil(timeoutMillis = 5_000) { puts.size >= count }
     Thread.sleep(200)
@@ -194,21 +187,17 @@ class ReadingProgressReaderTest {
   @Test
   fun progressIsSentOncePerTriggerAndNeverPerPage() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     openBook()
-    // Through every page to the end: nothing is sent on the way.
     press(Key.Spacebar, times = 6)
     Thread.sleep(200)
     assertTrue(puts.isEmpty(), "sent per page: $puts")
 
-    // The app goes to the background: once, with the last page, the one taking most of the screen.
     runOnIdle { lifecycle.registry.currentState = Lifecycle.State.CREATED }
     assertEquals(listOf(BookReaderTest.BOOK to 3), sent(1))
-    // Back, and to the background again without moving: nothing new to send.
     runOnIdle { lifecycle.registry.currentState = Lifecycle.State.RESUMED }
     runOnIdle { lifecycle.registry.currentState = Lifecycle.State.CREATED }
     runOnIdle { lifecycle.registry.currentState = Lifecycle.State.RESUMED }
     assertEquals(1, sent(1).size)
 
-    // Back up to page 1 and closed: once more, with page 1.
     press(Key.PageUp, times = 6)
     press(Key.Escape)
     assertEquals(listOf(BookReaderTest.BOOK to 3, BookReaderTest.BOOK to 0), sent(2))
@@ -221,21 +210,19 @@ class ReadingProgressReaderTest {
     var shown by mutableStateOf(true)
     setContent {
       CompositionLocalProvider(LocalLifecycleOwner provides lifecycle) {
-        // #385: a kept book's tab, with no tab entry around it here.
         if (shown) {
           val tabs = remember { TabsController() }
           KeptBookScreen(
             Route.Book(BookReaderTest.BOOK, "Fixture"),
             tabs = tabs,
             undo = remember { ClosedTabUndo(tabs) },
-            upNext = remember { UpNextState(tabs, KoinPlatform.getKoin().get(), Messages()) },
+            upNext = remember { UpNextState(tabs, KoinPlatform.getKoin().get()) },
           )
         }
       }
     }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Page 1 of 4").fetchSemanticsNodes().isNotEmpty() }
     waitForIdle()
-    // The tab keeps the keys only once it's clicked into.
     onRoot().performClick()
     press(Key.Spacebar, times = 6)
     Thread.sleep(200)
@@ -245,7 +232,6 @@ class ReadingProgressReaderTest {
     assertEquals(listOf(BookReaderTest.BOOK to 3), sent(1))
     runOnIdle { lifecycle.registry.currentState = Lifecycle.State.RESUMED }
 
-    // Back to page 1, then the tab leaves (closed, or another shown): once more.
     press(Key.PageUp, times = 6)
     runOnIdle { shown = false }
     assertEquals(listOf(BookReaderTest.BOOK to 3, BookReaderTest.BOOK to 0), sent(2))
@@ -260,13 +246,9 @@ class ReadingProgressReaderTest {
     assertEquals(1, sent.size)
     assertEquals(BookReaderTest.BOOK, sent.single().first)
     assertTrue(sent.single().second > 0, "a page past the first: $sent")
-    // The other book was only opened: closing it sends nothing.
     runOnIdle { reader().close() }
     assertEquals(1, sent(1).size)
   }
-
-  // #503: a book with a saved place opens there, "Page 3 · Start over" under it; a look (opened and closed without
-  // moving) keeps the place, signed in or out (#490).
 
   @Test
   fun aSavedBookOpensAtItsPlaceAndALookKeepsIt() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
@@ -277,7 +259,6 @@ class ReadingProgressReaderTest {
     press(Key.Escape)
     Thread.sleep(200)
     assertTrue(puts.isEmpty(), "a look overwrote the saved place: $puts")
-    // Nothing saved this run either, over the server's place.
     assertEquals(null, savedSequence(signedIn = true))
   }
 
@@ -304,7 +285,6 @@ class ReadingProgressReaderTest {
 
   @Test
   fun aBookOpenedOnItsOwnEndsWithFinishedAndClose() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #503: no list, so no next result and no next volume; the way back is the reader's close.
     openBook()
     press(Key.Spacebar, times = 8)
     onNodeWithText(FINISHED).assertExists()
@@ -323,7 +303,6 @@ class ReadingProgressReaderTest {
     assertTrue(onAllNodesWithText(START_OVER).fetchSemanticsNodes().isEmpty())
   }
 
-  // What's saved here (a book with no `reading` shows none from the server).
   private fun savedSequence(signedIn: Boolean): Int? =
     KoinPlatform.getKoin().get<ReadingProgress>().savedOf(BookDto(id = BookReaderTest.BOOK, postCount = 5), signedIn)?.sequence
 
@@ -384,19 +363,16 @@ class ReadingProgressReaderTest {
     const val WIDTH = BookReaderTest.WIDTH
     const val HEIGHT = BookReaderTest.HEIGHT
 
-    // The fixture book, saved at its third page (sequence 2).
     val SAVED_BOOK_JSON = BookReaderTest.BOOK_JSON.replaceFirst(
       "\"post_count\": 5,",
       "\"post_count\": 5, \"reading\": { \"current_page\": 3, \"sequence\": 2, \"percent\": 60 },",
     )
 
-    // The fixture book, read: saved at its last page.
     val FINISHED_BOOK_JSON = BookReaderTest.BOOK_JSON.replaceFirst(
       "\"post_count\": 5,",
       "\"post_count\": 5, \"reading\": { \"current_page\": 5, \"sequence\": 4, \"percent\": 100 },",
     )
 
-    // Signed out, the fixture book kept on this device at its third page.
     val SAVED_READINGS = """{ "version": 1, "books": [{ "i": "${BookReaderTest.BOOK}", "s": 2, "p": 3, "n": 4 }] }"""
   }
 }

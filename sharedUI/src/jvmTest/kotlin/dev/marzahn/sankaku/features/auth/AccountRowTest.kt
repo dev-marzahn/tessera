@@ -16,13 +16,11 @@ import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Sign out at the sidebar's foot asks for a second tap (#134). */
 @OptIn(ExperimentalTestApi::class)
 class AccountRowTest {
   private var signOuts = 0
   private var open by mutableStateOf(true)
 
-  /** The row, on a clock that moves only when told, so the window doesn't run out while the test waits. */
   private fun ComposeUiTest.showRow() {
     mainClock.autoAdvance = false
     setContent {
@@ -33,7 +31,6 @@ class AccountRowTest {
     settle()
   }
 
-  /** Long enough for the row's fade, well inside the window. */
   private fun ComposeUiTest.settle() = mainClock.advanceTimeBy(SETTLE_MS)
 
   private fun ComposeUiTest.signOutButton(): SemanticsNodeInteraction = onNodeWithContentDescription("Sign out")
@@ -49,7 +46,6 @@ class AccountRowTest {
     signOutButton().assertDoesNotExist()
     assertEquals(0, signOuts)
 
-    // Still asking just before the window ends, gone once it has.
     mainClock.advanceTimeBy(SHORT_WINDOW_MS - SETTLE_MS - 200)
     confirm().assertExists()
     mainClock.advanceTimeBy(200 + SETTLE_MS)

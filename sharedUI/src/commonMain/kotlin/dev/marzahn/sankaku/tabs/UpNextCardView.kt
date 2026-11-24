@@ -11,100 +11,157 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import com.google.fonts.icons.replay
+import dev.marzahn.sankaku.data.PrivacySettings
+import dev.marzahn.sankaku.ui.components.PrimaryIconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.fonts.icons.bookmark
+import com.google.fonts.icons.chevron_right
+import com.google.fonts.icons.style
+import dev.marzahn.sankaku.Route
+import dev.marzahn.sankaku.queue.SeenStore
+import dev.marzahn.sankaku.queue.TodayStore
 import dev.marzahn.sankaku.shell.LocalChromePadding
 import dev.marzahn.sankaku.ui.components.PrimaryButton
+import dev.marzahn.sankaku.ui.components.TextActionButton
+import kotlin.time.Clock
+import kotlinx.datetime.TimeZone
 import org.koin.compose.koinInject
+import org.koin.mp.KoinPlatform
 
-/**
- * Touch: the Up next and End of the queue cards (#216, #230), which stand in for the tab's content on a page of their
- * own, with no grid behind them ([UpNextState]). Text only, so nothing on them can show a picture. [QueueSwipeHost]
- * shows them: Back, a swipe back and the pill's ‹ take them away ([UpNextState.dismiss]), with the item they stand past
- * peeking in (#248). A swipe forward does nothing.
- *
- * - **A Last chance** reads "Last chance: artist_x" with when it is deleted, and offers Keep and Let go.
- * - **A faded source** reads "Pick up artist_x again?" with its Faded row's line, and offers Open and Skip.
- * - **End of the queue** reads "You've reached the end", and offers Back to the start and Browse.
- * - **TalkBack:** the card is a pane titled "Up next" or "End of the queue", and focus moves to its title, a heading,
- *   as it appears and again for each card Skip brings. The title also carries the actions as custom actions, so they
- *   are one swipe away from where focus lands, and each button says what it acts on.
- */
 @Composable
-fun UpNextCardView(modifier: Modifier = Modifier, state: UpNextState = koinInject()) {
+fun UpNextCardView(
+  modifier: Modifier = Modifier,
+  state: UpNextState = koinInject(),
+  leftovers: EndLeftoverSources? = endLeftoverSourcesOrNull(),
+) {
   val card = state.card ?: return
   BoxWithConstraints(
     modifier
       .fillMaxSize()
       .background(MaterialTheme.colorScheme.surface)
       .padding(LocalChromePadding.current)
-      // Clear of the count pill, which stays below the card.
       .padding(bottom = PILL_ROOM)
-      .semantics { paneTitle = if (card == UpNextCard.End) END_PANE else UP_NEXT_PANE },
+      .semantics {
+        paneTitle = if (card == UpNextCard.KeptEnd) (state.keptTally()?.kind ?: KeptRunKind.Kept).endPane else END_PANE
+      },
   ) {
-    // Centred, and scrolling where large text makes the card taller than the room (#525).
     Box(
       Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
       contentAlignment = Alignment.Center,
     ) {
-      key(card) { CardContent(card, state) }
+      key(card) { CardContent(card, state, leftovers) }
     }
   }
 }
 
-/** What one card says: the small [label] above, the [title] heading, the [detail] line, and TalkBack's [spoken] name. */
 private class CardText(val label: String, val title: String, val detail: String, val spoken: String)
 
-private fun cardText(card: UpNextCard): CardText = when (card) {
-  is UpNextCard.LastChance -> CardText("Last chance", "Last chance: ${card.title}", card.detail, "Last chance: ${card.title}, ${card.detail}")
-  is UpNextCard.Pickup -> CardText("Up next · faded", "Pick up ${card.title} again?", card.detail, "Up next: pick up ${card.title} again? ${card.detail}")
-  UpNextCard.End -> CardText(END_PANE, END_TITLE, END_DETAIL, "$END_PANE. $END_TITLE. $END_DETAIL")
+private fun cardText(card: UpNextCard, kept: KeptEndCounts?, waiting: Boolean): CardText = when (card) {
+  UpNextCard.End -> {
+    val detail = if (waiting) END_WAITING else END_DETAIL
+    CardText(END_PANE, END_TITLE, detail, "$END_PANE. $END_TITLE. $detail")
+  }
+  UpNextCard.KeptEnd -> {
+    val label = (kept?.kind ?: KeptRunKind.Kept).endPane
+    val title = kept?.let { "${grouped(it.goneThrough)} gone through" } ?: KEPT_END_TITLE
+    val detail = kept?.let { keptEndDetail(it.later) }.orEmpty()
+    CardText(label, title, detail, "$label. $title. ${keptEndParts(kept).joinToString(", ")}. $detail")
+  }
+}
+
+private class KeptEndCounts(val kind: KeptRunKind, val goneThrough: Int, val dropped: Int, val liked: Int, val later: Int)
+
+private class TallyPart(val count: Int, val word: String, val later: Boolean = false) {
+  override fun toString() = "${grouped(count)} $word"
+}
+
+private fun keptEndParts(counts: KeptEndCounts?): List<TallyPart> = if (counts == null) {
+  emptyList()
+} else {
+  listOf(TallyPart(counts.dropped, "dropped"), TallyPart(counts.liked, "liked"), TallyPart(counts.later, "for later", later = true))
+    .filter { it.count > 0 }
+}
+
+internal fun keptEndDetail(later: Int): String = when {
+  later <= 0 -> ""
+  later == 1 -> "It stays in its block, across a relaunch, until you drop it or press Clear viewed."
+  else -> "The ${grouped(later)} stay in their blocks, across a relaunch, until you drop them or press Clear viewed."
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CardContent(card: UpNextCard, state: UpNextState) {
+private fun CardContent(card: UpNextCard, state: UpNextState, sources: EndLeftoverSources?) {
   val focus = remember { FocusRequester() }
-  // TalkBack lands on the title as the card appears, and again on each card Skip brings.
   LaunchedEffect(card) { focus.requestFocus() }
   val colors = MaterialTheme.colorScheme
-  val text = cardText(card)
-  // The swipe back's action too ([LocalQueueActions], #248), where focus lands.
-  val actions = cardActions(card, state) + LocalQueueActions.current
-  val chance = card is UpNextCard.LastChance
+  val keptCard = card == UpNextCard.KeptEnd
+  val clearViewed = if (keptCard) koinInject<ClearViewed>() else null
+  val clearCount = clearViewed?.status()?.count ?: 0
+  val tally = if (keptCard) state.keptTally() else null
+  val later = if (keptCard) rememberLaterPosts() else emptyList()
+  val liked = if (keptCard) rememberLiked(tally?.dropped.orEmpty()) else 0
+  val counts = tally?.let { KeptEndCounts(it.kind, it.goneThrough, it.dropped.size - liked, liked, it.later) }
+  val toQueue = LocalOpenTabList.current
+  val kept = KeptEndActions(
+    clearCount = clearCount,
+    clear = { clearViewed?.invoke() },
+    toQueue = {
+      state.endKept()
+      toQueue()
+    },
+    laterCount = later.size,
+    goThroughLater = { state.goThroughLater(later.map { it.id }) },
+  )
+  val waiting = if (card == UpNextCard.End && sources != null) rememberEndLeftovers(state, sources) else EndLeftovers.NONE
+  val rows = leftoverRows(waiting, state, sources?.sort)
+  val text = cardText(card, counts, rows.isNotEmpty())
+  val actions = rows.map { row -> CustomAccessibilityAction(row.spoken) { row.onClick(); true } } +
+    cardActions(card, state, kept) + LocalQueueActions.current
   Surface(
-    modifier = Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().testTag(if (card == UpNextCard.End) END_CARD else UP_NEXT_CARD),
+    modifier = Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().testTag(END_CARD),
     shape = MaterialTheme.shapes.extraLarge,
-    color = if (chance) colors.errorContainer else colors.surfaceContainerHigh,
-    contentColor = if (chance) colors.onErrorContainer else colors.onSurface,
+    color = colors.surfaceContainerHigh,
+    contentColor = colors.onSurface,
   ) {
     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
       Text(text.label.uppercase(), style = MaterialTheme.typography.labelMedium)
-      // The title and what's under it are one heading to TalkBack, where focus lands and the actions are.
       Column(
         Modifier
           .focusRequester(focus)
@@ -117,7 +174,13 @@ private fun CardContent(card: UpNextCard, state: UpNextState) {
         verticalArrangement = Arrangement.spacedBy(4.dp),
       ) {
         Text(text.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        Text(text.detail, style = MaterialTheme.typography.bodyMedium, color = if (chance) colors.onErrorContainer else colors.onSurfaceVariant)
+        if (counts != null) KeptTallyChips(counts)
+        if (text.detail.isNotEmpty()) Text(text.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+      }
+      if (rows.isNotEmpty()) {
+        Column(Modifier.fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+          rows.forEach { LeftoverRow(it) }
+        }
       }
       FlowRow(
         Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -125,22 +188,28 @@ private fun CardContent(card: UpNextCard, state: UpNextState) {
         itemVerticalAlignment = Alignment.CenterVertically,
       ) {
         when (card) {
-          is UpNextCard.LastChance -> {
-            PrimaryButton("Keep", state::keep, Modifier.semantics { contentDescription = "Keep ${card.title}" })
-            TextButton(onClick = state::letGo, modifier = Modifier.semantics { contentDescription = "Let go of ${card.title}" }) {
-              Text("Let go")
-            }
-          }
-          is UpNextCard.Pickup -> {
-            PrimaryButton("Open", state::open, Modifier.semantics { contentDescription = "Open ${card.title}" })
-            TextButton(onClick = state::skip, modifier = Modifier.semantics { contentDescription = "Skip ${card.title}" }) {
-              Text("Skip")
-            }
-          }
           UpNextCard.End -> {
-            PrimaryButton(BACK_TO_START, state::backToStart, Modifier.semantics { contentDescription = "$BACK_TO_START of the queue" })
-            OutlinedButton(onClick = state::browse, modifier = Modifier.semantics { contentDescription = BROWSE_LABEL }) {
-              Text(BROWSE)
+            val startLabel = Modifier.semantics { contentDescription = "$BACK_TO_START of the queue" }
+            val browseLabel = Modifier.semantics { contentDescription = BROWSE_LABEL }
+            if (rows.isEmpty()) {
+              PrimaryButton(BACK_TO_START, state::backToStart, startLabel)
+              OutlinedButton(onClick = state::browse, modifier = browseLabel) { Text(BROWSE) }
+            } else {
+              TextActionButton(BACK_TO_START, state::backToStart, startLabel)
+              TextActionButton(BROWSE, state::browse, browseLabel)
+            }
+          }
+          UpNextCard.KeptEnd -> {
+            if (kept.laterCount > 0) {
+              PrimaryIconButton(goThroughLaterLabel(kept.laterCount), replay, kept.goThroughLater)
+              OutlinedButton(onClick = kept.toQueue) { Text(TO_THE_QUEUE) }
+            } else {
+              if (kept.clearCount > 0) {
+                OutlinedButton(onClick = { kept.clear() }, modifier = Modifier.semantics { contentDescription = clearViewedLabel(kept.clearCount, touch = true) }) {
+                  Text("$CLEAR_VIEWED · ${kept.clearCount}")
+                }
+              }
+              PrimaryButton(TO_THE_QUEUE, kept.toQueue)
             }
           }
         }
@@ -149,35 +218,179 @@ private fun CardContent(card: UpNextCard, state: UpNextState) {
   }
 }
 
-/** The card's actions for TalkBack, on its title: what the buttons below do. */
-private fun cardActions(card: UpNextCard, state: UpNextState): List<CustomAccessibilityAction> = when (card) {
-  is UpNextCard.LastChance -> listOf(
-    CustomAccessibilityAction("Keep") { state.keep(); true },
-    CustomAccessibilityAction("Let go") { state.letGo(); true },
-  )
-  is UpNextCard.Pickup -> listOf(
-    CustomAccessibilityAction("Open") { state.open(); true },
-    CustomAccessibilityAction("Skip") { state.skip(); true },
-  )
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeptTallyChips(counts: KeptEndCounts) {
+  val colors = MaterialTheme.colorScheme
+  val parts = keptEndParts(counts)
+  if (parts.isEmpty()) return
+  FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    parts.forEach { part ->
+      val (count, word, later) = Triple(part.count, part.word, part.later)
+      Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (later) colors.primaryContainer else colors.surfaceContainerLow,
+        contentColor = if (later) colors.onPrimaryContainer else colors.onSurfaceVariant,
+      ) {
+        Text(
+          buildAnnotatedString {
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = if (later) colors.onPrimaryContainer else colors.onSurface)) { append(grouped(count)) }
+            append(" $word")
+          },
+          style = MaterialTheme.typography.labelLarge,
+          modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+      }
+    }
+  }
+}
+
+@Composable
+internal fun rememberLaterPosts(controller: TabsController = koinInject(), posts: TabPosts = koinInject(), privacy: PrivacySettings = koinInject()): List<TabState> {
+  val tabs by controller.tabs.collectAsStateWithLifecycle()
+  val gOnly by privacy.gOnly.collectAsStateWithLifecycle()
+  val ids = controller.openPosts(tabs)
+  val known by remember(ids) { posts.of(ids) }.collectAsStateWithLifecycle(emptyMap())
+  return laterPosts(tabs, gOnly) { tab -> (tab.top as? Route.Post)?.let { known[it.id] } }
+}
+
+@Composable
+private fun rememberLiked(dropped: List<String?>, posts: TabPosts = koinInject()): Int {
+  val ids = dropped.filterNotNull().toSet()
+  val known by remember(ids) { posts.of(ids) }.collectAsStateWithLifecycle(emptyMap())
+  return ids.count { known[it]?.favourited == true }
+}
+
+internal fun goThroughLaterLabel(count: Int) = "Go through later · ${grouped(count)}"
+
+private fun cardActions(card: UpNextCard, state: UpNextState, kept: KeptEndActions): List<CustomAccessibilityAction> = when (card) {
   UpNextCard.End -> listOf(
     CustomAccessibilityAction(BACK_TO_START) { state.backToStart(); true },
     CustomAccessibilityAction(BROWSE) { state.browse(); true },
   )
+  UpNextCard.KeptEnd -> listOfNotNull(
+    CustomAccessibilityAction(GO_THROUGH_LATER) { kept.goThroughLater(); true }.takeIf { kept.laterCount > 0 },
+    CustomAccessibilityAction(CLEAR_VIEWED) { kept.clear(); true }.takeIf { kept.clearCount > 0 && kept.laterCount == 0 },
+    CustomAccessibilityAction(TO_THE_QUEUE) { kept.toQueue(); true },
+  )
 }
 
-/** The room kept clear under the card for the count pill (40 dp tall, 32 dp above the navigation bar). */
+private class KeptEndActions(
+  val clearCount: Int,
+  val clear: () -> Unit,
+  val toQueue: () -> Unit,
+  val laterCount: Int,
+  val goThroughLater: () -> Unit,
+)
+
+class EndLeftoverSources(
+  val seen: SeenStore?,
+  val posts: TabPosts = TabPosts.None,
+  val today: TodayStore? = null,
+  val sort: SortDeck? = null,
+)
+
+@Composable
+internal fun endLeftoverSourcesOrNull(): EndLeftoverSources? {
+  val sort = sortDeckOrNull()
+  return remember(sort) {
+    KoinPlatform.getKoinOrNull()?.let { koin ->
+      EndLeftoverSources(
+        seen = koin.getOrNull<SeenStore>(),
+        posts = koin.getOrNull<TabPosts>() ?: TabPosts.None,
+        today = koin.getOrNull<TodayStore>(),
+        sort = sort,
+      )
+    }
+  }
+}
+
+@Composable
+private fun rememberEndLeftovers(state: UpNextState, sources: EndLeftoverSources): EndLeftovers {
+  val tabs by state.tabs.tabs.collectAsStateWithLifecycle()
+  val gOnly by state.gOnly.collectAsStateWithLifecycle()
+  val seen = sources.seen
+  val seenRevision = seen?.revision?.collectAsStateWithLifecycle()?.value
+  val todayChange = sources.today?.changes?.collectAsStateWithLifecycle()?.value
+  val postIds = state.tabs.openPosts(tabs)
+  val known by remember(postIds, sources.posts) { sources.posts.of(postIds) }.collectAsStateWithLifecycle(emptyMap())
+  val zone = remember { TimeZone.currentSystemDefault() }
+  return remember(tabs, gOnly, known, seenRevision, todayChange, sources) {
+    endLeftovers(
+      tabs = tabs,
+      gOnly = gOnly,
+      post = { tab -> (tab.top as? Route.Post)?.let { known[it.id] } },
+      seen = { tab -> seen != null && tab.seenSinceKept(seen) },
+      sorting = sources.sort != null,
+      foundToday = sources.today?.counts()?.found ?: 0,
+      now = Clock.System.now(),
+      zone = zone,
+    )
+  }
+}
+
+private class LeftoverRow(val icon: ImageVector, val title: String, val detail: String?, val onClick: () -> Unit) {
+  val spoken: String get() = listOfNotNull(title, detail).joinToString(", ")
+}
+
+private fun leftoverRows(waiting: EndLeftovers, state: UpNextState, sort: SortDeck?): List<LeftoverRow> = buildList {
+  val start = waiting.keptStart
+  if (waiting.keptUnseen > 0 && start != null) {
+    add(LeftoverRow(bookmark, keptNotSeen(waiting.keptUnseen), waiting.keptWhere) { state.goThroughKept(waiting.kept, start) })
+  }
+  if (waiting.later.isNotEmpty()) {
+    add(LeftoverRow(replay, "${grouped(waiting.later.size)} for later", waiting.laterWhere) { state.goThroughLater(waiting.later.map { it.id }) })
+  }
+  if (sort != null && waiting.newSources > 0) {
+    val found = waiting.foundToday.takeIf { it > 0 }?.let { "found today: ${grouped(it)}" }
+    add(LeftoverRow(style, "$SORT ${grouped(waiting.newSources)} new", found) { state.sort(sort) })
+  }
+}
+
+private fun keptNotSeen(count: Int): String = "${grouped(count)} kept ${if (count == 1) "post" else "posts"} not seen"
+
+@Composable
+private fun LeftoverRow(row: LeftoverRow) {
+  val colors = MaterialTheme.colorScheme
+  Surface(
+    onClick = row.onClick,
+    modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+      role = Role.Button
+      contentDescription = row.spoken
+    },
+    shape = MaterialTheme.shapes.large,
+    color = colors.surfaceContainerLow,
+    contentColor = colors.onSurface,
+  ) {
+    Row(
+      Modifier.heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Icon(row.icon, contentDescription = null, tint = colors.primary)
+      Column(Modifier.weight(1f)) {
+        Text(row.title, style = MaterialTheme.typography.titleSmall)
+        row.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
+      }
+      Icon(chevron_right, contentDescription = null, tint = colors.primary)
+    }
+  }
+}
+
 private val PILL_ROOM = 96.dp
 
-/** The pane title TalkBack says as the card appears, and TalkBack's name for moving past the last source. */
-internal const val UP_NEXT_PANE = "Up next"
-internal const val UP_NEXT_ACTION = "Up next"
-internal const val UP_NEXT_CARD = "Up next card"
-
-/** End of the queue (#230): its pane title, which is also the pill's name for moving there, and its words. */
 internal const val END_PANE = "End of the queue"
 internal const val END_CARD = "End of the queue card"
 private const val END_TITLE = "You've reached the end"
 private const val END_DETAIL = "Nothing else is waiting."
+private const val END_WAITING = "Still waiting earlier in the queue:"
 private const val BACK_TO_START = "Back to the start"
 private const val BROWSE = "Browse"
 private const val BROWSE_LABEL = "Browse, a new grid"
+
+internal const val KEPT_END_PANE = "End of the kept posts"
+private const val KEPT_END_TITLE = "That's every kept post"
+private const val CLEAR_VIEWED = "Clear viewed"
+
+internal const val LATER_END_PANE = "End of the later posts"
+internal const val GO_THROUGH_LATER = "Go through later"

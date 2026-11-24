@@ -8,10 +8,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * The sidebar's keys as the shell and `Sidebar` wire them (#416): which G opens it, and where its selection starts.
- * `SidebarKeysTest` covers the keys inside the rail.
- */
 class SidebarKeyWiringTest {
   private fun g(plain: Boolean = true, held: Boolean = false, searchOpen: Boolean = false, touch: Boolean = false) =
     shellSidebarKey(Key.G, plain, held, searchOpen, touch)

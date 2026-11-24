@@ -29,14 +29,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import com.google.fonts.icons.favorite_filled
 import com.google.fonts.icons.heart_broken
 
-/**
- * The heart a grid cell's Favourite action (TalkBack; a double-tap until #324) leaves on it (Android), and F or the ♡
- * on the viewer's picture ([FavouriteBursts]; desktop #419, phone #469): filled when the post became [favourited], broken when it
- * stopped being. It pops in on the fast spatial spring, fades out on the slow effects spring, then calls [onFinished].
- * White over a blurred shadow, so it reads on light and busy images alike. It plays once; the caller restarts it with
- * `key`. Tests find it by [FAVOURITE_BURST_TAG] and read its state from [BurstFavourited]; TalkBack doesn't, as the
- * control that toggled says it.
- */
 @Composable
 fun FavouriteBurst(favourited: Boolean, onFinished: () -> Unit, modifier: Modifier = Modifier, size: Dp = BurstSize) {
   val finished by rememberUpdatedState(onFinished)
@@ -70,12 +62,6 @@ fun FavouriteBurst(favourited: Boolean, onFinished: () -> Unit, modifier: Modifi
   }
 }
 
-/**
- * Plays a [FavouriteBurst] for each state in [hearts] (true: favourited, false: unfavourited), over what [modifier]
- * places it on; a new heart restarts it. With animations off (a motion scale of 0) it plays nothing: the toggle itself
- * shows the state. The desktop viewer's picture (#419), the phone viewer's (#469) and the book reader's strip (#438), at
- * [PictureBurstSize].
- */
 @Composable
 fun FavouriteBursts(hearts: Flow<Boolean>, modifier: Modifier = Modifier, size: Dp = BurstSize) {
   var burst by remember { mutableStateOf<Burst?>(null) }
@@ -90,16 +76,12 @@ fun FavouriteBursts(hearts: Flow<Boolean>, modifier: Modifier = Modifier, size: 
   }
 }
 
-/** One heart of [FavouriteBursts]: its state, and [id], new for each, so the same state twice plays twice. */
 private data class Burst(val favourited: Boolean, val id: Int)
 
-/** The test tag of a playing [FavouriteBurst]. */
 const val FAVOURITE_BURST_TAG = "FavouriteBurst"
 
-/** Whether a playing [FavouriteBurst] shows the filled heart (true) or the broken one (false). For tests only. */
 val BurstFavourited = SemanticsPropertyKey<Boolean>("BurstFavourited")
 
 private val BurstSize = 56.dp
 
-/** The burst over a whole picture (the viewer's, the reader's strip): the cell's 56 dp heart was lost at that size. */
 val PictureBurstSize = 96.dp

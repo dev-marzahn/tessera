@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `cloud_off`, 24 px, from its SVG (viewBox `0 -960 960 960`). */
 public val cloud_off: ImageVector by lazy {
   symbol(
     "cloud_off",
@@ -17,7 +16,6 @@ public val cloud_off: ImageVector by lazy {
   )
 }
 
-/** A Material Symbol from its SVG path, drawn in the symbol's own 960-unit box, which starts at y = -960. */
 internal fun symbol(name: String, pathData: String): ImageVector =
   ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 960f, viewportHeight = 960f)
     .addGroup(translationY = 960f)

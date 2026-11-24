@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** A `date:` range is titled in words, not as the tag was typed. */
 class DateRangeLabelTest {
   @Test
   fun aRangeInsideOneDayShowsTheDayAndTheTimes() {
@@ -33,11 +32,9 @@ class DateRangeLabelTest {
     assertNull(dateRangeLabel("date:2012-01-01.."))
     assertNull(dateRangeLabel("date:2012-13-01..2012-13-02"))
     assertNull(dateRangeLabel("date:last_week..now"))
-    // The search works to the hour and its end is exclusive, so these are empty: no window to name.
     assertNull(dateRangeLabel("date:2012-01-01T08:00:00..2012-01-01T08:00:00"))
     assertNull(dateRangeLabel("date:2012-01-01T08:10..2012-01-01T08:50"))
     assertNull(dateRangeLabel("date:2012-01-01..2012-01-01"))
-    // A date alone is hour 0, and a reversed range is empty too.
     assertNull(dateRangeLabel("date:2012-01-01..2012-01-01T00:00"))
     assertNull(dateRangeLabel("date:2012-01-01T00:00..2012-01-01"))
     assertNull(dateRangeLabel("date:2012-01-03..2012-01-01"))

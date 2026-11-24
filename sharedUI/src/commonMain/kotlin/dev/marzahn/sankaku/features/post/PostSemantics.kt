@@ -17,15 +17,8 @@ import dev.marzahn.sankaku.ui.components.alreadySpoken
 import dev.marzahn.sankaku.ui.components.inTabLabel
 import kotlin.math.roundToInt
 
-/*
- * What TalkBack and the desktop's accessibility tree say for a post (#143). Never an id, md5 or user field: a post is
- * named by the tab-label rule ([PostTitle]) and its kind.
- */
-
-/** [post]'s name by the tab-label rule, for a description. */
 internal fun spokenTitle(post: PostDto): String = PostTitle.of(post) ?: PostTitle.UNTITLED
 
-/** What the file is, as a word: "video", "animated GIF", "Flash animation" or "image". */
 internal fun postKind(post: PostDto): String = when {
   isVideo(post) -> "video"
   post.fileType == "image/gif" -> "animated GIF"
@@ -33,19 +26,8 @@ internal fun postKind(post: PostDto): String = when {
   else -> "image"
 }
 
-/** The viewer's and the post tab's picture: "Rosehip, Peach, image". */
 internal fun pictureDescription(post: PostDto): String = "${spokenTitle(post)}, ${postKind(post)}"
 
-/**
- * A grid cell: its title, then its state, as the cell shows it: "Rosehip, Peach. Favourited. In tab. Video, 02:07"
- * (its [MediaKind]'s mark last: "Animated GIF", "Flash, can't play", "Video, can't play here" when [playsVideo] is
- * false, #524).
- * [unfavourited] is a favourites grid's post unfavourited in place, which the cell dims. While its chip says
- * "Already tab N" ([alreadyTab], #130), "In tab" is "Already in tab N"; with [keptAgain] it's "Kept again" (#182). A
- * [seen] post says so, after its favourite state: "Rosehip, Peach. Favourited. Seen. In tab". On a phone ([touch]),
- * which has no tabs (#249), "In tab" is "Kept" and "Already in tab N" is "Already item N". A Following post that
- * turned up late ([new], #539) says "New" after its title.
- */
 internal fun cellDescription(
   post: PostDto,
   openInTab: Boolean,
@@ -75,21 +57,13 @@ internal fun cellDescription(
     mediaKind(post, playsVideo)?.let { mediaDescription(post, it) },
   ).joinToString(". ")
 
-/** The rating node's state: "Your vote, 3" or "Your vote, none". */
 internal fun voteState(userVote: Int?): String = "Your vote, ${userVote ?: "none"}"
 
-/** The rating node's name: "Average 4.2 from 12 votes", "Average 5.0 from 1 vote", or "No votes". */
 internal fun ratingDescription(post: PostDto): String {
   val average = averageVote(post) ?: return "No votes"
   return "Average $average from ${post.voteCount} ${if (post.voteCount == 1) "vote" else "votes"}"
 }
 
-/**
- * The stars as one adjustable node, as Android's `RatingBar`: 0 to 5 in whole steps, 0 for no vote, so TalkBack's
- * swipe up or down votes one more or one less, and 0 takes the vote back. The same as custom actions: "Vote 1" to
- * "Vote 5" (but the current vote) and "Take vote back". Signed out ([onSignIn] set), activating opens sign-in instead,
- * as a tap on a star does.
- */
 internal fun SemanticsPropertyReceiver.voteSemantics(post: PostDto, onVote: (Int?) -> Unit, onSignIn: (() -> Unit)?) {
   contentDescription = ratingDescription(post)
   stateDescription = voteState(post.userVote)
@@ -121,6 +95,5 @@ internal fun SemanticsPropertyReceiver.voteSemantics(post: PostDto, onVote: (Int
   )
 }
 
-/** The favourite toggle's name: "Favourite, 6"; desktop adds its key, "Favourite, 6 (F)". */
 internal fun favouriteDescription(count: String, key: String?): String =
   "Favourite, $count" + (key?.let { " ($it)" } ?: "")

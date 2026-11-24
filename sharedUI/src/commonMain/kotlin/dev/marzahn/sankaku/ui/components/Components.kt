@@ -80,15 +80,8 @@ fun AppLoadingIndicator(
   LoadingIndicator(modifier.size(size), color = color)
 }
 
-/** For a screen or page that's loading, rather than a button. */
 val LargeIndicatorSize = 96.dp
 
-/**
- * The favourite button wherever a post is shown, with its key: an unfilled heart toggle (filled and in the primary
- * colour when on), with a spring "pop" on every change, favouriting and unfavouriting alike (also when the change
- * comes from the key). The screen showing it handles the key, through `postShortcuts`. A grid cell, where the key does
- * nothing, uses [FavouriteBadgeButton] instead.
- */
 @Composable
 fun FavouriteButton(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
   Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -97,13 +90,6 @@ fun FavouriteButton(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifi
   }
 }
 
-/**
- * A grid cell's heart, both badge and button. At rest a favourited post shows a small filled badge; while [expanded]
- * (the cell is hovered) it grows into a button that unfavourites. Not favourited, the same element scales in while
- * [expanded], outlined on a light container, and grows the same way. It grows from its top-end corner, so its place
- * in the cell's corner stays put. Clickable only while [expanded]; at rest it's the "Favourited" image. Changes pop
- * as [FavouriteButton]'s do.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FavouriteBadgeButton(favourited: Boolean, expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
@@ -116,7 +102,6 @@ fun FavouriteBadgeButton(favourited: Boolean, expanded: Boolean, onToggle: () ->
   ) {
     val size by animateDpAsState(if (expanded) 40.dp else 26.dp, fastSpatialSpec())
     val iconSize by animateDpAsState(if (expanded) 24.dp else 16.dp, fastSpatialSpec())
-    // Filled in the primary colour when favourited, so the heart reads on light and busy images alike.
     val container by animateColorAsState(
       if (favourited) MaterialTheme.colorScheme.primary
       else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
@@ -159,7 +144,6 @@ fun FavouriteBadgeButton(favourited: Boolean, expanded: Boolean, onToggle: () ->
   }
 }
 
-/** The scale of a heart that pops on every change of [checked] after the first composition: up on, down off. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun rememberPop(checked: Boolean): Animatable<Float, AnimationVector1D> {
@@ -177,10 +161,6 @@ private fun rememberPop(checked: Boolean): Animatable<Float, AnimationVector1D> 
   return scale
 }
 
-/**
- * A heart toggle with no key: [FavouriteButton]'s heart, for what has no ♡ key (a book, #383). Each time [rejected]
- * goes up (a failed toggle), it shakes back with an error outline ([Modifier.rejected]).
- */
 @Composable
 fun HeartToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, rejected: Int = 0, enabled: Boolean = true) {
   FavouriteToggle(checked, onCheckedChange, modifier.rejected(rejected, CircleShape), enabled)
@@ -190,7 +170,6 @@ fun HeartToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: 
 @Composable
 private fun FavouriteToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
   val scale = rememberPop(checked)
-  // A standard (unfilled) toggle: the filled heart in the primary colour carries the state.
   IconToggleButton(
     checked = checked,
     onCheckedChange = onCheckedChange,
@@ -209,7 +188,6 @@ private fun FavouriteToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit
   }
 }
 
-/** [subtitle], if any, sits under [title] in the smaller, muted style. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(
@@ -236,7 +214,6 @@ fun AppTopBar(
   )
 }
 
-/** [retryEnabledAt] keeps Retry disabled until then, for example while a host is rate-limited. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ErrorState(
@@ -253,10 +230,6 @@ fun ErrorState(
   }
 }
 
-/**
- * In a load's place when it failed: [failure]'s advice, its sentence and its next steps (#520). Retry counts down a 429's pause;
- * Edit search and Sign in show only when the screen passes them. A connection error in a grid is [GridOfflineState].
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ApiErrorState(
@@ -271,7 +244,6 @@ fun ApiErrorState(
   val retryEnabledAt = remember(failure) { advice.retryAfterSeconds?.let { Clock.System.now() + it.seconds } }
   val secondsLeft = countdownTo(retryEnabledAt)
   val retry = ErrorButton(if (secondsLeft > 0) "Retry in $secondsLeft s" else "Retry", onRetry, enabled = secondsLeft <= 0)
-  // The steps this screen can offer; with none of them, Retry, so there's always a way on.
   val buttons = advice.actions.mapNotNull { action ->
     when (action) {
       ErrorAction.Retry -> retry
@@ -282,7 +254,6 @@ fun ApiErrorState(
   MessageState(error, MaterialTheme.colorScheme.error, advice.sentence, modifier) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       buttons.forEachIndexed { index, button ->
-        // The first step is the one to take: filled; the others outlined.
         if (index == 0) {
           Button(onClick = button.onClick, enabled = button.enabled, shapes = ButtonDefaults.shapes()) { Text(button.label) }
         } else {
@@ -295,7 +266,6 @@ fun ApiErrorState(
 
 private class ErrorButton(val label: String, val onClick: () -> Unit, val enabled: Boolean = true)
 
-/** Seconds left until [instant], ticking each second; 0 once it has passed or when it's null. */
 @Composable
 private fun countdownTo(instant: Instant?): Long {
   var secondsLeft by remember(instant) { mutableLongStateOf(secondsUntil(instant)) }
@@ -308,7 +278,6 @@ private fun countdownTo(instant: Instant?): Long {
   return secondsLeft
 }
 
-/** A large icon over a centred message and, under them, what [below] adds: the failed and offline states' layout. */
 @Composable
 private fun MessageState(
   icon: ImageVector,
@@ -331,30 +300,18 @@ private fun MessageState(
 private fun secondsUntil(instant: Instant?): Long =
   instant?.let { (it - Clock.System.now()).inWholeSeconds.coerceAtLeast(0) } ?: 0
 
-/** What the banner under the top bar says about the connection (UX review #126, finding 1, A). */
 enum class ConnectivityBannerState(val icon: ImageVector?, val text: String) {
-  /** Sankaku rejected this client: the error colour, as it's a failure no retry fixes. */
   Rejected(null, "Sankaku is turning this app away right now · try again later"),
 
-  /** Offline is a state, not an error: the inverse surface, saying what happens next. */
   Offline(cloud_off, "Offline · retries when you're back"),
 
-  /** The connection is back, for [BACK_ONLINE_SHOWN] after [Offline], while the failed loads retry. */
   BackOnline(wifi, "Back online · reloading"),
 }
 
-/** How long "Back online" shows before the banner goes. */
 val BACK_ONLINE_SHOWN = 2.seconds
 
-/**
- * The banner for [offline] and [rejected]: Rejected over Offline, and BackOnline for [BACK_ONLINE_SHOWN] once
- * [offline] clears, if it was [unreachable] (a connection error, which is what the failed loads then retry). It's
- * BackOnline from the very frame [offline] clears, so the banner never blinks out in between. A 5xx doesn't set
- * [offline] (#520).
- */
 @Composable
 fun connectivityBannerState(offline: Boolean, unreachable: Boolean, rejected: Boolean): ConnectivityBannerState? {
-  // Lags [offline] by the effect below, so the first frame after it clears still knows Sankaku was unreachable.
   var wasUnreachable by remember { mutableStateOf(offline && unreachable) }
   var holding by remember { mutableStateOf(false) }
   LaunchedEffect(offline, unreachable) {
@@ -378,10 +335,8 @@ fun connectivityBannerState(offline: Boolean, unreachable: Boolean, rejected: Bo
   }
 }
 
-/** The connection's banner under the top bar; it grows in and shrinks away, and changes colour in place. */
 @Composable
 fun ConnectivityBanner(state: ConnectivityBannerState?, modifier: Modifier = Modifier) {
-  // The last state shown, for the banner's way out.
   val last = remember { object { var state = ConnectivityBannerState.Offline } }
   SideEffect { if (state != null) last.state = state }
   AnimatedVisibility(
@@ -400,7 +355,6 @@ fun ConnectivityBanner(state: ConnectivityBannerState?, modifier: Modifier = Mod
     Surface(
       color = animateColorAsState(container).value,
       contentColor = animateColorAsState(content).value,
-      // Read out when it changes, as a screen reader can't see the colour.
       modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
     ) {
       Row(
@@ -415,10 +369,6 @@ fun ConnectivityBanner(state: ConnectivityBannerState?, modifier: Modifier = Mod
   }
 }
 
-/**
- * In a grid's place while it can't load because Sankaku can't be reached: it says the grid loads by itself when the
- * connection is back (`RetryWhenBack` does that), and keeps Retry for the impatient.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun GridOfflineState(onRetry: () -> Unit, modifier: Modifier = Modifier) {

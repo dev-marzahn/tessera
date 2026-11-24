@@ -32,10 +32,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * Cancel while a sign-in is in flight: the login request itself is cancelled, so nothing after it runs (no token
- * exchange, nothing stored) and the closed form stays reset.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SignInCancelTest {
   @BeforeTest
@@ -46,7 +42,6 @@ class SignInCancelTest {
 
   @Test
   fun cancelDuringSubmitStopsTheSignIn() = runTest {
-    // The login request waits; it would answer as if the password were wrong, which the form would show.
     val requested = CompletableDeferred<Unit>()
     val requestCancelled = CompletableDeferred<Unit>()
     val engine = MockEngine {
@@ -69,12 +64,10 @@ class SignInCancelTest {
 
     viewModel.submit("user", "password")
     advanceUntilIdle()
-    // The engine runs on its own threads.
     withContext(Dispatchers.Default) { withTimeout(5.seconds) { requested.await() } }
     assertTrue(viewModel.state.value.submitting)
 
     viewModel.cancel()
-    // Without the fix the request is never cancelled, and this times out.
     withContext(Dispatchers.Default) { withTimeout(5.seconds) { requestCancelled.await() } }
     advanceUntilIdle()
 

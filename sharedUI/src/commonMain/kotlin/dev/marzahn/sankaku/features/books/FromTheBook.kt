@@ -41,13 +41,6 @@ import kotlinx.coroutines.flow.first
 import dev.marzahn.sankaku.Navigator
 import org.koin.compose.koinInject
 
-/**
- * The post sheet's "From the book *name*" row (#386): shown only for a post that is a book's page, once
- * [BooksRepository.bookOf] has found the book; a post in no book shows nothing and asks nothing, and the one request
- * a book's page needs waits until [onScreen] (the details are read). A click opens the book at its saved page through
- * [BookOpener], over the window like a row of the Books list; [onOpen] runs first: opening the book acts on the post.
- * A middle-click or long-press keeps it as a queue item (#385).
- */
 @Composable
 fun FromTheBook(
   post: PostDto,
@@ -63,14 +56,10 @@ fun FromTheBook(
   val signedIn by session.isSignedIn.collectAsState()
   val gOnly by privacy.gOnly.collectAsState()
   val locked = ratingLocked(signedIn, gOnly)
-  // Held with what it was found for, so the previous post's book, or one found before signing out or turning G only
-  // on, never shows while the next one is found; a kept one shows at once.
   val asked = Asked(post.id, signedIn, locked)
-  // The held value outlives a change of post; a kept book for the new one shows from its first frame.
   val kept = remember(asked) { books.cachedBookOf(post, signedIn, locked) }
   val visible by rememberUpdatedState(onScreen)
   val book by produceState(kept?.let { asked to it }, asked, post.inVisiblePool) {
-    // Only once the details are read, as the sheet's strips: a sheet at peek or a closed panel asks nothing.
     snapshotFlow { visible() }.first { it }
     value = try {
       books.bookOf(post, signedIn, locked)?.let { asked to it }
@@ -86,9 +75,7 @@ fun FromTheBook(
       onOpen()
       opener.open(shown)
     },
-    // Books are queue items now (#385): a middle-click or long-press keeps it, as a post's is kept.
     keep = {
-      // Acts on the post as a click does, and as the sheet's other background opens do.
       onOpen()
       navigator.openInNewTab(shown.keptRoute())
     },
@@ -130,7 +117,6 @@ private fun FromTheBookRow(book: BookDto, modifier: Modifier, open: () -> Unit, 
   }
 }
 
-/** What a post's book was asked for: the post, and the sign-in and rating lock it was picked under. */
 private data class Asked(val postId: String, val signedIn: Boolean, val ratingLocked: Boolean)
 
 private val ROW_SHAPE = RoundedCornerShape(12.dp)

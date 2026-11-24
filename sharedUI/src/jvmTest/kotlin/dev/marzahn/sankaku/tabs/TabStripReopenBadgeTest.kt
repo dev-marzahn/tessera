@@ -31,10 +31,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #420: while something can be reopened, the strip's + carries the phone pill's ↶ badge, named "Reopen closed tab
- * (Z)", which reopens as Z does. It goes when Recently closed is empty.
- */
 @OptIn(ExperimentalTestApi::class)
 class TabStripReopenBadgeTest {
   private val tabs = TabsController(FileTabStateStore(InMemoryTextFile(null)))
@@ -64,7 +60,6 @@ class TabStripReopenBadgeTest {
     tabs.open(artist, background = false)
     strip()
 
-    // X and Cmd/Ctrl-W both close the active tab.
     tabs.close(tabs.active.value)
     waitForIdle()
     badge().assertExists()
@@ -76,7 +71,6 @@ class TabStripReopenBadgeTest {
 
   @Test
   fun escOnAGridOpenedFromAnItemShowsIt() = runComposeUiTest {
-    // A lone post p (from artist_x, with k1 kept), and a search opened "now" from it.
     tabs.open(artist, background = false)
     navigator.openInNewTab(Route.Post("k1", "mk1", artist.tags, label = "k1"))
     navigator.goTo(Route.Post("p", "mp", artist.tags, label = "p"))
@@ -84,7 +78,6 @@ class TabStripReopenBadgeTest {
     strip()
     assertNoBadge()
 
-    // Esc goes back, which closes a grid opened from an item (#349).
     navigator.goBack()
     waitForIdle()
     badge().assertExists()
@@ -99,21 +92,17 @@ class TabStripReopenBadgeTest {
     badge()
       .assertHasClickAction()
       .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-    // The name and tooltip the issue gives it, and one node: the ↶ icon says nothing of its own.
     assertEquals("Reopen closed tab (Z)", REOPEN_TAB_LABEL)
     onAllNodesWithContentDescription(REOPEN_TAB_LABEL, useUnmergedTree = true).assertCountEquals(1)
     val badge = badge().getUnclippedBoundsInRoot()
     val plus = onNodeWithContentDescription("New tab (⌘T)").getUnclippedBoundsInRoot()
     assertEquals(22.dp, badge.right - badge.left)
     assertEquals(22.dp, badge.bottom - badge.top)
-    // Over the +'s top-right corner.
     assertTrue(badge.left > plus.left + (plus.right - plus.left) / 2, "badge $badge, + $plus")
     assertTrue(badge.top < plus.top + (plus.bottom - plus.top) / 2, "badge $badge, + $plus")
-    // Inside the strip, which is at the window's top edge: hung above the +, it was cut in half.
     assertTrue(badge.top >= 0.dp, "badge $badge")
     assertTrue(badge.right <= onNodeWithContentDescription("More").getUnclippedBoundsInRoot().left, "badge $badge")
 
-    // Every point of it takes clicks: clicked at its outermost corner pixel, not its centre.
     badge().performTouchInput { click(Offset(width - 1f, 0f)) }
     waitForIdle()
 
@@ -137,7 +126,6 @@ class TabStripReopenBadgeTest {
 
     assertEquals(artist, first.top)
     assertEquals(listOf(setOf(first.id), setOf(tabs.tabs.value.single { it.top == tag }.id)), reopened)
-    // Nothing left to reopen: no pulse.
     tabs.reopenClosed()
     assertEquals(2, reopened.size)
   }

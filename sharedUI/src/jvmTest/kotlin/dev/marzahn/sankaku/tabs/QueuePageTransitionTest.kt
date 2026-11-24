@@ -60,13 +60,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #320: the queue page as a transition in the shell's one shared-transition scope, with placeholder pictures (never a
- * real post). These check state and keys only; how the move looks is QA'd in the app (#332).
- *
- * The lone post's side is a stand-in for `PhoneViewer`'s picture: the same [imageKey] on [LocalUnderQueuePage], the
- * visibility the shell gives the tab's content. The page's side is the real [QueuePage].
- */
 @OptIn(ExperimentalTestApi::class, ExperimentalSharedTransitionApi::class, DelicateCoilApi::class)
 class QueuePageTransitionTest {
   private val tabs = TabsController()
@@ -74,7 +67,6 @@ class QueuePageTransitionTest {
   private var pageOpen by mutableStateOf(false)
   private var interacted by mutableStateOf(true)
 
-  // The stand-in: composed, its element's state, whether that's matched with the row's now, and on any frame so far.
   private var pictureComposed = false
   private var picture: SharedTransitionScope.SharedContentState? = null
   private val matched get() = pictureComposed && picture?.isMatchFound == true
@@ -84,13 +76,11 @@ class QueuePageTransitionTest {
   @AfterTest
   fun tearDown() = SingletonImageLoader.reset()
 
-  /** Keeps the post [id] (rated [rating]) under a grid of its own, and makes it the current item. */
   private fun keep(id: String, rating: String) {
     tabs.openInBlock(listOf(Route.Grid(listOf("scenery"), at = id), Route.Post(id, "md5$id", listOf("scenery"), "Fixture $id", rating)))
     tabs.activate(tabs.tabs.value.single { it.title == "Fixture $id" }.id)
   }
 
-  /** The shell's scope, the tab's content (the stand-in for the post [id]) and the queue page, as `Shell` lays them. */
   private fun ComposeUiTest.shell(id: String) {
     val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
       .memoryCache { MemoryCache.Builder().maxSizeBytes(4L * 1024 * 1024).build() }
@@ -116,6 +106,7 @@ class QueuePageTransitionTest {
               onInteract = {},
               onListTop = onListTop,
               leaving = !pageOpen,
+              folding = false,
             )
           }
         }
@@ -124,16 +115,11 @@ class QueuePageTransitionTest {
     mainClock.advanceTimeByFrame()
   }
 
-  /**
-   * The post [id]'s picture as `PhoneViewer` shares it under the queue page, [PICTURE] at the window's top left: its
-   * element attached only while its visibility moves, or while the page is about to open over it.
-   */
   @Composable
   private fun LonePicture(id: String) {
     val under = LocalUnderQueuePage.current!!
     val settled = under.transition.currentState == EnterExitState.Visible && under.transition.targetState == EnterExitState.Visible
     val attached = !settled || LocalQueuePageOpening.current
-    // As the viewer's chrome does, something on its own visibility that takes a while.
     under.transition.animateFloat({ spring(stiffness = Spring.StiffnessMediumLow) }) { if (it == EnterExitState.Visible) 1f else 0f }
     with(LocalShellTransitions.current!!) {
       val state = rememberSharedContentState(imageKey(id))
@@ -146,28 +132,19 @@ class QueuePageTransitionTest {
     }
   }
 
-  /** The lone post's picture's width where it's laid out now, in dp: in flight, where the move has it. */
   private fun ComposeUiTest.pictureWidth() =
     with(density) { onNodeWithTag(PICTURE_TAG).fetchSemanticsNode().boundsInRoot.width.toDp() }
 
-  /**
-   * The owner's phone (#320): from the pill, the move began at the row's thumbnail (or the window's corner), not at the
-   * picture. The picture's element had never been laid out matched, and the row, shown with the page before the post
-   * left, took the picture's place at once. Now it leaves from the picture's size and shrinks on every frame towards
-   * the thumbnail. Bounds, not pixels.
-   */
   @Test
   fun fromThePillThePictureShrinksFromItsOwnSizeIntoTheRow() = runComposeUiTest {
     keep("g", "s")
     shell("g")
-    // Opened from its row first, as on the phone, then back to the page.
     pageOpen = true
     settle()
     pageOpen = false
     settle()
 
     pageOpen = true
-    // The page's frames before the picture leaves.
     frames(OPENING_FRAMES)
     val widths = List(10) {
       frames(1)
@@ -179,10 +156,8 @@ class QueuePageTransitionTest {
     assertTrue(widths.last() < PICTURE.width * 0.7f, "on its way to the thumbnail: $widths")
   }
 
-  /** A few frames into the page's transition, with the picture on its way. */
   private fun ComposeUiTest.someFrames() = frames(4)
 
-  /** Long past any spring's end. */
   private fun ComposeUiTest.settle() = frames(200)
 
   private fun ComposeUiTest.frames(count: Int) = repeat(count) {
@@ -198,7 +173,6 @@ class QueuePageTransitionTest {
     shell("g")
     assertTrue(pictureComposed)
 
-    // The pill: the page opens, and the picture shrinks into its row on the way.
     pageOpen = true
     someFrames()
     assertTrue(pictureComposed, "the lone post stays composed while the page opens")
@@ -206,7 +180,6 @@ class QueuePageTransitionTest {
     settle()
     assertFalse(pictureComposed, "nothing is composed under the open page")
 
-    // Continue: the page closes, and the picture grows out of its row.
     pageOpen = false
     mainClock.advanceTimeByFrame()
     assertTrue(pictureComposed, "the lone post is composed from the moment the page starts to close")
@@ -219,7 +192,6 @@ class QueuePageTransitionTest {
   @Test
   fun aTapOnAKeptRowWhileAnotherItemIsCurrentGrowsItsPicture() = runComposeUiTest {
     keep("g", "s")
-    // The grid it was kept from is current; the page is open over it.
     tabs.activate(tabs.tabs.value.first { it.title != "Fixture g" }.id)
     pageOpen = true
     shell("g")
@@ -235,10 +207,6 @@ class QueuePageTransitionTest {
     assertFalse(matched)
   }
 
-  /**
-   * #322: a kept post reopened from Recently closed grows out of that row's thumbnail, which stays in its place on the
-   * page as it leaves: the move starts there, not at the row the reopened item gets in the queue. Bounds, not pixels.
-   */
   @Test
   fun aKeptPostReopenedFromRecentlyClosedGrowsOutOfThatRowsThumbnail() = runComposeUiTest {
     keep("g", "s")
@@ -260,11 +228,6 @@ class QueuePageTransitionTest {
     assertFalse(matched, "settled, nothing is in flight")
   }
 
-  /**
-   * The picture, in flight as the page closes: it starts small, within the [row] it leaves from, and only grows. Before
-   * #322 it was there at its own size from the first frame: the row's element was made anew as the page started to
-   * close, so the move had nothing to leave from.
-   */
   private fun ComposeUiTest.pictureGrowsFrom(row: androidx.compose.ui.geometry.Rect) {
     val bounds = List(10) {
       frames(1)
@@ -283,14 +246,12 @@ class QueuePageTransitionTest {
   @Test
   fun aBlurredRowNeverMatchesAndStaysBlurredAsThePageLeaves() = runComposeUiTest {
     keep("q", "q")
-    // A launch: the page is open and the queue not used yet, so the R15 row is blurred.
     pageOpen = true
     interacted = false
     shell("q")
     settle()
     assertEquals(1, blurred())
 
-    // Back without a touch: a use of the queue (which unblurs) and the close, at once.
     interacted = true
     pageOpen = false
     repeat(6) {
@@ -300,7 +261,6 @@ class QueuePageTransitionTest {
     settle()
     assertTrue(pictureComposed)
 
-    // A start after 5 minutes away opens the page by itself over the post, the queue still not used.
     interacted = false
     pageOpen = true
     someFrames()
@@ -312,7 +272,6 @@ class QueuePageTransitionTest {
   @Test
   fun onlyTheCurrentItemsRowShares() = runComposeUiTest {
     keep("g", "s")
-    // The grid it was kept from is current: the kept post's row isn't.
     tabs.activate(tabs.tabs.value.first { it.title != "Fixture g" }.id)
     shell("g")
     pageOpen = true
@@ -346,7 +305,6 @@ class QueuePageTransitionTest {
     mainClock.autoAdvance = false
     setContent {
       UnderQueuePage(rememberQueuePageTransitions(pageOpen)) {
-        // Something on the content's own visibility that takes a while, as a lone post's picture does.
         LocalUnderQueuePage.current!!.transition.animateFloat({ tween(300) }) { if (it == EnterExitState.Visible) 1f else 0f }
         DisposableEffect(Unit) {
           composed = true
@@ -373,10 +331,8 @@ class QueuePageTransitionTest {
   }
 
   private companion object {
-    /** The stand-in lone post's picture. */
     val PICTURE = DpSize(300.dp, 400.dp)
 
-    /** The shell's: the page is composed this many frames before what's under it leaves (2 × STAGE_FRAMES). */
     const val OPENING_FRAMES = 4
 
     const val PICTURE_TAG = "lone post picture"

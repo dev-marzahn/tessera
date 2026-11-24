@@ -1,4 +1,3 @@
-# The ids are what Report a bug fills in through the form's URL (?version=…&os=…&device=…); keep them stable.
 name: Bug report
 description: Something in Tessera doesn't work.
 labels: [bug]

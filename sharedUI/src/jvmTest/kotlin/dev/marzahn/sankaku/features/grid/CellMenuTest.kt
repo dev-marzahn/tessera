@@ -21,10 +21,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #504 on desktop: a grid cell's right-click menu (Open, Open in background tab, Favourite), and the one-time tip on
- * the cell the viewer first closes into, which teaches the keep loop, unless a keep came first.
- */
 @OptIn(ExperimentalTestApi::class)
 class CellMenuTest {
   private val fixture = GridScreenFixture()
@@ -56,7 +52,6 @@ class CellMenuTest {
       assertEquals(listOf("fixture_tag", "fixture-2"), queue())
       assertEquals(grid, tabs.activeTab.top)
       onAllNodesWithText(MIDDLE_CLICK).assertCountEquals(0)
-      // A keep: the tip has nothing left to teach.
       assertFalse(tips.pending(Tip.KeepLoop))
     }
   }
@@ -93,7 +88,6 @@ class CellMenuTest {
       press(Key.Escape)
       waitUntil(timeoutMillis = 5_000) { onAllNodesWithText(Tip.KeepLoop.text).fetchSemanticsNodes().isNotEmpty() }
       assertFalse(tips.pending(Tip.KeepLoop), "shown, the tip is done")
-      // It stays while the grid's cursor has the keys back: a focusable tip lost its focus to it and went at once.
       mainClock.advanceTimeBy(2_000)
       waitForIdle()
       onAllNodesWithText(Tip.KeepLoop.text).assertCountEquals(1)
@@ -101,7 +95,6 @@ class CellMenuTest {
       waitForIdle()
       onAllNodesWithText(Tip.KeepLoop.text).assertCountEquals(0)
 
-      // Never again.
       press(Key.Spacebar)
       press(Key.Escape)
       mainClock.advanceTimeBy(2_000)
@@ -117,13 +110,11 @@ class CellMenuTest {
       press(Key.Spacebar)
       press(Key.Escape)
       waitUntil(timeoutMillis = 5_000) { onAllNodesWithText(Tip.KeepLoop.text).fetchSemanticsNodes().isNotEmpty() }
-      // A modifier alone (the start of Cmd-Tab, say) isn't a key the grid acts on.
       press(Key.ShiftLeft)
       press(Key.MetaLeft)
       onAllNodesWithText(Tip.KeepLoop.text).assertCountEquals(1)
       press(Key.D)
       onAllNodesWithText(Tip.KeepLoop.text).assertCountEquals(0)
-      // The key still did its work.
       assertEquals(2, cursorPost())
     }
   }

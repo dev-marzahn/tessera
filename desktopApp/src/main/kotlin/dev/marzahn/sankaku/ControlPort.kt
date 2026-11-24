@@ -24,16 +24,6 @@ import javax.accessibility.AccessibleContext
 import javax.imageio.ImageIO
 import javax.swing.SwingUtilities
 
-/**
- * A debug-only HTTP server on loopback that drives the window without taking over the screen: it posts AWT input
- * events straight to the window, so it works while the app is in the background, and draws screenshots from the
- * window's own Skia layer instead of the screen. Started by `-Dsankaku.debug.control=<port>`; see
- * `docs/control-port.md` for the calls.
- *
- * Coordinates are the window content's points (Compose dp), top left at 0,0, the same as the screenshot's pixels.
- * It never reads or returns app state beyond what the window shows, except the request log's path templates (which
- * Diagnostics shows too), for checking what a change requests.
- */
 internal class ControlPort private constructor(port: Int) {
   @Volatile private var window: Window? = null
   private val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0)
@@ -46,14 +36,12 @@ internal class ControlPort private constructor(port: Int) {
     println("Control port on http://127.0.0.1:${server.address.port}")
   }
 
-  /** The request log `/requests` lists; its entries are path templates, without ids, md5s or queries. */
   @Volatile var requestLog: RequestLog? = null
 
   fun attach(window: Window) {
     this.window = window
   }
 
-  /** One line per logged request, oldest first: a counter, method, host, path template, status and duration. */
   private fun requests(): String = requestLog?.entries?.value.orEmpty().withIndex().joinToString("\n") { (i, e) ->
     "$i ${e.method} ${e.host} ${e.pathTemplate} ${e.status ?: e.errorClass} ${e.durationMs}ms"
   }
@@ -98,24 +86,13 @@ internal class ControlPort private constructor(port: Int) {
     exchange.responseBody.use { it.write(bytes) }
   }
 
-  // --- Input ---
-
-  /** The content pane, whose 0,0 is the top left of what Compose draws (below the title bar). */
   private fun content(window: Window): Container = (window as? javax.swing.RootPaneContainer)?.contentPane ?: window
 
-  /**
-   * Compose's canvas, which holds its input listeners and fills the content area, so content points are its own. The
-   * content pane is an empty sibling of it, so a hit test from there finds nothing.
-   */
   private fun canvas(window: Window): Component = findLayer(window)?.canvas ?: error("no Skia layer")
 
   private fun target(window: Window, x: Int, y: Int): Pair<Component, java.awt.Point> =
     canvas(window) to java.awt.Point(x, y)
 
-  /**
-   * Straight to the canvas's key listeners: `dispatchEvent` sends key events through the focus manager, which drops
-   * them while the app isn't the active one.
-   */
   private fun deliver(event: KeyEvent) {
     for (listener in event.component.keyListeners) {
       when (event.id) {
@@ -151,7 +128,6 @@ internal class ControlPort private constructor(port: Int) {
     val down = InputEvent.BUTTON1_DOWN_MASK
     mouse(window, MouseEvent.MOUSE_MOVED, x1, y1, 0, 0, 0)
     mouse(window, MouseEvent.MOUSE_PRESSED, x1, y1, down, 1, MouseEvent.BUTTON1)
-    // Through the whole path on the component the press hit, as AWT does while the button is down.
     val (component, start) = target(window, x1, y1)
     val steps = 12
     for (i in 1..steps) {
@@ -235,14 +211,11 @@ internal class ControlPort private constructor(port: Int) {
     }
   }
 
-  // --- Output ---
-
   private fun screenshot(window: Window, full: Boolean): ByteArray {
     val layer = findLayer(window) ?: error("no Skia layer")
     val bitmap = layer.screenshot() ?: error("no frame drawn yet")
     val png = Image.makeFromBitmap(bitmap).encodeToData(EncodedImageFormat.PNG)?.bytes ?: error("encoding failed")
     if (full || bitmap.width == layer.width) return png
-    // Down to points, so a screenshot's pixels are the coordinates the input calls take.
     val source = ImageIO.read(ByteArrayInputStream(png))
     val scaled = BufferedImage(layer.width, layer.height, BufferedImage.TYPE_INT_ARGB)
     scaled.createGraphics().apply {
@@ -253,7 +226,6 @@ internal class ControlPort private constructor(port: Int) {
     return ByteArrayOutputStream().also { ImageIO.write(scaled, "png", it) }.toByteArray()
   }
 
-  /** The accessibility tree: one line per element with its role, name and bounds in content points. */
   private fun tree(window: Window): String {
     val origin = content(window).locationOnScreen
     val lines = mutableListOf<String>()
@@ -278,7 +250,6 @@ internal class ControlPort private constructor(port: Int) {
     return lines.joinToString("\n")
   }
 
-  /** The AWT components, with their key and mouse listener counts and focus: for finding where input goes. */
   private fun components(window: Window): String {
     val lines = mutableListOf("focus owner: ${window.mostRecentFocusOwner?.javaClass?.name}")
     fun walk(component: Component, depth: Int) {
@@ -309,7 +280,6 @@ internal class ControlPort private constructor(port: Int) {
   }
 
   companion object {
-    /** Starts the server when `-Dsankaku.debug.control=<port>` is set; `0` picks a free port. */
     fun fromProperty(): ControlPort? = System.getProperty("sankaku.debug.control")?.toIntOrNull()?.let(::ControlPort)
   }
 }

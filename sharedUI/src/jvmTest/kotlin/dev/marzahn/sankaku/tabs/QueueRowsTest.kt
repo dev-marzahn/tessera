@@ -8,7 +8,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** #177: what the queue page lists, in which order, and what G only leaves out. */
 class QueueRowsTest {
   private val tabs = TabsController()
 
@@ -23,7 +22,6 @@ class QueueRowsTest {
       (tab.top as? Route.Post)?.let { known[it.id] }
     }
 
-  /** Each row as text: "3 p1" for an item (indented with "  "; a feed has no number, as drawn), or the heading's words. */
   private fun List<QueueRow>.described() = map { row ->
     when (row) {
       is QueueRow.Item -> (if (row.indented) "  " else "") +
@@ -56,14 +54,11 @@ class QueueRowsTest {
     keep("elf", "a", rating = "e")
     tabs.close(tabs.tabs.value.single { it.title == "A" }.id)
 
-    // G only leaves out the R18 post and keeps the row for the other.
     assertEquals(listOf("1 Browse", "[from A (closed) · 2]", "  2 g", "  3 elf"), rows().described())
     assertEquals(listOf("1 Browse", "[from A (closed) · 2]", "  2 g", "Hidden 1"), rows(gOnly = true).described())
 
-    // Nothing of the block listed, no row.
     tabs.close(tabs.tabs.value.single { it.title == "g" }.id)
     assertEquals(listOf("1 Browse", "Hidden 1"), rows(gOnly = true).described())
-    // Find lists the row with the posts it matches.
     assertEquals(listOf("[from A (closed) · 1]", "  2 elf"), rows(query = "elf").described())
     assertEquals(emptyList(), rows(query = "zzz").described())
   }
@@ -84,15 +79,11 @@ class QueueRowsTest {
     tabs.open(Route.Grid(listOf("a")), background = false)
     keep("p1", "a")
     tabs.open(Route.Grid(listOf("feed:following")), background = false)
-    // A feed heads a block (#265): a post kept from it is listed under it, numbered after the counted items before it,
-    // since the feed isn't one. A feed is a source that persists (#327): there's no "Feeds" section, and "later" goes
-    // after it.
     keep("p2", "feed:following")
     tabs.open(Route.Grid(listOf("b")), background = false)
 
     val rows = rows()
     assertEquals(listOf("1 Browse", "2 A", "  3 p1", "Following", "  4 p2", "5 B"), rows.described())
-    // "Kept from Following", as #234's line and TalkBack say it.
     val kept = rows.filterIsInstance<QueueRow.Item>().single { it.tab.title == "p2" }
     assertEquals("Following", kept.from)
     assertEquals(BlockLine.End, kept.line)
@@ -140,11 +131,9 @@ class QueueRowsTest {
     tabs.open(Route.Grid(listOf("red")), background = false)
 
     assertEquals(listOf("2 Blue Hair"), rows(query = "blue hair").described())
-    // Its head isn't listed, so the post isn't indented under the row above it.
     assertEquals(listOf("3 p1"), rows(query = "p1").described())
   }
 
-  /** Each item as "title line from": its part of its block's line and the source it's kept from (#234). */
   private fun List<QueueRow>.lines() = filterIsInstance<QueueRow.Item>().map { "${it.tab.title} ${it.line} ${it.from}" }
 
   @Test
@@ -160,7 +149,6 @@ class QueueRowsTest {
       listOf("Browse null null", "A Head null", "p1 Through A", "p2 Through A", "p3 End A", "B Head null", "p4 End B"),
       rows().lines(),
     )
-    // G only leaves out p2 and p4: the line skips p2, and B has nothing under it.
     assertEquals(
       listOf("Browse null null", "A Head null", "p1 Through A", "p3 End A", "B null null"),
       rows(gOnly = true).lines(),

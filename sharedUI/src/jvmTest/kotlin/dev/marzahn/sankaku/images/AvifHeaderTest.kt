@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** #576: the bit depth decides whether Android can decode a preview. */
 class AvifHeaderTest {
   private fun resource(name: String) = Buffer().write(javaClass.getResourceAsStream("/$name")!!.readBytes())
 

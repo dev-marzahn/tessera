@@ -6,109 +6,106 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.marzahn.sankaku.ui.Message
+import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.Tip
 import dev.marzahn.sankaku.ui.Tips
-import dev.marzahn.sankaku.ui.rememberActionWindowMillis
-import dev.marzahn.sankaku.ui.runWindow
+import dev.marzahn.sankaku.ui.UserGestures
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-/**
- * Touch: closing a queue item and bringing items back. A close (a drag down on a lone post, ✕ with queue buttons on,
- * the pill's "Close" action, a swipe on the queue page) opens a window in which Undo, a ↶ circle (#581), grows out of the count pill's
- * left side (#178; `.scratch/android-feedback/`, C), with its countdown; each close restarts it and points it at that
- * item. Holding the pill (or ✕) reopens the most recently closed item still closed, at any time ([reopenLatest]), as
- * desktop's Cmd/Ctrl-Shift-T does; a one-time tip on the pill teaches that ([Tip.ReopenHold], shown by [QueueBar]),
- * and a hold that reopens an item means it's known ([tips]). One holder for every screen, so the window carries on
- * when the pill moves between a grid and a post.
- */
 class ClosedTabUndo(
   private val controller: TabsController,
   private val tips: Tips? = null,
+  private val messages: Messages? = null,
+  private val gestures: UserGestures? = null,
 ) {
-  /** The item Undo would reopen, with a [serial] new for each close; null when no window is open. */
-  data class Pending(val closed: ClosedTab, val serial: Int)
+  data class Pending(val closed: ClosedTab, val serial: Int, val alsoUndo: (() -> Unit)? = null)
 
   private val _pending = MutableStateFlow<Pending?>(null)
   val pending: StateFlow<Pending?> = _pending.asStateFlow()
 
   private var serial = 0
 
-  /** The window's share left, 1 → 0: Undo's countdown. A snapshot read. */
-  var left by mutableFloatStateOf(1f)
-    internal set
+  private val hiddenBy = mutableStateMapOf<Any, Unit>()
 
-  // What pauses the window now: Undo pressed or focused, a post's chrome hidden with the pill. Keyed by who asked, so
-  // several bars (the shell's and a post's, overlapping as a viewer closes) never undo each other's pause.
-  private val pausedBy = mutableStateMapOf<Any, Unit>()
+  val hidden: Boolean get() = hiddenBy.isNotEmpty()
 
-  /** Whether something on screen holds the window still ([PauseUndoWhile]). A snapshot read. */
-  val paused: Boolean get() = pausedBy.isNotEmpty()
-
-  /** Holds the window still for [by] while [paused], until it says otherwise. */
-  fun pause(by: Any, paused: Boolean) {
-    if (paused) pausedBy[by] = Unit else pausedBy.remove(by)
+  fun hide(by: Any, hidden: Boolean) {
+    if (hidden) hiddenBy[by] = Unit else hiddenBy.remove(by)
   }
 
-  /** Closes [id] (as [TabsController.close]) and opens the window for it. An item already gone does nothing. */
-  fun close(id: TabId) {
-    opened(controller.close(id) ?: return)
+  suspend fun awaitNextAction() {
+    merge(flow { emit(controller.awaitNextAction()) }, flow { emit(awaitShownGesture()) }).first()
   }
 
-  /**
-   * Back on a grid opened from an item (#349, [TabsController.closeBack]): closes it, shows that item and opens the
-   * window for it. False, changing nothing, when Back doesn't close [id].
-   */
-  fun closeBack(id: TabId): Boolean {
-    opened(controller.closeBack(id) ?: return false)
-    return true
+  private suspend fun awaitShownGesture() {
+    val gestures = gestures ?: awaitCancellation()
+    while (true) {
+      snapshotFlow { hidden }.first { !it }
+      val tapped = merge(flow { gestures.awaitNext(); emit(true) }, snapshotFlow { hidden }.filter { it }.map { false }).first()
+      if (tapped) return
+    }
   }
 
-  /**
-   * A drag down on a lone post (#326): closes [id] as [close] does and moves on, to the item that takes its place, as ✕
-   * does. Where moving on would bring the Up next or End of the queue card ([UpNextState.ahead]), it lands on the item
-   * before and shows that card past it; with no item before, on whatever is left. Undo brings it back and shows it.
-   */
+  fun close(id: TabId, alsoUndo: (() -> Unit)? = null) {
+    opened(controller.close(id) ?: return, alsoUndo)
+  }
+
+  fun closeBack(id: TabId): Boolean = controller.closeBackSaying(id, messages)
+
   fun dragClose(id: TabId, upNext: UpNextState) {
+    if (controller.keptRunOver() && upNext.card != UpNextCard.KeptEnd) controller.endKeptRun()
     val ahead = upNext.ahead()
-    val toCard = controller.activeTab.id == id && controller.neighbour(forward = false) != null &&
-      (ahead == Ahead.UpNext || ahead == Ahead.End)
+    val toCard = controller.activeTab.id == id && controller.neighbour(forward = false) != null && ahead == Ahead.End
     opened(controller.close(id, toPrevious = toCard) ?: return)
-    if (toCard) upNext.showAhead(ahead)
+    if (toCard) upNext.showAhead(ahead) else if (controller.keptRunOver()) upNext.showKeptEnd()
   }
 
-  /**
-   * Opens the window for [closed], an item closed elsewhere (a swipe on the queue page, which has its own inline Undo
-   * while it's open): the pill offers Undo for what's left of the window once the page closes.
-   */
-  fun opened(closed: ClosedTab) {
-    left = 1f
-    _pending.value = Pending(closed, ++serial)
+  fun opened(closed: ClosedTab, alsoUndo: (() -> Unit)? = null) {
+    _pending.value = Pending(closed, ++serial, alsoUndo)
   }
 
-  /** Reopens the pending item where it was, and ends the window. */
+  private var lineUndos by mutableIntStateOf(0)
+
+  val undoOnLine: Boolean get() = lineUndos > 0
+
+  fun offerOnLine(closed: ClosedTab, text: String) {
+    val messages = messages ?: return
+    val until: suspend () -> Unit = {
+      lineUndos++
+      try {
+        awaitNextAction()
+      } finally {
+        lineUndos--
+      }
+    }
+    messages.show(Message(text, actionLabel = "Undo", until = until) { controller.reopen(closed, inPlace = true) })
+  }
+
   fun undo() {
     val pending = _pending.value ?: return
     end(pending)
     controller.reopen(pending.closed)
+    pending.alsoUndo?.invoke()
   }
 
-  /**
-   * The hold on the pill or ✕: reopens the most recently closed item that's still closed, where it was. False when
-   * there's none (the hold then says so with the "reject" haptic).
-   */
   fun reopenLatest(): Boolean {
     if (controller.closed.value.isEmpty()) return false
     controller.reopenClosed()
@@ -116,71 +113,60 @@ class ClosedTabUndo(
     return true
   }
 
-  // The last close whose Undo has finished growing out of a pill, in whichever bar showed it first (#285). Not snapshot
-  // state: a bar reads it only once, as it's composed.
   private var grownSerial = 0
 
-  /** Whether [pending]'s Undo has grown out of a pill already, so a bar composed after that shows it at once. */
   internal fun hasGrown(pending: Pending): Boolean = grownSerial == pending.serial
 
-  /** Says [pending]'s Undo has grown out of a pill. */
   internal fun grown(pending: Pending) {
     grownSerial = pending.serial
   }
 
-  /** Ends [pending]'s window, if it's still the open one. */
   internal fun end(pending: Pending) {
     _pending.update { if (it == pending) null else it }
   }
 }
 
-/**
- * Runs [undo]'s window (the snackbar's Long time, lengthened by the accessibility settings, as the top line's is),
- * paused while something holds it ([ClosedTabUndo.paused]) or [paused] (the queue page covers the pill), and ends it when its item
- * came back another way (a hold, the queue page's Undo or Recently closed, Z).
- */
+const val UNKEPT = "Removed from queue"
+
+const val KEEP_FOR_LATER = "Keep for later"
+
+fun backClosedMessage(closed: ClosedTab, tabs: TabsController): Message =
+  Message(closed.closedLabel, actionLabel = KEEP_FOR_LATER, until = tabs::awaitNextAction) { tabs.keepForLater(closed) }
+
+fun TabsController.closeBackSaying(id: TabId, messages: Messages?): Boolean {
+  val closed = closeBack(id) ?: return false
+  messages?.show(backClosedMessage(closed, this))
+  return true
+}
+
 @Composable
-fun ClosedTabUndoWindow(undo: ClosedTabUndo = koinInject(), controller: TabsController = koinInject(), paused: Boolean = false) {
+fun EndUndoAtNextAction(undo: ClosedTabUndo = koinInject(), controller: TabsController = koinInject()) {
   val pending by undo.pending.collectAsStateWithLifecycle()
-  val window = rememberActionWindowMillis()
-  val hidden by rememberUpdatedState(paused)
   val current = pending ?: return
   LaunchedEffect(current) {
-    // Read from the flow itself: a list collected for composition can be a frame behind the close that opened this.
     val cameBack = launch { controller.closed.first { current.closed !in it }.let { undo.end(current) } }
-    runWindow(window, isPaused = { undo.paused || hidden }) { undo.left = it }
+    undo.awaitNextAction()
     cameBack.cancel()
     undo.end(current)
   }
 }
 
-/**
- * Whether a bar shows Undo for [pending], for its `AnimatedVisibility`. Each close's Undo grows out of the pill once, in
- * whichever bar first shows it: a bar composed after a close that changed the screen (a drag down onto the item
- * before, the queue page's swipe-close) starts hidden and grows it (#285), and a bar composed once it has grown (the
- * user moves on) starts shown. Only a finished grow counts, so a bar that leaves mid-grow (the one the close took
- * away) leaves it to the next.
- */
+@Composable
+fun UndoHiddenWhile(hidden: Boolean, undo: ClosedTabUndo = koinInject()) {
+  val key = remember { Any() }
+  SideEffect { undo.hide(key, hidden) }
+  DisposableEffect(undo, key) { onDispose { undo.hide(key, false) } }
+}
+
 @Composable
 internal fun rememberUndoShown(pending: ClosedTabUndo.Pending?, undo: ClosedTabUndo): MutableTransitionState<Boolean> {
   val shown = remember { MutableTransitionState(pending != null && undo.hasGrown(pending)) }
   shown.targetState = pending != null
   LaunchedEffect(pending) {
     val current = pending ?: return@LaunchedEffect
-    // Already shown: this bar didn't grow this close's Undo (a second close while it showed, the bar the close takes
-    // away), so the next bar to show it still grows it.
     if (shown.currentState) return@LaunchedEffect
-    // A transition state's current state turns true only once the enter has finished (its fade too).
     snapshotFlow { shown.currentState }.first { it }
     undo.grown(current)
   }
   return shown
-}
-
-/** Holds [undo]'s window still while [paused] and this is composed; leaving lets it go. */
-@Composable
-fun PauseUndoWhile(paused: Boolean, undo: ClosedTabUndo = koinInject()) {
-  val key = remember { Any() }
-  SideEffect { undo.pause(key, paused) }
-  DisposableEffect(undo, key) { onDispose { undo.pause(key, false) } }
 }

@@ -10,7 +10,6 @@ import io.ktor.http.HttpStatusCode
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** #314: every followed tag, page after page, until a short page. */
 class FollowedTagListTest {
   private fun tags(from: Int, count: Int) = (from until from + count).joinToString(",") {
     """{ "id": "t$it", "name": "tag_$it", "tagName": "tag_$it", "type": 0, "post_count": $it, "is_following": true }"""
@@ -43,7 +42,6 @@ class FollowedTagListTest {
 
   @Test
   fun theIdsAreNullWhenTheListCantBeRead() = runTest {
-    // #539: Following's context needs the follows; unknown, no post is taken for a late one.
     val ok = FollowedTagList(TagsApi(harness(total = 3).mainClient), pageSize = 2)
     val failing = FollowedTagList(TagsApi(Harness(InMemoryTokenStore(null)) { json("{}", HttpStatusCode.InternalServerError) }.mainClient))
 

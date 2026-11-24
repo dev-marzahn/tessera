@@ -20,10 +20,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #542, desktop: a favourite made with no connection is sent once the network is back, while the app sits idle: no
- * request, click or window focus, only the machine's addresses changing.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class IdleOutboxTest {
   private val post: PostDto = SankakuJson.decodeFromString(Fixtures.post(favourited = false))
@@ -44,14 +40,12 @@ class IdleOutboxTest {
     sender.start()
     runCurrent()
 
-    // Wi-Fi drops; the favourite waits and the app is offline.
     interfaces = emptySet()
     posts.toggleFavourite(post)
     runCurrent()
     assertTrue(h.connectivity.offline.value)
     assertEquals(1, outbox.changes.value.size)
 
-    // Wi-Fi comes back, and nothing else happens.
     up = true
     interfaces = setOf("en0")
     advanceTimeBy(InterfaceWatcher.POLL_MS + InterfaceWatcher.SETTLE_MS + 1)

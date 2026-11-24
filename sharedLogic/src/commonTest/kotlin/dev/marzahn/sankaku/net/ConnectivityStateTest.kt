@@ -26,7 +26,6 @@ class ConnectivityStateTest {
     assertFalse(h.connectivity.offline.value)
   }
 
-  /** Sankaku answered, so the app is online: a 5xx is "Sankaku is having trouble", not "Offline" (#520). */
   @Test
   fun serverErrorIsNotOfflineAndClearsAConnectionError() = runTest {
     var fail = true

@@ -33,10 +33,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * #265: the queue page drawn with posts kept from Following and For you nested under each feed, with synthetic fixture
- * pictures (never a real post). With `EVIDENCE_DIR` set, the frames before and after keeping are saved there as PNGs.
- */
 @OptIn(ExperimentalTestApi::class, DelicateCoilApi::class)
 class FeedBlocksRenderTest {
   private val tabs = TabsController()
@@ -44,7 +40,6 @@ class FeedBlocksRenderTest {
   @AfterTest
   fun tearDown() = SingletonImageLoader.reset()
 
-  // A 256 px picture of two-colour stripes: plainly a placeholder.
   private fun fixture(first: Int, second: Int): Bitmap {
     val bitmap = Bitmap().apply { allocN32Pixels(256, 256) }
     Canvas(bitmap).apply {
@@ -56,7 +51,7 @@ class FeedBlocksRenderTest {
   private fun post(id: String, label: String) = Route.Post(id, "md5$id", listOf("fixture"), label, "s")
 
   @Test
-  fun postsKeptFromAFeedAreNestedUnderIt() = runDesktopComposeUiTest(width = 1080, height = 2200) {
+  fun postsKeptFromAFeedAreNestedUnderIt() = runDesktopComposeUiTest(width = 1080, height = 2800) {
     val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
       .memoryCache { MemoryCache.Builder().maxSizeBytes(16L * 1024 * 1024).build() }
       .build()
@@ -86,6 +81,7 @@ class FeedBlocksRenderTest {
             clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
             interacted = { false },
             onInteract = {},
+            folding = false,
           )
         }
       }
@@ -94,7 +90,6 @@ class FeedBlocksRenderTest {
     val dir = System.getenv("EVIDENCE_DIR")
     dir?.let { ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(it, "feed-kept-before.png")) }
 
-    // Long-presses on Following's grid, then on For you's.
     runOnIdle {
       navigator.openInNewTab(post("f1", "Fixture kept from Following"))
       navigator.openInNewTab(post("f2", "Second fixture kept from Following"))
@@ -108,7 +103,6 @@ class FeedBlocksRenderTest {
         "Second fixture kept from Following", "For you", "Fixture kept from For you"),
       tabs.tabs.value.map { it.title },
     )
-    // TalkBack's second line (#234); the screen shows "Kept" with the indent and the line.
     assertEquals(2, onAllNodesWithContentDescription("Kept from Following", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
     assertEquals(1, onAllNodesWithContentDescription("Kept from For you", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
     dir?.let { ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(it, "feed-kept-after.png")) }

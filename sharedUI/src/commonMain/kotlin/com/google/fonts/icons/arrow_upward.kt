@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `arrow_upward` (weight 400, grade 0, optical size 24). */
 public val arrow_upward: ImageVector
   get() {
     if (_arrow_upward != null) {

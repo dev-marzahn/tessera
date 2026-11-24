@@ -14,6 +14,8 @@ import androidx.compose.ui.graphics.nativeCanvas
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okio.FileSystem
+import okio.Path
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.Data
@@ -23,30 +25,20 @@ import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import kotlin.math.min
 
-/** Skia decodes GIFs frame by frame on desktop, which Coil's own desktop decoder doesn't use. */
 actual val platformAnimatesGifs: Boolean = true
 
-/**
- * Skia's [Codec] decodes each frame into one working bitmap over the frame before it (GIF frames build on earlier
- * ones), off the main thread; each finished frame is copied into an immutable [Image] for drawing. The image from
- * two frames back is closed then, by which time no drawing still holds it.
- *
- * The effect's coroutine owns the codec and closes it itself: cancelling it doesn't stop a native decode already
- * running, and freeing the codec under one crashed the JVM in `SkWuffsCodec::decodeFrame` when tabs were flipped fast.
- */
 @Composable
-actual fun AnimatedImage(bytes: ByteArray, modifier: Modifier, onShown: () -> Unit) {
+actual fun AnimatedImage(file: Path, modifier: Modifier, onShown: () -> Unit) {
   val shown by rememberUpdatedState(onShown)
-  var current by remember(bytes) { mutableStateOf<Image?>(null) }
+  var current by remember(file) { mutableStateOf<Image?>(null) }
 
-  LaunchedEffect(bytes) {
+  LaunchedEffect(file) {
     val codec = withContext(Dispatchers.Default) {
-      runCatching { Codec.makeFromData(Data.makeFromBytes(bytes)) }.getOrNull()
+      runCatching { Codec.makeFromData(Data.makeFromBytes(FileSystem.SYSTEM.read(file) { readByteArray() })) }.getOrNull()
     } ?: return@LaunchedEffect
     val working = Bitmap()
     var stale: Image? = null
     var frame = 0
-    // withContext returns only once its block has, so the decode is done before finally closes what it uses.
     try {
       working.allocPixels(ImageInfo.makeN32Premul(codec.width, codec.height))
       val durations = codec.framesInfo.map { it.duration.toLong().coerceAtLeast(MIN_FRAME_MILLIS) }
@@ -61,7 +53,6 @@ actual fun AnimatedImage(bytes: ByteArray, modifier: Modifier, onShown: () -> Un
         stale = current
         current = image
         if (frame == 0 && stale == null) shown()
-        // A still image (or one frame) is drawn once.
         if (count == 1) break
         delay(durations[frame])
         frame = (frame + 1) % count
@@ -92,5 +83,4 @@ actual fun AnimatedImage(bytes: ByteArray, modifier: Modifier, onShown: () -> Un
   }
 }
 
-/** Browsers treat a GIF frame shorter than this as this long, so it plays at the speed people know it at. */
 private const val MIN_FRAME_MILLIS = 20L

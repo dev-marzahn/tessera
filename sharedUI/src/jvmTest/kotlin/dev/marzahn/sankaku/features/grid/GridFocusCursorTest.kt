@@ -40,6 +40,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
 import dev.marzahn.sankaku.READING_FILE
@@ -90,17 +91,10 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * #418: the grid has one selection. A cell taking keyboard focus (Tab, Shift-Tab) takes the cursor's ring, and the
- * cursor moved with WASD takes focus with it, so Space opens the ring's post and Tab goes on from the ring. The real
- * [GridScreen] in its tab, with synthetic fixture posts (no pictures), never a real one.
- */
 @OptIn(ExperimentalTestApi::class)
 class GridFocusCursorTest {
-  // How many posts the search returns: a refresh after changing it reloads the grid shorter or empty (#488).
   @Volatile private var posts = POSTS
 
-  // Search requests answered, so a reload is known to have landed.
   @Volatile private var searches = 0
 
   private fun page() = (1..posts).joinToString(",","""{"meta":{"next":null,"prev":null},"data":[""", "]}") { n ->
@@ -108,7 +102,6 @@ class GridFocusCursorTest {
       """"width":300,"height":300,"preview_width":300,"preview_height":300,"preview_url":"${url("preview/fixture-$n.png")}"}"""
   }
 
-  // A one-colour picture, so no cell shows a Retry button (a second focus stop).
   private val png = ByteArrayOutputStream().also {
     ImageIO.write(BufferedImage(300, 300, BufferedImage.TYPE_INT_RGB), "png", it)
   }.toByteArray()
@@ -125,7 +118,7 @@ class GridFocusCursorTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -146,7 +139,6 @@ class GridFocusCursorTest {
       }
     }
     startKoin { modules(sharedModule, platform, shellModule, authModule, gridModule, postModule, booksModule, fixtures) }
-    // The cells' AsyncImage uses the singleton, which the app sets to this loader.
     SingletonImageLoader.setUnsafe(GlobalContext.get().get<ImageLoader>())
   }
 
@@ -192,7 +184,6 @@ class GridFocusCursorTest {
     onAllNodes(cell() and matcher).fetchSemanticsNodes().singleOrNull()
       ?.let { it.config[SemanticsProperties.TestTag].removePrefix("grid-cell-").toInt() }
 
-  /** The cursor's cell, after checking that the focused cell, if any, is that one. */
   private fun ComposeUiTest.selection(): Int? {
     waitForIdle()
     val rings = onAllNodes(cell() and hasCursor).fetchSemanticsNodes().size
@@ -237,11 +228,9 @@ class GridFocusCursorTest {
     press(Key.A)
     val back = selection()
     assertNotEquals(next, back)
-    // Space opens the viewer on the ring's post.
     press(Key.Spacebar)
     waitForIdle()
     onAllNodesWithText(positionLabel(back!!, POSTS, hasMore = false)).fetchSemanticsNodes().single()
-    // The viewer steps on; closing it leaves the ring and focus together on the post it closed on.
     press(Key.D)
     press(Key.Escape)
     waitForIdle()
@@ -255,7 +244,6 @@ class GridFocusCursorTest {
     press(Key.D)
     press(Key.S)
     val at = selection()!!
-    // What the search panel closing or Esc in the tag list does: the screen's KeyFocusHolder asks for the keys.
     runOnIdle { keyFocus.returnToContent() }
     assertEquals(at, selection(), "focus comes back to the cursor's cell")
     press(Key.Tab)
@@ -270,13 +258,11 @@ class GridFocusCursorTest {
     waitForIdle()
     runOnIdle { keyFocus.returnToContent() }
     waitForIdle()
-    // Back in view later, the cursor's cell doesn't take the focus from what has it.
     onNode(hasScrollToIndexAction()).performScrollToIndex(0)
     waitForIdle()
     assertNull(index(isFocused()), "a stale request took the focus when the cell came back")
   }
 
-  /** Reloads the grid past the page cache, as the top bar's Refresh does, with [count] posts, and waits for it. */
   private fun ComposeUiTest.reloadWith(count: Int) {
     posts = count
     val before = searches
@@ -286,13 +272,10 @@ class GridFocusCursorTest {
     waitUntil(timeoutMillis = 5_000) {
       onAllNodes(cell()).fetchSemanticsNodes().size.let { it <= count && (it == 0) == (count == 0) }
     }
-    // The focused cell went with the posts: the keys come back to the grid, as after a search from the panel.
     runOnIdle { keyFocus.returnToContent() }
     waitForIdle()
   }
 
-  // #488: a cursor left past the end of a grid that reloaded with fewer posts (or none) crashed every key but a
-  // move. Each key does its own job, or nothing, and a move puts the cursor back on a cell there is.
   @Test
   fun everyKeyIsSafeWithACursorPastTheEndOfAShorterGrid() = grid {
     press(Key.D)
@@ -312,7 +295,6 @@ class GridFocusCursorTest {
     assertEquals(1, selection())
     reloadWith(0)
     for (key in GRID_KEYS + Key.D) press(key)
-    // The empty grid dropped the cursor: the posts coming back don't bring the ring back on the old index.
     reloadWith(POSTS)
     assertNull(index(hasCursor), "the cursor outlived the empty grid")
   }
@@ -320,7 +302,6 @@ class GridFocusCursorTest {
   private companion object {
     const val POSTS = 30
 
-    /** Every key the grid or what's around it takes, besides the moves (D is one; Esc last, as it goes back). */
     val GRID_KEYS = listOf(Key.E, Key.Spacebar, Key.X, Key.F, Key.I, Key.G, Key.Escape)
   }
 }

@@ -27,7 +27,6 @@ import kotlin.test.assertTrue
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 
-/** #132, kept by the queue page (#177): positions, opening on the current item, find, bulk closes and the scrubber at scale. */
 @OptIn(ExperimentalTestApi::class)
 class QueuePageScaleTest {
   private val tabs = TabsController()
@@ -64,7 +63,6 @@ class QueuePageScaleTest {
     tabs.open(Route.Grid(listOf("blue_hair")), background = true)
     tabs.open(post("p1", label = "Seele Vollerei"), background = true)
     tabs.open(post("p2", label = "Furina"), background = true)
-    // p2's own tags, as a loaded page holds them.
     show(TabPosts { flowOf(mapOf("p2" to TabPost(favourited = false, tags = listOf("long_hair", "blue_hair")))) })
 
     onNodeWithContentDescription("Find in queue").performClick()
@@ -74,7 +72,6 @@ class QueuePageScaleTest {
     onNodeWithText("Furina").assertExists()
     onNodeWithText("Seele Vollerei").assertDoesNotExist()
     onNodeWithText("Browse").assertDoesNotExist()
-    // The grid by its search; its row keeps its real position.
     onNodeWithContentDescription("Item 2 of 4").assertExists()
 
     onNodeWithText("blue hair").performTextClearance()
@@ -91,7 +88,6 @@ class QueuePageScaleTest {
 
   @Test
   fun aFindShowsItsFirstMatchesAndShuttingItReturnsToTheCurrentTab() = runComposeUiTest {
-    // A hundred matches, more than the list shows at once.
     repeat(199) { tabs.open(post("p$it", label = if (it < 100) "Seele $it" else "Other $it"), background = true) }
     tabs.activate(tabs.tabs.value[149].id)
     show()
@@ -109,7 +105,6 @@ class QueuePageScaleTest {
   @Test
   fun eachBulkCloseShowsItsCountIsDisabledAtNoneAndOneUndoBringsTheBatchBack() = runComposeUiTest {
     listOf("a", "b", "a", "c", "b").forEach { tabs.open(post(it), background = true) }
-    // The current tab is the last: nothing to its right.
     tabs.activate(tabs.tabs.value.last().id)
     val before = titles()
     show(TabPosts { flowOf(mapOf("c" to TabPost(favourited = true, tags = emptyList()))) })
@@ -135,14 +130,12 @@ class QueuePageScaleTest {
     show()
 
     val thumb = onNodeWithTag(SCRUBBER_TAG, useUnmergedTree = true)
-    // The thumb's strip is left clear: no row's ≡ lies under it, so reordering works on every row.
     val thumbLeft = thumb.getUnclippedBoundsInRoot().left
     onAllNodesWithContentDescription("Move", useUnmergedTree = true).fetchSemanticsNodes().forEach { handle ->
       assertTrue(handle.boundsInRoot.right <= thumbLeft.value * density.density)
     }
     thumb.performTouchInput {
       down(center)
-      // Far past the track's end: the thumb stops at the bottom.
       repeat(40) { moveBy(Offset(0f, 100f), delayMillis = 16) }
     }
     waitForIdle()

@@ -63,7 +63,6 @@ class TagsRepositoryTest {
 
     assertTrue(learning.known.value.isEmpty())
     assertTrue(TagsRepository(h.tags, file).known.value.isEmpty())
-    // The suggestions fetched went too: typing the same prefix asks again.
     val before = h.requests.size
     learning.suggest("blu")
     assertEquals(before + 1, h.requests.size)

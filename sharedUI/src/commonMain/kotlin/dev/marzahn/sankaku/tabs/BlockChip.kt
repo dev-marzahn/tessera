@@ -24,11 +24,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.marzahn.sankaku.queue.SeenStore
 import org.koin.compose.koinInject
 
-/**
- * Where the item [id] stands in its block (#502, desktop), left of the search line: "3 / 8 · from Landscape" on a kept
- * item, "Landscape · 5 left" on a source with kept items, "2 / 2 · from Cat (closed)" in a closed source's block.
- * Nothing for an item in no block with kept items. A click opens the tab switcher's queue list ([onOpen]).
- */
 @Composable
 fun BlockChip(
   id: TabId,
@@ -37,7 +32,6 @@ fun BlockChip(
   seen: SeenStore = koinInject(),
 ) {
   val tabs by controller.tabs.collectAsStateWithLifecycle()
-  // Read so the chip follows what's seen; the kept times it compares with are snapshot state.
   seen.revision.collectAsStateWithLifecycle().value
   val progress = blockProgress(tabs, id) { it.seenSinceKept(seen) } ?: return
   val text = blockChipText(progress)

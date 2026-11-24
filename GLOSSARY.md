@@ -25,7 +25,7 @@ A sidebar entry that opens a grid on fixed tags (Popular, Top, Favourites), with
 _Avoid_: Popular screen, top screen
 
 **Feed**:
-Posts Sankaku picks for the account (For you, Following): in the queue, a source that persists. One queue item each (opening one that's open goes to it) that recurs, is never closed, never fades, and remembers where you stopped. Posts kept from it sit under it as their source, in its block. Signed in, Following is always in the queue (For you too, if the user turns it on), added at the end when it comes in; after that it's an ordinary item, which nothing keeps last. The feed isn't counted in the count pill, its kept posts are.
+Posts Sankaku picks for the account (For you, Following): in the queue, a source that persists. One queue item each (opening one that's open goes to it) that recurs, is never closed, and remembers where you stopped. Posts kept from it sit under it as their source, in its block. Signed in, Following is always in the queue (For you too, if the user turns it on), added at the end when it comes in; after that it's an ordinary item, which nothing keeps last. The feed isn't counted in the count pill, its kept posts are.
 _Avoid_: Timeline, stream
 
 **Feed marks**:
@@ -78,25 +78,21 @@ _Avoid_: Session, launch (when a return counts too)
 Everything since the user last chose Clear viewed. Closing the app never ends one.
 _Avoid_: Visit, launch
 
-**Faded source**:
-A source untouched for 3 days, set aside, with its unseen kept posts, in the queue page's Faded section until it's opened again or deleted 30 days after it faded. Phone only: on desktop nothing fades (#489).
+**Faded source** (retired 2026-11-13, #596):
+What an earlier version set aside after a source went 3 days untouched (#215), with its Faded section, Last chance and Up next offers. Nothing fades now: a source stays in the queue until it's closed. A faded list still in `tabs.json` comes back as queue items at the next launch.
 _Avoid_: Archived, expired
 
-**Last chance**:
-The one offer, in the last week before a faded source is deleted, to keep it or let it go. Not answered, it is deleted all the same.
-_Avoid_: Reminder, warning
-
-**Up next**:
-The text-only card past the last queue item, whatever it is (a feed's block too), offering one thing at a time that isn't in the queue: a Last chance, then the other faded sources ("Pick up artist_x again?"). Skip moves to the next; past the last comes End of the queue. It is never the first thing shown at a start.
-_Avoid_: Suggestions, recommendations (those are Sankaku's, for a post)
-
 **End of the queue**:
-The text-only card past the last queue item, "You've reached the end", with Back to the start and Browse. Like Up next, it is never the first thing shown at a start.
+The text-only card past the last queue item, whatever it is (a feed's block too), "You've reached the end", with Back to the start and Browse. It is never the first thing shown at a start.
 _Avoid_: Empty state, last page
 
 **Now / later**:
 Opening something now (a tap) puts it in front of the current block. Opening it for later (a new tab) puts it at the end of the session.
 _Avoid_: Foreground and background (for placement)
+
+**Later (a kept post's state)** (#665):
+A kept post swiped on, to come back to at the end of the session: a state of its own, not seen. It survives a relaunch and lasts until the post is dropped or Clear viewed ends the session; Go through later visits the Later posts in queue order. Not the same as opening for later (above), which places a new item.
+_Avoid_: Skipped, seen (for a swiped-on kept post), Later list
 
 **Background tab**:
 A tab opened without leaving the current one. It's how a kept post or a source opened for later is held, until the queue replaces tabs.

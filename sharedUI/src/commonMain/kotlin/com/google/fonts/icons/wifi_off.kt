@@ -2,7 +2,6 @@ package com.google.fonts.icons
 
 import androidx.compose.ui.graphics.vector.ImageVector
 
-/** Material Symbols Outlined `wifi_off`, 24 px, from its SVG (viewBox `0 -960 960 960`). */
 public val wifi_off: ImageVector by lazy {
   symbol(
     "wifi_off",

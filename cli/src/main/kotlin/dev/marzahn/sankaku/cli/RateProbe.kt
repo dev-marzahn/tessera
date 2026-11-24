@@ -25,21 +25,11 @@ import java.util.Collections
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-/**
- * `--rate-probe`: finds `sankakuapi.com`'s rate limit for the signed-in test account. Sends the app's grid request
- * (keyset, POSTS, `rating:s`, `limit=40`) at rising rates, open loop (each request on its own schedule, up to 64 in
- * flight, so the server's latency doesn't cap the rate), with no client buckets. Stops at the first 429, or at a level
- * where more than 10% of requests fail otherwise, then measures how long the 429 lasts. Prints counts, statuses,
- * latencies and rate-limit header values only: never tokens, queries or post fields.
- */
 class RateProbe(
   private val env: Map<String, String>,
-  /** Requests per second, [LEVEL_SECONDS] each (`--levels=2,4,6`). */
   private val levels: List<Double> = LEVELS,
-  /** Requests sent at once before the levels, after 20 s idle (`--burst=20`); 0 skips it. */
   private val burst: Int = 0,
   private val levelSeconds: Int = LEVEL_SECONDS,
-  /** A client bucket to try against the server (`--limiter=6,15`); null sends with none. */
   private val bucket: RateLimiter.Limit? = null,
 ) {
   private data class Sample(val level: Int, val startMs: Long, val latencyMs: Long, val status: String)
@@ -48,7 +38,6 @@ class RateProbe(
     config { dispatcher(Dispatcher().apply { maxRequests = 128; maxRequestsPerHost = 64 }) }
   }
 
-  // No buckets; a 429 would pause the host, which the probe wants to see for itself, so the pause is zero.
   private val client = createAuthClient(
     engine, RequestLog(), RateLimiter(limits = listOfNotNull(bucket?.let { API_HOST to it }).toMap(), defaultPause = 0.seconds),
     ConnectivityState(),
@@ -70,7 +59,6 @@ class RateProbe(
     val first = send(token, level = 0)
     println("Warm-up: ${first.status}; rate headers: ${rateHeaders(first.headers).ifEmpty { "none" }}")
     if (burst > 0) {
-      // After 20 s idle, so any bucket is full: [burst] requests at once.
       delay(20_000)
       coroutineScope { repeat(burst) { launch { send(token, level = 1000) } } }
       val sent = samples.filter { it.level == 1000 }.sortedBy { it.startMs }
@@ -120,7 +108,6 @@ class RateProbe(
     measurePause(token)
   }
 
-  /** After the first 429: one request every 5 s until one isn't a 429, for up to 10 minutes. */
   private suspend fun measurePause(token: String) {
     val from = nowMs()
     while (nowMs() - from < 600_000) {
@@ -185,7 +172,6 @@ class RateProbe(
     val LEVELS = listOf(2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0)
     val RATE_HEADER = Regex("rate|limit|retry|cf-cache")
 
-    // Rotated so repeated requests aren't one cached query.
     val TAGS = listOf(
       "blue_hair", "long_hair", "short_hair", "blonde_hair", "black_hair", "red_eyes", "blue_eyes", "green_eyes",
       "smile", "looking_at_viewer", "outdoors", "sky", "flower", "hat", "school_uniform", "twintails",

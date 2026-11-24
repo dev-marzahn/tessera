@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
-/** The player reopens only for another file, not for the same file signed again (#180). */
 class VideoSourceTest {
   private val signed = "https://v.example.test/data/sample/aa/bb/sample-aabb.mp4?e=1&expires=100&token=t1"
 

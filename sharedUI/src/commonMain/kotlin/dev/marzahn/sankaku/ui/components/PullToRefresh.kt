@@ -6,11 +6,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-/**
- * Pulling [content] down past the threshold calls [onRefresh]; M3's round indicator (a white disc with the arrow,
- * as the Android mockups draw it) follows the pull and turns while [refreshing]. With [enabled] false it's a plain
- * box (desktop, which has a Refresh button).
- */
 @Composable
 fun PullToRefresh(
   refreshing: Boolean,

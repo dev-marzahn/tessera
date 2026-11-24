@@ -20,12 +20,10 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isHeading
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -38,8 +36,6 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.AccessibilitySettings
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
-import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.Tips
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
@@ -50,11 +46,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
-/**
- * #216, #230: past the last source a swipe, › or TalkBack's "Up next" brings the Up next card, and past the last item
- * End of the queue. Both are text only, a page of their own with no grid behind, a pane with a heading for the title
- * that is focused as it appears, and their actions as buttons and as custom actions.
- */
 @OptIn(ExperimentalTestApi::class)
 class UpNextCardTest {
   private val start = Instant.parse("2026-11-01T12:00:00Z")
@@ -62,25 +53,19 @@ class UpNextCardTest {
   private val clock = object : Clock {
     override fun now() = now
   }
-  private val tabs = TabsController(clock = clock, seen = SeenStore(InMemoryTextFile(), clock))
-  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()), Messages())
+  private val tabs = TabsController(clock = clock)
+  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
 
   private fun grid(vararg tags: String) = Route.Grid(tags.toList())
 
-  // "oldest" (touched day 0) and "middle" (day 1) faded; "last" is shown, on day 5.
-  private fun twoFaded() {
+  private fun untouchedForWeeks() {
     tabs.open(grid("oldest"), background = true)
-    now = start + 1.days
     tabs.open(grid("middle"), background = true)
-    now = start + 5.days
-    // Browse was looked at today, so it doesn't fade.
-    tabs.activate(tabs.tabs.value.first().id)
     tabs.open(grid("last"), background = false)
-    tabs.sweep()
-    assertEquals(listOf("Oldest", "Middle"), tabs.faded.value.map { it.title })
+    now = start + 40.days
+    assertEquals(listOf("Browse", "Oldest", "Middle", "Last"), tabs.tabs.value.map { it.title })
   }
 
-  /** The shell's part: a card stands in for the tab's content, and another item coming forward takes it away. */
   private fun ComposeUiTest.shell() {
     setContent {
       SankakuTheme {
@@ -104,7 +89,6 @@ class UpNextCardTest {
     waitForIdle()
   }
 
-  /** A swipe on whatever is shown, a card included: [back] towards the end (the previous item), else towards the start. */
   private fun ComposeUiTest.swipeOnShown(back: Boolean) {
     onNodeWithTag("shell").performTouchInput {
       if (back) swipe(Offset(20f, centerY), Offset(width - 20f, centerY), 300) else swipe(Offset(width - 20f, centerY), Offset(20f, centerY), 300)
@@ -119,42 +103,8 @@ class UpNextCardTest {
     onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.PaneTitle)).fetchSemanticsNode().config[SemanticsProperties.PaneTitle]
 
   @Test
-  fun aSwipePastTheLastSourceOffersTheFadedSourceWithOneOpenButtonAndNoGridBehind() = runComposeUiTest {
-    twoFaded()
-    shell()
-
-    swipeTowardsTheEnd()
-
-    onNodeWithText("Pick up Oldest again?").assertExists()
-    onNodeWithText("Deleted in 28 days").assertExists()
-    // One Open, plus Skip; no Open grid.
-    onAllNodesWithText("Open").assertCountEquals(1)
-    onNodeWithText("Open grid").assertDoesNotExist()
-    onNodeWithText("Skip").assertExists()
-    // The card is its own page: the grid isn't behind it.
-    onNodeWithTag("grid").assertDoesNotExist()
-    // The item stays where it was: the card is past it.
-    assertEquals("Last", tabs.activeTab.title)
-  }
-
-  @Test
-  fun theSearchLineShowsTheCardsOwnSearchOrNoneNeverTheGridsBehind() {
-    twoFaded()
-    val top = tabs.activeTab.top
-    assertEquals(top, shownSearch(null, top))
-
-    upNext.show()
-    assertEquals(grid("oldest"), shownSearch(upNext.card, top))
-
-    upNext.skip()
-    upNext.skip()
-    assertEquals(UpNextCard.End, upNext.card)
-    assertEquals(grid(), shownSearch(upNext.card, top))
-  }
-
-  @Test
-  fun aSwipeWithNothingToOfferShowsTheEndOfTheQueue() = runComposeUiTest {
-    tabs.open(grid("a"), background = false)
+  fun aSwipePastTheLastItemShowsTheEndOfTheQueueNeverAnUpNextOffer() = runComposeUiTest {
+    untouchedForWeeks()
     shell()
 
     swipeTowardsTheEnd()
@@ -164,38 +114,21 @@ class UpNextCardTest {
     onNodeWithText("You've reached the end").assertExists()
     onNodeWithText("Back to the start").assertExists()
     onNodeWithText("Browse").assertExists()
+    onNodeWithText("Pick up", substring = true).assertDoesNotExist()
+    onNodeWithText("Last chance", substring = true).assertDoesNotExist()
     onNodeWithTag("grid").assertDoesNotExist()
-    assertEquals("A", tabs.activeTab.title)
+    assertEquals("Last", tabs.activeTab.title)
   }
 
   @Test
-  fun skipShowsTheNextFadedSourceAndTheLastSkipShowsTheEnd() = runComposeUiTest {
-    twoFaded()
-    shell()
-    swipeTowardsTheEnd()
+  fun theSearchLineShowsNoSearchOnTheCardNeverTheGridsBehind() {
+    tabs.open(grid("a"), background = false)
+    val top = tabs.activeTab.top
+    assertEquals(top, shownSearch(null, top))
 
-    onNodeWithContentDescription("Skip Oldest").performClick()
-    waitForIdle()
-    onNodeWithText("Pick up Middle again?").assertExists()
-
-    onNodeWithContentDescription("Skip Middle").performClick()
-    waitForIdle()
-    onNodeWithTag(END_CARD).assertExists()
-  }
-
-  @Test
-  fun openRestoresTheSourceAndShowsIt() = runComposeUiTest {
-    twoFaded()
-    shell()
-    swipeTowardsTheEnd()
-
-    onNodeWithText("Open").performClick()
-    waitForIdle()
-
-    assertNull(upNext.card)
-    assertEquals("Oldest", tabs.activeTab.title)
-    assertEquals(listOf("Middle"), tabs.faded.value.map { it.title })
-    onNodeWithTag("grid").assertExists()
+    upNext.forward()
+    assertEquals(UpNextCard.End, upNext.card)
+    assertEquals(grid(), shownSearch(upNext.card, top))
   }
 
   @Test
@@ -213,25 +146,7 @@ class UpNextCardTest {
   }
 
   @Test
-  fun theUpNextTitleIsAHeadingTheFocusMovesToAndTheActionsAreButtonsAndCustomActions() = runComposeUiTest {
-    twoFaded()
-    shell()
-    swipeTowardsTheEnd()
-
-    onNode(isHeading()).assertIsFocused()
-    assertEquals(listOf("Open", "Skip", "Back to Last"), titleActions())
-    assertEquals(UP_NEXT_PANE, paneTitle())
-    onNode(isHeading()).assert(
-      SemanticsMatcher("describes the source") {
-        it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Up next: pick up Oldest again? Deleted in 28 days") == true
-      },
-    )
-    onNodeWithContentDescription("Open Oldest").assert(hasClickAction())
-    onNodeWithContentDescription("Skip Oldest").assert(hasClickAction())
-  }
-
-  @Test
-  fun theEndOfTheQueueHasTheSameTalkBackTreatment() = runComposeUiTest {
+  fun theEndOfTheQueueTitleIsAHeadingTheFocusMovesToAndTheActionsAreButtonsAndCustomActions() = runComposeUiTest {
     tabs.open(grid("a"), background = false)
     shell()
     swipeTowardsTheEnd()
@@ -249,41 +164,6 @@ class UpNextCardTest {
   }
 
   @Test
-  fun focusMovesToTheNextCardAfterASkip() = runComposeUiTest {
-    twoFaded()
-    shell()
-    swipeTowardsTheEnd()
-
-    onNodeWithContentDescription("Skip Oldest").performClick()
-    waitForIdle()
-
-    onNode(isHeading()).assertIsFocused()
-  }
-
-  @Test
-  fun aLastChanceReadsKeepAndLetGoAndLetGoMovesOn() = runComposeUiTest {
-    tabs.open(grid("gone"), background = true)
-    now = start + 4.days
-    tabs.sweep()
-    now = start + 26.days
-    shell()
-
-    upNext.show()
-    waitForIdle()
-
-    onNodeWithText("Last chance: Gone").assertExists()
-    onNodeWithText("Deleted in 7 days").assertExists()
-    assertEquals(listOf("Keep", "Let go", "Back to ${tabs.activeTab.title}"), titleActions())
-    onNodeWithContentDescription("Let go of Gone").performClick()
-    waitForIdle()
-    assertTrue(tabs.faded.value.isEmpty())
-    // Nothing else faded: the end.
-    assertEquals(UpNextCard.End, upNext.card)
-  }
-
-  // #248: a swipe back on a card returns to the item it stands past, as the pill's ‹ does; a swipe forward does nothing.
-
-  @Test
   fun aSwipeBackOnTheEndOfTheQueueShowsTheLastItem() = runComposeUiTest {
     tabs.open(grid("a"), background = false)
     shell()
@@ -298,38 +178,14 @@ class UpNextCardTest {
   }
 
   @Test
-  fun aSwipeBackOnUpNextShowsTheItemItStandsPast() = runComposeUiTest {
-    twoFaded()
+  fun aSwipeForwardOnTheCardDoesNothing() = runComposeUiTest {
+    untouchedForWeeks()
     shell()
     swipeTowardsTheEnd()
-    assertEquals("Oldest", (upNext.card as UpNextCard.Offer).title)
-
-    swipeOnShown(back = true)
-
-    assertNull(upNext.card)
-    onNodeWithTag("grid").assertExists()
-    assertEquals("Last", tabs.activeTab.title)
-    // Nothing was answered: both sources stay faded.
-    assertEquals(listOf("Oldest", "Middle"), tabs.faded.value.map { it.title })
-  }
-
-  @Test
-  fun aSwipeForwardOnACardDoesNothing() = runComposeUiTest {
-    twoFaded()
-    shell()
-    swipeTowardsTheEnd()
-
-    // Up next: no Skip, no move on.
-    swipeOnShown(back = false)
-    assertEquals("Oldest", (upNext.card as UpNextCard.Offer).title)
-    assertEquals("Last", tabs.activeTab.title)
-
-    // End of the queue: nothing past it.
-    upNext.skip()
-    upNext.skip()
-    waitForIdle()
     assertEquals(UpNextCard.End, upNext.card)
+
     swipeOnShown(back = false)
+
     assertEquals(UpNextCard.End, upNext.card)
     assertEquals("Last", tabs.activeTab.title)
   }
@@ -367,22 +223,15 @@ class UpNextCardTest {
   }
 
   @Test
-  fun theCountPillsArrowsGoThroughUpNextToTheEndAndBack() = runComposeUiTest {
-    twoFaded()
+  fun theCountPillsArrowsGoToTheEndAndBack() = runComposeUiTest {
+    untouchedForWeeks()
     pill(buttons = true)
 
-    // At the last source › is named for where it goes.
-    onNodeWithContentDescription(UP_NEXT_ACTION).performClick()
-    waitForIdle()
-    assertEquals("Oldest", (upNext.card as UpNextCard.Offer).title)
-
-    // On Up next, › goes on: no feeds, so to the end, and there › is off.
     onNodeWithContentDescription(END_PANE).performClick()
     waitForIdle()
     assertEquals(UpNextCard.End, upNext.card)
     onNodeWithContentDescription(NEXT_ITEM, substring = true).assertIsNotEnabled()
 
-    // ‹ goes back to the item the card stands past.
     onNodeWithContentDescription("Back to Last").performClick()
     waitForIdle()
     assertNull(upNext.card)
@@ -390,20 +239,15 @@ class UpNextCardTest {
   }
 
   @Test
-  fun theCountPillOffersUpNextOrTheEndToTalkBack() = runComposeUiTest {
-    twoFaded()
+  fun theCountPillOffersTheEndToTalkBack() = runComposeUiTest {
+    untouchedForWeeks()
     pill(buttons = false)
-    // On a card the pill names it (#501): "Queue, up next, …", "Queue, end, …".
     fun actions() = onNodeWithContentDescription("Queue, ", substring = true)
       .fetchSemanticsNode().config[SemanticsActions.CustomActions]
-
-    runOnIdle { actions().single { it.label == UP_NEXT_ACTION }.action() }
-    waitForIdle()
-    assertEquals("Oldest", (upNext.card as UpNextCard.Offer).title)
 
     runOnIdle { actions().single { it.label == END_PANE }.action() }
     waitForIdle()
     assertEquals(UpNextCard.End, upNext.card)
-    assertTrue(actions().none { it.label == NEXT_ITEM || it.label == END_PANE || it.label == UP_NEXT_ACTION })
+    assertTrue(actions().none { it.label == NEXT_ITEM || it.label == END_PANE })
   }
 }

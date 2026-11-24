@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** #502: blocks, where an item stands in its block, what's left, and what leaving a block says. */
 class BlockProgressTest {
   private val tabs = TabsController()
   private val seen = mutableSetOf<String>()
@@ -19,7 +18,6 @@ class BlockProgressTest {
 
   private fun progress(title: String) = blockProgress(tabs.tabs.value, id(title), isSeen)
 
-  /** Browse, then Landscape with l1–l3 kept, then Cat with c1. */
   private fun queue() {
     tabs.open(Route.Grid(listOf("landscape")), background = false)
     keep("l1", "landscape")
@@ -47,7 +45,6 @@ class BlockProgressTest {
     assertEquals("Kept item 2 of 3 from Landscape, 2 left", blockChipSpoken(progress("l2")!!))
     seen += listOf("l2", "l3")
     assertEquals("Landscape · all seen", blockChipText(progress("Landscape")!!))
-    // A grid nothing was kept from has no chip.
     assertNull(progress("Browse"))
   }
 
@@ -76,7 +73,6 @@ class BlockProgressTest {
     val batch = tabs.closeAll(ids)!!
     assertEquals(4, batch.size)
     assertEquals(listOf("Browse", "Cat", "c1"), tabs.tabs.value.map { it.title })
-    // Z brings the whole block back.
     tabs.reopenClosed()
     assertEquals(listOf("Browse", "Landscape", "l1", "l2", "l3", "Cat", "c1"), tabs.tabs.value.map { it.title })
   }
@@ -88,12 +84,10 @@ class BlockProgressTest {
     val landscape = id("Landscape")
     val said = leavingBlock(tabs.tabs.value, landscape, hadKept = true, leftBefore = 2, now = id("Cat"), emptySet(), isSeen)
     assertEquals(LeavingBlock.Done(landscape, "Landscape", seen = 3), said)
-    // Once only.
     assertEquals(
       LeavingBlock.None,
       leavingBlock(tabs.tabs.value, landscape, hadKept = true, leftBefore = 1, now = id("Cat"), setOf(landscape), isSeen),
     )
-    // Not while something is left in it, and not moving within it.
     seen -= "l3"
     assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, landscape, true, 2, id("Cat"), emptySet(), isSeen))
     assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, landscape, true, 2, id("l3"), emptySet(), isSeen))
@@ -120,7 +114,6 @@ class BlockProgressTest {
     seen += listOf("l1", "l2", "l3", "c1")
     val said = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 1, now = id("Browse"), emptySet(), isSeen)
     assertEquals(LeavingBlock.QueueDone, said)
-    // Said once: nothing was left before either.
     assertEquals(
       LeavingBlock.None,
       leavingBlock(tabs.tabs.value, id("Browse"), hadKept = false, leftBefore = 0, now = id("Landscape"), setOf(id("Cat")), isSeen),
@@ -131,7 +124,6 @@ class BlockProgressTest {
   fun theQueueIsDoneEvenWhenTheCloseLandsInItsOwnBlock() {
     queue()
     seen += listOf("l1", "l2", "l3")
-    // c1, the queue's last item, closes and lands on Cat, its own head.
     tabs.closeAll(listOf(id("c1")))
     val said = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 1, now = id("Cat"), emptySet(), isSeen)
     assertEquals(LeavingBlock.QueueDone, said)

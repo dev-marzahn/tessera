@@ -32,11 +32,6 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * #259: the queue page takes the tab's content out of composition (App.kt) and Back or Continue brings it back. The
- * grid's saved state (its scroll position, an open viewer) must come back with it, as it does when the tab is switched
- * away and back.
- */
 @OptIn(ExperimentalTestApi::class)
 class QueuePageKeepsGridTest {
   private val tabs = TabsController(FileTabStateStore(InMemoryTextFile(null)))
@@ -45,7 +40,6 @@ class QueuePageKeepsGridTest {
   private var gridState: LazyStaggeredGridState? = null
   private var viewerIndex: Int? = null
 
-  /** Stands in for the grid screen: a staggered grid's scroll state and the viewer's index, both saved state. */
   private val entryProvider: (NavKey) -> NavEntry<NavKey> = { key ->
     NavEntry(key) {
       val state = rememberLazyStaggeredGridState()
@@ -65,7 +59,6 @@ class QueuePageKeepsGridTest {
   fun closingTheQueuePageBringsTheGridBackWhereItWas() = runComposeUiTest {
     var queuePageOpen by mutableStateOf(false)
     setContent {
-      // App's own wrapper: shown = !queuePageOpen on touch.
       TabContent(shown = !queuePageOpen, tabs.tabs.collectAsState().value) { ActiveTab(tabs.activeTab, tabs, navigator, it, entryProvider) }
     }
     runOnIdle { openViewer(VIEWER) }
@@ -86,7 +79,6 @@ class QueuePageKeepsGridTest {
     assertEquals(VIEWER, viewerIndex)
   }
 
-  /** With `EVIDENCE_DIR` set, saves the frame there for the PR: numbered placeholder cells, never a real post. */
   private fun ComposeUiTest.saveFrame(name: String) {
     System.getenv("EVIDENCE_DIR")?.let { dir ->
       ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, name))

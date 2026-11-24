@@ -10,14 +10,9 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
-/**
- * Following's marks (#314) on fixture feeds and a fixed clock: the headings a grid shows, and how a visit moves the
- * marks. A fixture feed is posts `p0`, `p1`, … newest first, a minute apart, 40 to a page.
- */
 class FeedMarksTest {
   private val now = Instant.parse("2026-11-12T12:00:00Z")
 
-  /** The feed as it is now: [newer] posts that came in since [old] posts that were there before. */
   private fun feed(newer: Int, old: Int): List<FeedPost> =
     (List(newer) { "n$it" } + List(old) { "p$it" }).mapIndexed { i, id ->
       FeedPost(id, TOP_TIME - i * 60L, PageCursor(if (i < 40) null else "c${i / 40}", i / 40 + 1))
@@ -27,7 +22,6 @@ class FeedMarksTest {
 
   private fun marks(top: FeedMark, gap: FeedGap? = null, at: Instant = now - 1.days) = FeedMarks(top, gap, at.epochSeconds)
 
-  /** Marks without the posts reached (#539), for tests about the top and the gap. */
   private fun FeedMarks?.plain() = this?.copy(reached = FeedReached())
 
   private fun headings(posts: List<FeedPost>, marks: FeedMarks?, atTop: Boolean = true, feed: Feed = Feed.Following) =
@@ -35,8 +29,6 @@ class FeedMarksTest {
 
   private fun late(posts: List<FeedPost>, atTop: Boolean, marks: FeedMarks?, context: String? = CONTEXT): Set<String> =
     FeedReading.late(Feed.Following, posts, atTop, marks, context)
-
-  // Headings
 
   @Test
   fun aFirstVisitHasNoHeadings() {
@@ -77,16 +69,11 @@ class FeedMarksTest {
     assertEquals(emptyList(), headings(posts.drop(20), marks(mark(posts, "p0")), atTop = false))
   }
 
-  // Late posts (#539): Following is by upload time, so a post that turns up late lands below posts already read.
-
-  /** [posts] as they were with [late] left out: what the last visit saw. */
   private fun before(posts: List<FeedPost>, vararg late: String) = posts.filterNot { it.id in late }
 
-  /** A visit to [seen] that reached its posts [first] to [last], and the marks it kept. */
   private fun visited(seen: List<FeedPost>, first: Int, last: Int, start: FeedMarks? = null): FeedMarks =
     visit(start).apply { reach(seen, atTop = true, first, last) }.marks!!
 
-  /** [posts] with a post [id] uploaded between the posts at [index] - 1 and [index]: it turned up late. */
   private fun withLate(posts: List<FeedPost>, index: Int, id: String): List<FeedPost> {
     val time = (posts[index - 1].time + posts[index].time) / 2
     return posts.take(index) + FeedPost(id, time, posts[index].cursor) + posts.drop(index)
@@ -121,7 +108,6 @@ class FeedMarksTest {
 
   @Test
   fun aPostBelowWhatWasReachedIsntNew() {
-    // The last visit reached p0..p20; p30's neighbourhood was never on screen, so a post there is just unread.
     val seen = feed(0, 60)
     val marks = visited(seen, 0, 20)
     val posts = withLate(seen, 30, "deep")
@@ -164,14 +150,12 @@ class FeedMarksTest {
 
     assertEquals(FeedReached.MAX_POSTS, marks.reached.posts.size)
     assertTrue("p0" in marks.reached.posts)
-    // What was cut off is no longer covered, so a post there isn't taken for a late one.
     assertTrue(!marks.reached.lateAt(posts.last().time, CONTEXT))
     assertTrue(marks.reached.lateAt(posts[10].time, CONTEXT))
   }
 
   @Test
   fun aPostShownSinceFollowingShowsMoreIsntNew() {
-    // Read with other follows or another search (G only on then): a recent post hidden then isn't late, just shown now.
     val seen = feed(0, 60)
     val marks = visited(seen, 0, 20)
     val posts = withLate(seen, 5, "hidden")
@@ -192,7 +176,6 @@ class FeedMarksTest {
 
   @Test
   fun stretchesReadFarApartKeepTheirOwnReadTimes() {
-    // p0..p20 read 3 days ago and p10..p30 now overlap but stay two stretches, each judged by its own read time.
     val posts = feed(0, 60)
     val old = FeedReached().with(posts.subList(0, 21), now.epochSeconds - 3 * 86_400L, CONTEXT)
     val both = old.with(posts.subList(10, 31), now.epochSeconds, CONTEXT)
@@ -203,7 +186,6 @@ class FeedMarksTest {
 
   @Test
   fun anOldPostAppearingInAReadStretchIsntNew() {
-    // A tag followed since (or G only turned off) brings in posts uploaded long ago: they weren't late, just not shown.
     val seen = feed(0, 60).map { it.copy(time = it.time - 3 * 86_400L) }
     val marks = visited(seen, 0, 20)
 
@@ -212,7 +194,6 @@ class FeedMarksTest {
 
   @Test
   fun aDroppedPostWithTheSameTimeAsAKeptOneIsntTakenForLate() {
-    // The 600th newest post and a twin with its time, reached after it: the cut keeps the first and drops the twin.
     val posts = feed(0, FeedReached.MAX_POSTS + 10)
     val twin = posts[FeedReached.MAX_POSTS - 1]
     val marks = visited(posts + FeedPost("twin", twin.time), 0, posts.size)
@@ -248,7 +229,6 @@ class FeedMarksTest {
 
   @Test
   fun aGapShowsContinueAfterTheStopMarkAndCaughtUpWhereItEnds() {
-    // Last time 41 were new above p0; the user read n5..n8 of them (the newest then was n5) and left at n8.
     val posts = feed(46, 60)
     val gap = FeedGap(stop = mark(posts, "n8"), until = mark(posts, "p0"), left = 37, since = (now - 1.days).epochSeconds)
 
@@ -277,7 +257,6 @@ class FeedMarksTest {
 
   @Test
   fun aGapWithNoPostsLeftShowsNoContinue() {
-    // Both ends gone, and no post uploaded between them: found by time, they're the same place.
     val all = feed(5, 60)
     val gap = FeedGap(stop = mark(all, "p2"), until = mark(all, "p3"), left = 4, since = now.epochSeconds)
     val posts = all.filterNot { it.id == "p2" || it.id == "p3" }
@@ -334,8 +313,6 @@ class FeedMarksTest {
     assertTrue(!FeedReading.expired(Feed.Following, marks(top, at = now - 300.days), now))
   }
 
-  // Visits
-
   private fun visit(start: FeedMarks?, feed: Feed = Feed.Following) = FeedVisit(feed, start, now, CONTEXT)
 
   @Test
@@ -380,7 +357,6 @@ class FeedMarksTest {
     val before = visit.marks.plain()
 
     visit.reach(posts, atTop = true, first = 2, last = 12)
-    // A refresh: the same feed reloaded, the grid back at the top.
     visit.reach(posts, atTop = true, first = 0, last = 0)
 
     assertEquals(before, visit.marks.plain())
@@ -390,14 +366,12 @@ class FeedMarksTest {
 
   @Test
   fun aSecondGapMergesWithTheFirst() {
-    // The first gap: n5..n45 were new over p0, the user read n5..n8. Now n0..n4 are new and the user reads n0, n1.
     val posts = feed(46, 60)
     val first = FeedGap(stop = mark(posts, "n8"), until = mark(posts, "p0"), left = 37, since = (now - 2.days).epochSeconds)
     val visit = visit(marks(mark(posts, "n5"), first))
 
     visit.reach(posts, atTop = true, first = 0, last = 1)
 
-    // n5..n8, read last time, stay inside the merged range as a read stretch.
     val merged = FeedGap(
       stop = mark(posts, "n1"), until = mark(posts, "p0"), left = 3 + 37, since = first.since, read = 4, readEnd = mark(posts, "n8"),
     )
@@ -406,7 +380,6 @@ class FeedMarksTest {
 
   @Test
   fun aMergedGapCountsOnlyItsUnreadPostsOnceBothEndsAreLoaded() {
-    // n5..n8 were read inside the merged range: the count stays 3 + 37, not the 44 posts between its ends.
     val posts = feed(46, 60)
     val first = FeedGap(stop = mark(posts, "n8"), until = mark(posts, "p0"), left = 37, since = (now - 2.days).epochSeconds)
     val visit = visit(marks(mark(posts, "n5"), first))
@@ -481,10 +454,8 @@ class FeedMarksTest {
   }
 
   private companion object {
-    /** An hour before the tests' now: late posts count only when uploaded recently (#539). */
     const val TOP_TIME = 1_794_481_200L
 
-    /** Following as every visit here saw it: the same search, the same follows. */
     val CONTEXT = FeedReading.context(listOf("feed:following", "rating:s"), listOf("t1", "t2"))
   }
 }

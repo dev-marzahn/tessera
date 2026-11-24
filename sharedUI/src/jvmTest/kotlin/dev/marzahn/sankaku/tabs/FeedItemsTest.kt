@@ -13,12 +13,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/**
- * #229: signed in, Following is always a queue item (For you too, with its setting on). It isn't counted and can't be
- * closed, and signing out takes it away. The sign-in and the setting reach the queue through [TabsController.pinFeeds],
- * as the shell calls it. #327: a feed is a source that persists: it goes at the end as it's added, and nothing keeps it
- * there.
- */
 class FeedItemsTest {
   private val tabs = TabsController()
   private val following = Route.Grid(listOf(Feed.Following.tag))
@@ -36,7 +30,6 @@ class FeedItemsTest {
 
   private fun signOut() = tabs.pinFeeds(FeedItems.pinned(signedIn = false, forYouInQueue = false))
 
-  // Browse, then the source "a" with the kept post p1, and the source "b".
   private fun queue() {
     tabs.open(grid("a"), background = false)
     tabs.openInBlock(listOf(post("p1")))
@@ -54,7 +47,6 @@ class FeedItemsTest {
     tabs.activate(tab("B").id)
     assertTrue(tabs.next())
     assertEquals("Following", tabs.activeTab.title)
-    // Following is the end: past it comes Up next or nothing.
     assertFalse(tabs.next())
   }
 
@@ -69,9 +61,7 @@ class FeedItemsTest {
     signOut()
 
     assertEquals(listOf("Browse", "A", "Post p1", "B"), titles())
-    // It was shown: the item before it is.
     assertEquals("B", tabs.activeTab.title)
-    // Nothing to reopen: it was never closed.
     assertTrue(tabs.closed.value.isEmpty())
   }
 
@@ -106,7 +96,6 @@ class FeedItemsTest {
     tabs.open(grid("C"), background = true)
     val closed = tabs.close(tab("C").id)!!
     signOut()
-    // A Following closed in a batch with it, as a bulk close would make, comes back only signed in.
     tabs.open(following, background = true)
     val followingClosed = tabs.close(tab("Following").id)!!
 
@@ -133,7 +122,6 @@ class FeedItemsTest {
     assertNull(again.place)
     assertEquals(listOf(following), again.backStack.toList())
     assertTrue(tabs.isFeedItem(again))
-    // Nothing of the feeds is in Recently closed: only the batch of what could close.
     assertTrue(tabs.closed.value.flatMap { it.members }.none { m -> m.routes.any { it == following || it == forYou } })
   }
 
@@ -157,7 +145,6 @@ class FeedItemsTest {
     assertNull(tabs.close(feed.id))
     assertNull(tabs.close(feed.id, toPrevious = true))
     assertEquals("Following", tabs.activeTab.title)
-    // Nor in a bulk close: closing everything else leaves it.
     assertTrue(feed.id !in tabs.otherTabs())
     tabs.activate(tab("A").id)
     assertTrue(feed.id !in tabs.tabsToTheRight())
@@ -172,7 +159,6 @@ class FeedItemsTest {
     signIn()
     val feed = tab("Following")
 
-    // The sidebar's Following is a search opened in place.
     tabs.search(following)
     assertSame(feed, tabs.activeTab)
     tabs.activate(tab("A").id)
@@ -216,7 +202,6 @@ class FeedItemsTest {
 
     signIn()
 
-    // Only a feed added goes at the end (#327); one already there stays.
     assertEquals(listOf("Browse", "Following", "A"), titles())
     assertSame(feed, tab("Following"))
     assertEquals(GridPlace("p9", cursor = "c", page = 3), feed.place)
@@ -237,9 +222,7 @@ class FeedItemsTest {
     val restored = TabsController(FakeStore(saved))
     restored.pinFeeds(listOf(Feed.Following))
 
-    // Nothing reorders at load, and an open Following becomes the item where it stands (#327).
     assertEquals(listOf("X", "Following", "Post k", "Y"), titles(restored))
-    // The feed stays the item shown, with its place; the post kept from it follows it in its block (#265).
     assertEquals("Following", restored.activeTab.title)
     assertEquals(place, restored.activeTab.place)
     assertEquals(TabId("f"), restored.tabs.value[2].block)
@@ -253,7 +236,6 @@ class FeedItemsTest {
     restored.pinFeeds(listOf(Feed.Following))
 
     assertEquals(listOf(following), restored.activeTab.backStack.toList())
-    // So Back on it can't turn it into Browse.
     TabsNavigator(restored).goBack()
     assertEquals(QueueKind.Feed, restored.activeTab.kind)
   }
@@ -263,17 +245,14 @@ class FeedItemsTest {
     queue()
     signIn()
     tabs.open(grid("c"), background = true)
-    // "Later" goes to the end of the queue, after Following (#327).
     assertEquals("C", titles().last())
 
     tabs.activate(tab("Following").id)
     tabs.search(grid("artist_x"))
 
-    // A feed item is never replaced in place, though nothing scrolled it: the search goes in front of it.
     assertEquals(listOf("Browse", "A", "Post p1", "B", "Artist X", "Following", "C"), titles())
     assertEquals("Artist X", tabs.activeTab.title)
     assertEquals(following, tab("Following").top)
-    // Moving on past it lands back on Following.
     assertTrue(tabs.next())
     assertEquals("Following", tabs.activeTab.title)
   }
@@ -287,7 +266,6 @@ class FeedItemsTest {
 
     tabs.openInBlock(listOf(post("f1")))
 
-    // #265 (replacing #229's "a feed has no block"): after the feed, so moving on reaches it next.
     assertEquals(listOf("Browse", "A", "Post p1", "B", "Following", "Post f1"), titles())
     assertEquals(feed.id, tab("Post f1").block)
     assertSame(feed, tabs.sourceOf(tab("Post f1")))
@@ -302,13 +280,11 @@ class FeedItemsTest {
     tabs.activate(feed.id)
 
     tabs.openLone(post("r1"))
-    // In the feed's block, right after it (#265).
     assertEquals(listOf("Browse", "A", "Post p1", "B", "Following", "Post r1"), titles())
     assertSame(feed, tabs.neighbour(forward = false))
     assertTrue(tabs.previous())
     assertSame(feed, tabs.activeTab)
 
-    // The last item, a drag down closes it to the feed too, with End of the queue past it (#326).
     tabs.activate(tab("Post r1").id)
     val upNext = noUpNext(tabs)
     ClosedTabUndo(tabs).dragClose(tabs.active.value, upNext)

@@ -34,7 +34,6 @@ class RejectedTest {
     setContent {
       SankakuTheme {
         CompositionLocalProvider(LocalHapticFeedback provides haptics) {
-          // A new generation is the control leaving and coming back (a lazy row scrolled out and in).
           key(generation) { Box(Modifier.size(48.dp).rejected(count, CircleShape)) }
         }
       }

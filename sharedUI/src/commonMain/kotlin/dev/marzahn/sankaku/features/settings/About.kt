@@ -60,19 +60,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
-/** About's licence line, as the spec and `LICENSE` word it (#196). */
 internal const val AboutLicence = "GPL-3.0-only · Copyright the Tessera authors"
 
-/** The licences page's title, and About's row that opens it. */
 internal const val OpenSourceLicencesTitle = "Open-source licences"
 
-/** [PUBLIC_REPO_URL] as the Source code row shows it, without the scheme. */
 internal val SourceLinkText = PUBLIC_REPO_URL.removePrefix("https://")
 
-/**
- * Settings → About (#206): the version, the app's own licence, the public source (opened in the browser; "No app can open this link" if nothing can) and the
- * open-source licences of every library the app ships, which open over Settings.
- */
 @Composable
 internal fun ColumnScope.AboutRows(messages: Messages = koinInject()) {
   var showingLicences by rememberSaveable { mutableStateOf(false) }
@@ -87,7 +80,6 @@ internal fun ColumnScope.AboutRows(messages: Messages = koinInject()) {
   if (showingLicences) OpenSourceLicences(onDismiss = { showingLicences = false })
 }
 
-/** A row that only says something: [label], and [value] under it, read as one by a screen reader. */
 @Composable
 private fun InfoRow(label: String, value: String) {
   Column(
@@ -99,7 +91,6 @@ private fun InfoRow(label: String, value: String) {
   }
 }
 
-/** What the licences page holds while it reads the list. */
 private sealed interface LicencesState {
   data object Loading : LicencesState
 
@@ -108,11 +99,6 @@ private sealed interface LicencesState {
   data object Failed : LicencesState
 }
 
-/**
- * The open-source licences, over Settings: every library this platform's build ships, by name, each opening to its
- * licences' full text. Read from the list the build bundled ([LICENCES_RESOURCE]), so it needs no network. A whole
- * screen on a phone, with Back; a large dialog on desktop, with Close and Esc.
- */
 @Composable
 internal fun OpenSourceLicences(
   onDismiss: () -> Unit,
@@ -125,8 +111,6 @@ internal fun OpenSourceLicences(
   }
   Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     val size = if (touch) Modifier.fillMaxSize() else Modifier.widthIn(max = 720.dp).fillMaxWidth(0.9f).fillMaxHeight(0.9f)
-    // Focus moves in, so Esc (and the mouse's back button) reaches the page and closes only it: left on the row behind, it would also reach the
-    // Settings sheet's own Esc, which closes the sheet.
     val focus = remember { FocusRequester() }
     LaunchedEffect(focus) { focus.requestFocus() }
     Surface(
@@ -173,7 +157,6 @@ internal fun OpenSourceLicences(
   }
 }
 
-/** A library: its name, coordinates and version, and its licences' names; tapping it shows or hides their full text. */
 @Composable
 private fun LibraryRow(library: OpenSourceLibrary) {
   var open by remember { mutableStateOf(false) }

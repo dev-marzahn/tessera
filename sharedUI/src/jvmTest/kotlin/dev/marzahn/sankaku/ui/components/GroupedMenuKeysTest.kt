@@ -22,13 +22,11 @@ import androidx.compose.ui.test.withKeyDown
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Every [GroupedMenu] works from the left hand (#443): focus as it opens, W/S to move, Space, Tab or Enter to choose. */
 @OptIn(ExperimentalTestApi::class)
 class GroupedMenuKeysTest {
   private val chosen = mutableListOf<String>()
   private var open by mutableStateOf(false)
 
-  // Opened after the first frame, as a click or key opens one.
   private fun ComposeUiTest.showMenu(items: @Composable () -> Unit) {
     setContent {
       Box { GroupedMenu(expanded = open, onDismissRequest = { open = false }) { MenuGroup(0, 1) { items() } } }
@@ -92,7 +90,6 @@ class GroupedMenuKeysTest {
         }
       }
     }
-    // As a tap leaves it: the menu would otherwise switch to keyboard mode and ring its first item.
     runOnIdle { modes!!.requestInputMode(InputMode.Touch) }
     open = true
     waitForIdle()

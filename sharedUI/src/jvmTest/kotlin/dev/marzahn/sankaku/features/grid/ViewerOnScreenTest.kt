@@ -16,22 +16,15 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/**
- * #323: a different post opened while the viewer over a grid is still closing starts a fresh opening, and the same
- * post turns round (#105). The viewer's contents stand in for [PhoneViewer]: what they remember (its pager, its
- * card's state) and a progress run on the viewer's transition, as the card's open and close are.
- */
 @OptIn(ExperimentalTestApi::class)
 class ViewerOnScreenTest {
   @Test
   fun onlyAnotherPostMidCloseGetsANewState() {
-    // From rest, the state goes on: the opening is a fresh one anyway.
     val atRest = ViewerOnScreen(startOpen = false)
     val rest = atRest.state
     atRest.open("b", closingId = "a")
     assertSame(rest, atRest.state)
 
-    // Open and closing into "a": still on screen, heading out.
     val closing = ViewerOnScreen(startOpen = true)
     val open = closing.state
     open.targetState = false
@@ -42,13 +35,8 @@ class ViewerOnScreenTest {
     assertEquals(false, closing.state.currentState)
   }
 
-  /** What the viewer's contents remembered, and how far the opening had got, each frame. */
   private class Shown(val remembered: Any, val progress: Float)
 
-  /**
-   * Opens "a", lets it settle, closes it, and 0.2 s into the close opens [next]. Returns the frame just before that
-   * tap and the one after it.
-   */
   private fun reopenMidClose(next: String): Pair<Shown, Shown> {
     var result: Pair<Shown, Shown>? = null
     runComposeUiTest {
@@ -85,9 +73,7 @@ class ViewerOnScreenTest {
   @Test
   fun anotherPostMidCloseOpensAfresh() {
     val (before, after) = reopenMidClose("b")
-    // A new composition: nothing the last opening remembered (its pager on the old page) carries over.
     assertNotSame(before.remembered, after.remembered)
-    // And the opening starts from the cell, not from where the closing card had got to.
     assertTrue(after.progress < before.progress, "the opening went on from ${before.progress} to ${after.progress}")
   }
 
@@ -95,7 +81,6 @@ class ViewerOnScreenTest {
   fun theSamePostMidCloseTurnsRound() {
     val (before, after) = reopenMidClose("a")
     assertSame(before.remembered, after.remembered)
-    // Turned round from where the close had got to (the reversal lands within a frame), not started again.
     assertTrue(after.progress > before.progress - 0.05f, "the opening restarted from ${before.progress} to ${after.progress}")
   }
 

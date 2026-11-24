@@ -11,13 +11,6 @@ import kotlinx.serialization.json.Json
 @Serializable
 private data class SavedPlayer(val volume: Float = 1f, val muted: Boolean = false, val startMuted: Boolean = false)
 
-/**
- * The video player's volume and mute, the same for every video and kept in [file] between runs. Every change is
- * written at once: it's a few bytes, and a change only comes from a click, a drag or a key.
- *
- * A fresh install plays unmuted at full volume: the system's volume sets how loud, as in other video apps (the owner,
- * #524). [startMuted] (Settings → Videos) mutes the first video of every run instead.
- */
 class PlayerPreferences(private val file: TextFile) {
   private val saved = file.read()?.let { runCatching { json.decodeFromString(SavedPlayer.serializer(), it) }.getOrNull() }
     ?: SavedPlayer()
@@ -25,20 +18,16 @@ class PlayerPreferences(private val file: TextFile) {
   var volume by mutableFloatStateOf(saved.volume.coerceIn(0f, 1f))
     private set
 
-  /** The mute the user chose, which is what's saved: a run's mute from [startMuted] isn't theirs (#535 review). */
   private var ownMute = saved.muted
 
   var muted by mutableStateOf(saved.muted || saved.startMuted)
     private set
 
-  /** Each run starts muted, whatever the last one was left at; the volume stays as it was for unmuting. */
   var startMuted by mutableStateOf(saved.startMuted)
     private set
 
-  /** What the player plays at: silent while [muted], else [volume]. */
   val playedVolume: Float get() = if (muted) 0f else volume
 
-  /** Sets the volume (0 to 1); a change while muted unmutes, as turning a volume up does. */
   fun changeVolume(to: Float) {
     volume = to.coerceIn(0f, 1f)
     muted = false
@@ -52,7 +41,6 @@ class PlayerPreferences(private val file: TextFile) {
     save()
   }
 
-  /** Takes effect from the next run: the video playing now keeps its sound. */
   fun changeStartMuted(to: Boolean) {
     startMuted = to
     save()

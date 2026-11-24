@@ -17,7 +17,6 @@ pluginManagement {
 }
 
 plugins {
-  // The version catalog isn't available in settings, so the version is repeated here.
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 

@@ -3,8 +3,6 @@ plugins {
   alias(libs.plugins.composeCompiler)
 }
 
-// One version for both apps: `tessera` in the version catalog. The versionCode is FIRST * 10000 + MINOR * 100 + PATCH,
-// where FIRST is the epoch scheme's EPOCH * 100 + MAJOR, so it only grows.
 val appVersion = libs.versions.tessera.get()
 val appVersionCode = appVersion.split('.').map { it.toIntOrNull() ?: -1 }.let { parts ->
   require(parts.size == 3 && parts[0] >= 0 && parts[1] in 0..99 && parts[2] in 0..99) {
@@ -13,8 +11,6 @@ val appVersionCode = appVersion.split('.').map { it.toIntOrNull() ?: -1 }.let { 
   parts[0] * 10000 + parts[1] * 100 + parts[2]
 }
 
-// The tessera.signing.* Gradle property, or else TESSERA_SIGNING_* from the environment, as the root build's
-// checkAndroidReleaseProperties reads them (see there why not ORG_GRADLE_PROJECT_*). Blank counts as missing.
 val releaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").associateWith { name ->
   val env = "TESSERA_SIGNING_" + name.replace(Regex("([A-Z])"), "_$1").uppercase()
   providers.gradleProperty("tessera.signing.$name").orNull?.takeIf { it.isNotBlank() }
@@ -36,15 +32,12 @@ android {
   compileSdk = libs.versions.android.compileSdk.get().toInt()
 
   defaultConfig {
-    // The app is Tessera (docs/adr/0003-renamed-to-tessera.md); the namespace keeps the Kotlin package.
     applicationId = "dev.marzahn.tessera"
     minSdk = libs.versions.android.minSdk.get().toInt()
     targetSdk = libs.versions.android.targetSdk.get().toInt()
     versionCode = appVersionCode
     versionName = appVersion
   }
-  // From ~/.gradle/gradle.properties, or TESSERA_SIGNING_* in the release workflow; without them the release APK is
-  // left unsigned and `releaseApk` fails.
   if (releaseSigning.values.all { it != null }) {
     signingConfigs {
       create("release") {
@@ -80,7 +73,6 @@ android {
   }
 }
 
-// `release` checks the signing properties before the long build starts.
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
   mustRunAfter(":checkAndroidReleaseProperties", ":checkMacReleaseProperties")
 }

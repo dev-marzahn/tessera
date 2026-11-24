@@ -25,11 +25,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlin.math.ceil
 
-/** The endpoint-specific header sets. Which endpoint takes which set is the table in `docs/api.md`. */
 enum class HeaderSet(val headers: Map<String, String>) {
   NONE(emptyMap()),
 
-  /** Never combine with [V2] on the keyset endpoint: V2 strips `file_url` and `sample_url`. */
   POSTS(
     mapOf(
       "enable-new-tag-type" to "true",
@@ -46,10 +44,6 @@ enum class HeaderSet(val headers: Map<String, String>) {
   ),
 }
 
-/**
- * Apart from [probe], the only code that sets endpoint headers. Maps every failure to an [ApiError];
- * connectivity and auth state are left to the client plugins.
- */
 internal suspend inline fun <reified T> HttpClient.apiRequest(
   method: HttpMethod,
   base: String,
@@ -94,13 +88,11 @@ internal suspend fun HttpClient.sendApiRequest(
 } catch (e: CancellationException) {
   throw e
 } catch (e: ParseException) {
-  // A plugin couldn't parse a header of a response that did arrive (#470, #473): Sankaku answered, so not offline.
   throw ApiError.Decoding(e)
 } catch (e: Exception) {
   throw ApiError.Network(e)
 }
 
-/** Throws the [ApiError] for any response that isn't a 2xx JSON body. */
 internal suspend fun checkResponse(response: HttpResponse) {
   val status = response.status
   val fromApi = response.call.request.url.host == API_HOST
@@ -116,18 +108,12 @@ internal suspend fun checkResponse(response: HttpResponse) {
   }
 }
 
-/** A 429's error: its `Retry-After` seconds, or the limiter's pause without one. */
 internal fun rateLimited(response: HttpResponse): ApiError.RateLimited {
-  // Rounded up to whole seconds for the message and the Retry button; the pause itself is the plugin's.
   val retryAfter = retryAfterPause(response.headers[HttpHeaders.RetryAfter])
     ?.let { ceil(it.inWholeMilliseconds / 1000.0).toLong() }
   return ApiError.RateLimited(retryAfter ?: RateLimiter.DEFAULT_PAUSE.inWholeSeconds)
 }
 
-/**
- * A 429 that refuses a search past the tag limit (step d27): `snackbar__anonymous_tags-limit` with `param: "4"` signed
- * out, `snackbar__account_regular_tags-explicit-limit` with `param: "member_tag_limit_9_and_…"` signed in.
- */
 internal suspend fun tagLimit(response: HttpResponse): ApiError.TagLimit? {
   val json = response.jsonOrNull()
   val code = json.code() ?: return null

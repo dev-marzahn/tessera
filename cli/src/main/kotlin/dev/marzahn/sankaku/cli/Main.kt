@@ -7,12 +7,6 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.system.exitProcess
 
-/**
- * `--rerecord` overwrites `docs/api-recorded.json`; `--slow` adds discovery step 7 (waits about an hour); `--android`
- * sends the Android app's User-Agent and client hints instead of the desktop's (#204). `--rate-probe` runs only
- * [RateProbe] (`--levels=2,4,6`, `--seconds=15`, `--burst=25`, `--limiter=6,3`); it's meant to meet a 429, so run it
- * by hand, not as part of the smoke run.
- */
 fun main(args: Array<String>) {
   if ("--rate-probe" in args) {
     fun arg(name: String) = args.firstOrNull { it.startsWith("--$name=") }?.substringAfter("=")
@@ -27,6 +21,24 @@ fun main(args: Array<String>) {
       runBlocking { probe.run() }
     } finally {
       probe.close()
+    }
+    return
+  }
+  if ("--preview-hash" in args) {
+    val discovery = PreviewHashDiscovery(loadEnv())
+    try {
+      runBlocking { discovery.run() }
+    } finally {
+      discovery.close()
+    }
+    return
+  }
+  if ("--backlog" in args) {
+    val discovery = BacklogDiscovery(loadEnv())
+    try {
+      runBlocking { discovery.run() }
+    } finally {
+      discovery.close()
     }
     return
   }
@@ -46,7 +58,6 @@ fun main(args: Array<String>) {
     recordings.save()
     report.print()
     smoke.close()
-    // Last: a ledger that can't be written must not hide the table.
     runCatching { ledger.save() }.onFailure { println("Could not save the feed ledger (${it::class.simpleName}).") }
   }
   exitProcess(if (report.failed) 1 else 0)

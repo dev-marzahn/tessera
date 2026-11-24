@@ -36,14 +36,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * The viewer's loads over the preview (#524): a sample or GIF still loading after half a second shows the thin load
- * bar, and a GIF whose sample fails shows Retry, which loads it again, as the network coming back does. Before, a
- * failed GIF stayed still for good.
- */
 @OptIn(ExperimentalTestApi::class)
 class MediaLoadTest {
-  /** Answers every image from memory: a 1 px picture, a connection error for [failing], or never for [hanging]. */
   private class Gate : Interceptor {
     val failing = mutableSetOf<Variant>()
     val hanging = mutableSetOf<Variant>()
@@ -54,7 +48,6 @@ class MediaLoadTest {
       calls += variant
       if (variant in hanging) awaitCancellation()
       if (variant in failing) return ErrorResult(null, chain.request, IOException("unreachable"))
-      // A sample of its post's sample size, so zooming past it asks for the full file.
       val (w, h) = if (variant == Variant.Sample) SAMPLE_WIDTH to SAMPLE_HEIGHT else 1 to 1
       val bitmap = Bitmap().apply { allocN32Pixels(w, h) }
       return SuccessResult(bitmap.asImage(), chain.request)
@@ -71,13 +64,11 @@ class MediaLoadTest {
   )
   private val gif = still.copy(id = "2", md5 = "def", fileType = "image/gif", fileExt = "gif")
 
-  /** A still whose file is ten times its sample: zoomed past the sample, the viewer fetches the file. */
   private val large = still.copy(
     id = "3", md5 = "ghi", fileWidth = SAMPLE_WIDTH * 10, fileHeight = SAMPLE_HEIGHT * 10,
     sampleWidth = SAMPLE_WIDTH, sampleHeight = SAMPLE_HEIGHT,
   )
 
-  /** Shows [large], waits for its sample, and zooms in with a double-click, as a user does. */
   private fun ComposeUiTest.zoomPastTheSample() {
     setContent { PostImageView(large, Modifier.size(400.dp, 300.dp)) }
     waitUntil(timeoutMillis = 5_000) { Variant.Sample in gate.calls }
@@ -99,7 +90,6 @@ class MediaLoadTest {
     gate.failing.clear()
     onNodeWithContentDescription("Retry loading the image").performClick()
     waitUntil(timeoutMillis = 5_000) { gate.calls.count { it == Variant.File } == 2 }
-    // The zoomed sample stays: only the full file is asked for again.
     assertEquals(samples, gate.calls.count { it == Variant.Sample })
   }
 

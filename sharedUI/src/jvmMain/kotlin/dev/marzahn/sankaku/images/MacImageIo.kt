@@ -10,10 +10,6 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ImageInfo
 
-/**
- * Decodes images through macOS ImageIO. Skia on desktop has no AVIF codec, and every preview is AVIF, so v1 (macOS
- * only) decodes them here. Returns null when ImageIO can't read the data or isn't available.
- */
 internal object MacImageIo {
   @Suppress("FunctionName")
   private interface CoreFoundation : Library {
@@ -51,7 +47,6 @@ internal object MacImageIo {
     class ByValue(width: Double, height: Double) : CGRect(0.0, 0.0, width, height), Structure.ByValue
   }
 
-  /** RGBA, premultiplied, byte order matching Skia's `RGBA_8888`. */
   private const val PREMULTIPLIED_LAST_BIG_ENDIAN = 1 or (4 shl 12)
 
   private val libraries by lazy {
@@ -103,7 +98,6 @@ internal object MacImageIo {
       cg.CGColorSpaceRelease(space)
     }
     val info = ImageInfo(width.toInt(), height.toInt(), ColorType.RGBA_8888, ColorAlphaType.PREMUL)
-    // One copy into a Skia bitmap; going through an Image would copy twice more.
     return Bitmap().takeIf { it.allocPixels(info) }?.apply {
       installPixels(info, pixels.getByteArray(0, (rowBytes * height).toInt()), rowBytes.toInt())
       setImmutable()

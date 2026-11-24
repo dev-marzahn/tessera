@@ -26,19 +26,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/**
- * The rating lock for Books, as on grids ([ratingLocked]): signed out, or G only on. Locked, the list sends
- * `rating:s`, a series shows only its G books, and a row shows no picture of another rating.
- */
 internal fun AuthSession.booksRatingLocked(privacy: PrivacySettings, scope: CoroutineScope): StateFlow<Boolean> =
   combine(isSignedIn, privacy.gOnly) { signedIn, gOnly -> ratingLocked(signedIn, gOnly) }
     .stateIn(scope, SharingStarted.Eagerly, ratingLocked(isSignedIn.value, privacy.gOnly.value))
 
-/**
- * One Books search's rows (#380). A new pager is built when the search sent changes (G only on or off, signing in or
- * out, [BookSearch.searched]), and on signing in or out with G only on too: a list loaded signed out says no book is
- * ♡ed (#383).
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class BookListViewModel(
   val tags: List<String>,
@@ -55,7 +46,6 @@ class BookListViewModel(
     .cachedIn(viewModelScope)
 }
 
-/** A series' books, once loaded. */
 sealed interface SeriesState {
   data object Loading : SeriesState
 
@@ -64,10 +54,6 @@ sealed interface SeriesState {
   data class Failed(val error: ApiError) : SeriesState
 }
 
-/**
- * The series [id]'s books (#380), loaded again when the rating lock changes, since locked it holds only the G ones
- * ([BooksRepository.series]).
- */
 class BookSeriesViewModel(
   val id: String,
   private val repository: BooksRepository,
@@ -83,7 +69,6 @@ class BookSeriesViewModel(
 
   init {
     viewModelScope.launch {
-      // Signing in or out loads it again even with G only on: signed out a series has no books.
       combine(ratingLocked, session.isSignedIn, retries) { locked, _, _ -> locked }.collectLatest { locked ->
         _state.value = SeriesState.Loading
         _state.value = try {

@@ -30,7 +30,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-/** A software Tink key stands in for the Keystore one, which a host JVM doesn't have. */
 class TinkTokenStoreTest {
   private class FakeKey(var failing: Boolean = false) : TokenKey {
     private var handle: KeysetHandle? = null
@@ -63,7 +62,6 @@ class TinkTokenStoreTest {
     user = TEST_USER,
   )
 
-  /** A new DataStore over the same file, as after a restart. DataStore allows one active instance per file. */
   private suspend fun dataStore(): DataStore<Preferences> {
     closeAll()
     val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -77,10 +75,6 @@ class TinkTokenStoreTest {
     dir.deleteRecursively()
   }
 
-  /**
-   * Cancels every DataStore's scope and waits for it to finish: DataStore releases its file only when the scope's job
-   * completes, not when it's cancelled, so a new instance made before that fails with "multiple DataStores active".
-   */
   private suspend fun closeAll() {
     scopes.forEach { it.coroutineContext.job.cancelAndJoin() }
   }
@@ -129,7 +123,6 @@ class TinkTokenStoreTest {
   @Test
   fun aValueTheKeyCantDecryptClearsItAndTheKey() = runBlocking {
     TinkTokenStore(dataStore(), FakeKey()).save(tokens)
-    // Another key, as after the Keystore key was replaced.
     val other = FakeKey()
 
     val store = dataStore()
@@ -137,7 +130,6 @@ class TinkTokenStoreTest {
     assertEquals(1, other.deletions)
     assertNull(store.data.first()[TOKENS])
 
-    // A sign-in after that saves under a new key again.
     TinkTokenStore(store, other).save(tokens)
     assertEquals(tokens, TinkTokenStore(dataStore(), other).load())
   }
@@ -162,7 +154,6 @@ class TinkTokenStoreTest {
     assertNull(TinkTokenStore(dataStore(), key).load())
   }
 
-  /** Reads from [store]; every write fails, as on a full disk. */
   private class UnwritableDataStore(private val store: DataStore<Preferences>) : DataStore<Preferences> {
     override val data = store.data
 

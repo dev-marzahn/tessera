@@ -60,10 +60,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #525: at 200% font on a 360 dp phone, what holds text grows rather than cutting it off, and touch targets stay
- * 48 dp. Bounds and text layout only, not pixels; at 100% the sizes are the ones the mockups set.
- */
 @OptIn(ExperimentalTestApi::class)
 class LargeFontLayoutTest {
   private fun ComposeUiTest.show(fontScale: Float, content: @Composable () -> Unit) {
@@ -75,11 +71,6 @@ class LargeFontLayoutTest {
     waitForIdle()
   }
 
-  /**
-   * No text on screen is cut off at its top or bottom: each one's lines fit the height it was given, which a fixed
-   * height around it would cut short. (Width isn't checked: a one-line text measured loosely reports a width overflow
-   * against its paragraph's room even when nothing is cut.)
-   */
   private fun ComposeUiTest.assertNoTextCut() {
     val texts = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
       .fetchSemanticsNodes()
@@ -87,7 +78,6 @@ class LargeFontLayoutTest {
     texts.forEach { node ->
       val results = mutableListOf<TextLayoutResult>()
       node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
-      // The lines laid out taller than the box: cut. (A line dropped for an ellipsis isn't counted; that's by design.)
       results.forEach {
         assertFalse(it.multiParagraph.height > it.size.height + 0.5f, "cut off: \"${it.layoutInput.text}\" in ${it.size}")
       }
@@ -146,10 +136,6 @@ class LargeFontLayoutTest {
     assertTrue(height("line") >= 56.dp)
   }
 
-  /**
-   * On touch only the ✕ removes a search chip, through a 48 dp target; a tap on its name does nothing, however short
-   * the name (#525 review: a 48 dp square over a short chip's end covered its name).
-   */
   @Test
   fun onTouchOnlyTheCrossRemovesASearchChip() {
     for (scale in listOf(1f, 2f)) for (tag in listOf("blue_hair", "sky")) runComposeUiTest {
@@ -173,14 +159,11 @@ class LargeFontLayoutTest {
     }
   }
 
-  /** The sheet's full title over its byline (40 sp) isn't cut by the row's 44 dp at large text (#525). */
   @Test
   fun theViewerSheetsTitleAndBylineFitAtTwice() = runComposeUiTest {
     val post = PostDto(id = "1", md5 = "m", rating = "s", status = "active", author = PostDto.Author("uploader"))
     val loader = ImageLoader.Builder(PlatformContext.INSTANCE).build()
     startKoin { modules(module { single { loader } }) }
-    // The thumbnail's request would make Coil's singleton loader, which outlives the test and fails a later one that
-    // sets its own: set it here and reset it after, as the grid fixtures do.
     SingletonImageLoader.setUnsafe(loader)
     try {
       show(2f) { Box(Modifier.testTag("title")) { TitleRow(post, fullFraction = { 1f }, onThumbnail = {}) } }
@@ -201,34 +184,26 @@ class LargeFontLayoutTest {
     }
   }
 
-  /**
-   * A Books row on a 360 dp phone (312 dp inside its padding): the title keeps at least 96 dp (scaled with the text)
-   * beside the heart by dropping page thumbnails, and goes under the pictures when even the cover leaves it less.
-   */
   @Test
   fun aBookRowDropsPagesThenStacksBeforeTheTitleIsSqueezed() {
     val inside = 312.dp
     fun layout(heart: Boolean, scale: Float) =
       bookRowLayout(inside, cover = 72.dp, thumb = 48.dp, maxThumbs = 2, trailing = if (heart) 40.dp else 0.dp, fontScale = scale)
-    // At 100% the row is the spec's: both pages, text beside them, heart or not.
     for (heart in listOf(false, true)) {
       assertEquals(2, layout(heart, scale = 1f).thumbs)
       assertFalse(layout(heart, scale = 1f).stacked)
     }
-    // At 130% a page drops for the title's room beside the heart; at 200% the text goes under all the pictures.
     assertEquals(1, layout(heart = true, scale = 1.3f).thumbs)
     assertFalse(layout(heart = true, scale = 1.3f).stacked)
     assertTrue(layout(heart = true, scale = 2f).stacked)
     assertEquals(2, layout(heart = true, scale = 2f).thumbs)
   }
 
-  /** The Up next card taller than a short screen at 200% scrolls, so its buttons are reached (#525). */
   @Test
-  fun theUpNextCardScrollsWhenTallerThanTheScreen() = runComposeUiTest {
+  fun theEndOfTheQueueCardScrollsWhenTallerThanTheScreen() = runComposeUiTest {
     val tabs = TabsController()
     tabs.open(Route.Grid(listOf("scenery")), background = false)
     val state = noUpNext(tabs)
-    // Past the only item: End of the queue.
     state.forward()
     assertEquals(UpNextCard.End, state.card)
     show(2f) { Box(Modifier.size(PHONE, 300.dp)) { UpNextCardView(state = state) } }

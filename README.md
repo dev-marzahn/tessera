@@ -21,11 +21,11 @@ Every release is on the [Releases page](../../releases/latest): `Tessera-<versio
 
 Android 12 or newer.
 
-<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/dev-marzahn/tessera-app"><img src=".github/obtainium-badge.png" alt="Get it on Obtainium" height="48"></a>
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/dev-marzahn/tessera"><img src=".github/obtainium-badge.png" alt="Get it on Obtainium" height="48"></a>
 
 - **With [Obtainium](https://obtainium.imranr.dev)** (recommended), which installs Tessera and notifies you of each
-  new release. On your phone, tap the badge above, or open `obtainium://add/https://github.com/dev-marzahn/tessera-app`.
-  Or, in Obtainium, tap **Add app** and paste `https://github.com/dev-marzahn/tessera-app`.
+  new release. On your phone, tap the badge above, or open `obtainium://add/https://github.com/dev-marzahn/tessera`.
+  Or, in Obtainium, tap **Add app** and paste `https://github.com/dev-marzahn/tessera`.
 - **By hand:** download `Tessera-<version>.apk` from the Releases page on your phone and open it. Android asks you
   once to let your browser or file manager install apps. Install each update the same way; it keeps your data.
 
@@ -53,8 +53,8 @@ Each APK and DMG on the Releases page has a build provenance attestation: it sho
 the file from this repository's tag. With the [GitHub CLI](https://cli.github.com):
 
 ```sh
-gh attestation verify Tessera-<version>.apk --repo dev-marzahn/tessera-app
-gh attestation verify Tessera-<version>.dmg --repo dev-marzahn/tessera-app
+gh attestation verify Tessera-<version>.apk --repo dev-marzahn/tessera
+gh attestation verify Tessera-<version>.dmg --repo dev-marzahn/tessera
 ```
 
 ## Privacy
@@ -105,9 +105,7 @@ bug** opens the bug form with your version, OS and device filled in. If Tessera 
 launch shows "Tessera closed unexpectedly" with the report. **Report** copies it and opens the bug form for you to
 paste it into; **Dismiss** doesn't. Either one deletes the saved report. On macOS, an error that leaves the app running isn't saved.
 
-This repository takes **issues only, not pull requests**: each release replaces its history with one commit, so a pull
-request can't be merged. If you have a fix, describe it or paste the patch in an issue
-([`CONTRIBUTING.md`](CONTRIBUTING.md)).
+To work on Tessera itself, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Build from source
 

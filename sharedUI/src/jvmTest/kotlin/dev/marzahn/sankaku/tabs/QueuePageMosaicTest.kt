@@ -37,12 +37,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/**
- * #232: a source restored at launch, never shown, shows its saved mosaic and count on the queue page. Its thumbnails
- * are cache-only requests, and the R15, R18 and unrated ones are blurred until the item is opened. The pictures are
- * synthetic fixtures in the memory cache, never a real post; with `EVIDENCE_DIR` set, the frame is saved there for the
- * PR, since the emulator's `safeOnly` run shows G posts only.
- */
 @OptIn(ExperimentalTestApi::class, DelicateCoilApi::class)
 class QueuePageMosaicTest {
   private val requests = mutableListOf<Boolean>()
@@ -53,16 +47,14 @@ class QueuePageMosaicTest {
   private fun restored(): TabsController {
     val saved = """{"version":2,"session":"s1","activeIndex":0,"tabs":[""" +
       """{"id":"b","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":[]}],"kind":"source","touched":1000,"addedIn":"s1"},""" +
-      """{"id":"a","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":["artist_a"]}],"kind":"source","touched":1000,"addedIn":"s1",""" +
+      """{"id":"a","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":["artist_a"]}],"kind":"source","touched":1000,"addedIn":"s1","gridTouched":true,""" +
       """"mosaic":[{"md5":"m0","rating":"s"},{"md5":"m1","rating":"q"},{"md5":"m2","rating":"e"},{"md5":"m3"}],"posts":60}""" +
       """]}"""
-    // The clock is at the file's `touched`, so nothing fades at launch.
     return TabsController(FileTabStateStore(InMemoryTextFile(saved)), clock = object : Clock {
       override fun now() = Instant.fromEpochSeconds(1000)
     })
   }
 
-  /** A 256 px picture of coloured stripes and a square: sharp edges, so a blur is plain to see. */
   private fun fixture(first: Int, second: Int): Bitmap {
     val bitmap = Bitmap().apply { allocN32Pixels(256, 256) }
     Canvas(bitmap).apply {
@@ -73,7 +65,6 @@ class QueuePageMosaicTest {
   }
 
   private fun ComposeUiTest.show(tabs: TabsController, used: Boolean = false) {
-    // The four previews are in the memory cache; each request records whether it may reach the network.
     val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
       .memoryCache { MemoryCache.Builder().maxSizeBytes(16L * 1024 * 1024).build() }
       .components {
@@ -113,8 +104,7 @@ class QueuePageMosaicTest {
   fun aRestoredSourceShowsItsSavedMosaicCacheOnlyWithAdultTilesBlurred() = runDesktopComposeUiTest(width = 1080, height = 1300) {
     show(restored())
 
-    onNodeWithText("Grid · 60 posts").assertExists()
-    // m1 (R15), m2 (R18) and m3 (no rating) blur; m0 (G) doesn't.
+    onNodeWithText("Newest · 60 posts", useUnmergedTree = true).assertExists()
     assertEquals(3, onAllNodesWithTag(BLURRED_TAG, useUnmergedTree = true).fetchSemanticsNodes().size)
     assertEquals(4, synchronized(requests) { requests.size })
     assertTrue(synchronized(requests) { requests.none { it } }, "every thumbnail request is cache-only")

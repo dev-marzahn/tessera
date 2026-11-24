@@ -44,6 +44,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
 import dev.marzahn.sankaku.READING_FILE
@@ -89,23 +90,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * #417: the Books list's keyboard cursor over fixture books, no network. WASD move it, Space opens the reader, E keeps
- * the book and F favourites it; closing the reader gives the list its keys back, with the cursor on the book it closed
- * on. State and semantics only: the row under the cursor is the selected one.
- */
 @OptIn(ExperimentalTestApi::class)
 class BookListKeysTest {
   private val reader = BookReader { _, _ -> }
   private val keyFocus = KeyFocus()
   private val kept = mutableListOf<Route>()
   private val opened = mutableListOf<Route>()
-  // Keys that no screen took and reached the window, as the shell's X, Z, `/` and Shift+A/D do.
   private val shellKeys = mutableListOf<Key>()
   private var listJson = LIST_JSON
 
   private fun startFixtureKoin() {
-    // zoomimage checks its gestures run on the main thread; a UI test sends them from the test's thread.
     setMainThreadChecker { true }
     val cache = Files.createTempDirectory("book-keys").toFile()
     val platform = module {
@@ -113,7 +107,7 @@ class BookListKeysTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -176,19 +170,16 @@ class BookListKeysTest {
     waitForIdle()
   }
 
-  /** The title of the row under the cursor, if any. */
   private fun ComposeUiTest.cursorRow(): String? =
     onAllNodes(hasTestTag(BOOK_ROW_TAG) and isSelected()).fetchSemanticsNodes().singleOrNull()?.let { node ->
       node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.map { it.text }.first { it.startsWith("Book ") }
     }
 
-  /** The title of the row that has the focus itself (not its ♡), if any. */
   private fun ComposeUiTest.focusedRow(): String? =
     onAllNodes(hasTestTag(BOOK_ROW_TAG) and isFocused()).fetchSemanticsNodes().singleOrNull()?.let { node ->
       node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.map { it.text }.first { it.startsWith("Book ") }
     }
 
-  /** #418: the focused row, if a row has the focus, is the cursor's. */
   private fun ComposeUiTest.selection(): String? {
     val cursor = cursorRow()
     focusedRow()?.let { assertEquals(cursor, it, "focus and the cursor's ring are on different rows") }
@@ -214,10 +205,8 @@ class BookListKeysTest {
     assertEquals("Book 3", cursorRow())
     key(Key.W)
     assertEquals("Book 2", cursorRow())
-    // One column: sideways goes nowhere, and A/D aren't the shell's either.
     key(Key.D)
     assertEquals("Book 2", cursorRow())
-    // Shift+S jumps a screen.
     key(Key.S, shift = true)
     val jumped = cursorRow()!!.removePrefix("Book ").toInt()
     assertTrue(jumped >= 5, "a screen down: Book $jumped")
@@ -228,11 +217,9 @@ class BookListKeysTest {
   @Test
   fun tabOntoARowPutsTheCursorThereAndSpaceOpensIt() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showList()
-    // The filters above the list come first.
     repeat(10) { if (focusedRow() == null) key(Key.Tab) }
     assertEquals("Book 1", selection(), "Tab onto a row takes the cursor")
     assertEquals("Book 1", focusedRow())
-    // Each row is two stops, the row and its ♡: on the ♡ the cursor stays on its row.
     key(Key.Tab)
     assertEquals("Book 1", selection())
     key(Key.Tab)
@@ -265,7 +252,6 @@ class BookListKeysTest {
     waitForIdle()
     assertEquals("Book 4", selection())
     assertEquals("Book 4", focusedRow(), "closing the reader gives the focus back to the cursor's row")
-    // What the search panel closing does: the frame's KeyFocusHolder asks for the keys; they go to the cursor's row.
     runOnIdle { keyFocus.returnToContent() }
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
@@ -277,7 +263,6 @@ class BookListKeysTest {
     showList()
     repeat(10) { if (focusedRow() == null) key(Key.Tab) }
     assertEquals("Book 1", focusedRow())
-    // On to the row's ♡: the cursor stays on its row, and Space is the ♡'s (signed out, it asks to sign in).
     key(Key.Tab)
     assertNull(focusedRow())
     assertEquals("Book 1", selection())
@@ -297,7 +282,6 @@ class BookListKeysTest {
     runOnIdle { keyFocus.returnToContent() }
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
-    // Back in view later, the cursor's row doesn't take the focus from what has it.
     onNode(hasScrollToIndexAction()).performScrollToIndex(0)
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
@@ -325,7 +309,6 @@ class BookListKeysTest {
     key(Key.Spacebar)
     waitForPages("b2")
     assertEquals(1, reader.session.value?.index)
-    // A/D in the reader move to another book: the cursor follows it there.
     key(Key.D)
     waitForPages("b3")
     key(Key.Escape)
@@ -333,7 +316,6 @@ class BookListKeysTest {
     waitForIdle()
     assertNull(reader.session.value)
     assertEquals("Book 3", cursorRow())
-    // The list has the keys again at once: WASD move, and what it doesn't take reaches the shell.
     key(Key.S)
     assertEquals("Book 4", cursorRow())
     shellKeys.clear()
@@ -348,7 +330,6 @@ class BookListKeysTest {
 
   @Test
   fun fOnASeriesRowIsTheShells() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // A series' row comes first: it has no ♡, so F there isn't the list's.
     listJson = """{ "series": { "data": [ { "id": "s1", "name_en": "Book series", "rating": "s", "poolCount": 3,
       "firstPool": ${bookItem(9)} } ] }, "pools": { "meta": {}, "data": [ ${(1..3).joinToString { bookItem(it) }} ] } }"""
     showList()
@@ -359,7 +340,6 @@ class BookListKeysTest {
     assertEquals(listOf(Key.F), shellKeys)
     val signIn = GlobalContext.get().get<SignInController>()
     assertFalse(signIn.isOpen.value)
-    // A book's row takes it.
     key(Key.S)
     shellKeys.clear()
     key(Key.F)
@@ -370,19 +350,16 @@ class BookListKeysTest {
   @OptIn(InternalComposeUiApi::class)
   @Test
   fun aHeldSpaceOpensOnce() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // A series' row opens its books in place, which the test's navigator records without leaving the list.
     listJson = """{ "series": { "data": [ { "id": "s1", "name_en": "Book series", "rating": "s", "poolCount": 3,
       "firstPool": ${bookItem(9)} } ] }, "pools": { "meta": {}, "data": [ ${(1..3).joinToString { bookItem(it) }} ] } }"""
     showList()
     key(Key.S)
-    // Held, Space's auto-repeats arrive as more key downs before its key up, as the desktop sends them.
     val scene = (this as SkikoComposeUiTest).scene
     listOf(KeyEventType.KeyDown, KeyEventType.KeyDown, KeyEventType.KeyDown, KeyEventType.KeyUp).forEach { type ->
       runOnIdle { scene.sendKeyEvent(KeyEvent(Key.Spacebar, type)) }
     }
     waitForIdle()
     assertEquals(1, opened.size, "held, Space opens once")
-    // Released, the next press is a new one.
     key(Key.Spacebar)
     assertEquals(2, opened.size)
   }
@@ -392,8 +369,6 @@ class BookListKeysTest {
   fun aHeldSpaceOpensTheReaderWithoutPagingThroughIt() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showList()
     key(Key.S)
-    // Held: Space and its auto-repeats, which the desktop sends as presses with no release between. It opens on its
-    // release, which the list sees, so the reader gets none of them (#433 review).
     val scene = (this as SkikoComposeUiTest).scene
     repeat(4) { runOnIdle { scene.sendKeyEvent(KeyEvent(Key.Spacebar, KeyEventType.KeyDown)) } }
     mainClock.advanceTimeBy(1_000)
@@ -403,13 +378,9 @@ class BookListKeysTest {
     waitForPages("b1")
     assertEquals(0, reader.session.value?.index)
     val top = shownPageTop()
-    // The reader takes the focus a frame or more after it opens; under load that can be after the pages are in.
-    // Its pane (the node with the pane title) is the one focused, not the list's.
     waitUntil(timeoutMillis = 10_000) {
       onAllNodes(isFocused() and SemanticsMatcher.keyIsDefined(SemanticsProperties.PaneTitle)).fetchSemanticsNodes().isNotEmpty()
     }
-    // Released, Space is the reader's again: a screen down. A screen can take page 1 out of sight, the end card (#503)
-    // giving the strip room to scroll.
     key(Key.Spacebar)
     waitUntil(timeoutMillis = 5_000) { shownPageTopOrNull().let { it == null || it < top - 100f } }
   }
@@ -429,11 +400,6 @@ class BookListKeysTest {
     assertNull(reader.session.value, "Space went down on another row: nothing opens")
   }
 
-  /**
-   * The top of the open book's first page in the window, or null once it's scrolled out of the strip. The books either
-   * side have one too, a window's width off to the sides, and only those: the nearest page to the window's left edge
-   * was the next book's once the open book's had scrolled away (#582).
-   */
   private fun ComposeUiTest.shownPageTop(): Float = shownPageTopOrNull()!!
 
   private fun ComposeUiTest.shownPageTopOrNull(): Float? =
@@ -446,7 +412,6 @@ class BookListKeysTest {
     showList()
     key(Key.S)
     assertEquals("Book 1", cursorRow())
-    // Scrolled (as the wheel does) past Book 1, the next press shows the cursor on a row in view, without jumping back.
     onNode(hasScrollToIndexAction()).performScrollToIndex(6)
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
@@ -481,7 +446,6 @@ class BookListKeysTest {
   @Test
   fun eKeepsTheBookAndFFavouritesIt() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showList()
-    // Without a cursor, E and F are the shell's.
     key(Key.E)
     assertEquals(emptyList(), kept)
     key(Key.S)
@@ -489,7 +453,6 @@ class BookListKeysTest {
     key(Key.E)
     assertEquals(listOf("b2"), kept.map { (it as Route.Book).id })
     assertEquals("Book 2", cursorRow(), "the cursor stays")
-    // Signed out, F asks to sign in to favourite, as the row's ♡ does.
     key(Key.F)
     assertTrue(GlobalContext.get().get<SignInController>().isOpen.value)
   }

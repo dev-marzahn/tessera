@@ -35,7 +35,6 @@ class PrivacySettingsTest {
 
     assertTrue(forced.gOnly.value)
     assertFalse(forced.gOnlySwitch.value)
-    // Turning the switch off cannot unlock a forced run, and the flag never reaches the file.
     forced.setGOnly(false)
     assertTrue(forced.gOnly.value)
     assertFalse(PrivacySettings(file).gOnly.value)
@@ -65,7 +64,6 @@ class PrivacySettingsTest {
     val launched = PrivacySettings(file)
     assertTrue(launched.gOnly.value)
     assertTrue(launched.gOnlySwitch.value)
-    // Switched off for this run: it stays off until the next launch, which switches it on again.
     launched.setGOnly(false)
     assertFalse(launched.gOnly.value)
     assertTrue(PrivacySettings(file).gOnly.value)

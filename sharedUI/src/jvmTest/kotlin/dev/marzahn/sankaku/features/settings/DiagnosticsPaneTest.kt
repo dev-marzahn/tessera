@@ -25,6 +25,10 @@ import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import kotlin.test.Test
@@ -33,7 +37,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/** Settings → Diagnostics (#207): the log's rows, Copy log and Report a bug. State and semantics only. */
 @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 class DiagnosticsPaneTest {
   private val clock = object : Clock {
@@ -42,7 +45,6 @@ class DiagnosticsPaneTest {
 
   private val environment = AppEnvironment("1.2.3", "macOS", "macOS 26.1", "Mac15,12 (Apple M3)")
 
-  /** Keeps what's copied, so the test never touches the machine's clipboard. */
   private class FakeClipboard : Clipboard {
     var entry: ClipEntry? = null
     override suspend fun getClipEntry(): ClipEntry? = entry
@@ -78,7 +80,6 @@ class DiagnosticsPaneTest {
     }
     waitForIdle()
 
-    // Newest first: each path's row comes above the one recorded before it.
     val tops = listOf("/data/sample/{md5}", "/posts/{id}/favorite", "/users/me").map {
       onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top
     }
@@ -118,6 +119,58 @@ class DiagnosticsPaneTest {
       }
     }
     onNodeWithText("No requests yet").assertExists()
+  }
+
+  @Test
+  fun exportQueueIsOfferedWhereThereIsAShareSheetAndRunsTheExport() = runComposeUiTest {
+    var exports = 0
+    setContent {
+      SankakuTheme {
+        Column {
+          DiagnosticsSection(Diagnostics(RequestLog(clock), environment), Messages(), open = { OpenUrlResult.Opened }, exportQueue = { exports++ })
+        }
+      }
+    }
+    onNodeWithText(ExportQueueHelp).assertExists()
+    onNodeWithText("Export queue").performClick()
+    waitUntil(timeoutMillis = 5_000) { exports == 1 }
+  }
+
+  @Test
+  fun withoutAShareSheetThereIsNoExport() = runComposeUiTest {
+    setContent {
+      SankakuTheme {
+        Column {
+          DiagnosticsSection(Diagnostics(RequestLog(clock), environment), Messages(), open = { OpenUrlResult.Opened }, exportQueue = null)
+        }
+      }
+    }
+    onNodeWithText("Export queue").assertDoesNotExist()
+  }
+
+  @Test
+  fun theExportHoldsBothFilesAsSavedAndSurvivesABrokenOne() = runTest {
+    val files = mapOf("tabs.json" to """{"version":2,"tabs":[]}""", "seen.json" to """{"version":1,"posts":[""")
+    var shared: Triple<String, String, String>? = null
+    shareQueue(Messages(), read = files::get, share = { name, type, text -> shared = Triple(name, type, text) }, now = clock::now)
+
+    val (name, type, text) = shared!!
+    assertEquals(QueueExportName, name)
+    assertEquals("application/json", type)
+    val export = Json.parseToJsonElement(text).jsonObject
+    assertEquals("2026-10-29T12:00:00Z", export.getValue("exportedAt").jsonPrimitive.content)
+    assertEquals(Json.parseToJsonElement(files.getValue("tabs.json")), export.getValue("tabs"))
+    assertEquals(files.getValue("seen.json"), export.getValue("seen").jsonPrimitive.content)
+    assertEquals(JsonNull, Json.parseToJsonElement(queueExport(null, null, clock.now())).jsonObject.getValue("seen"))
+  }
+
+  @Test
+  fun anExportThatCantBeWrittenSaysSoInsteadOfCrashing() = runTest {
+    val messages = Messages()
+    messages.messages.test {
+      shareQueue(messages, read = { null }, share = { _, _, _ -> throw java.io.IOException("No space left on device") })
+      assertEquals(Message(ExportQueueFailed, isError = true), awaitItem())
+    }
   }
 
   @Test

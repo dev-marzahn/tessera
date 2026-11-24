@@ -22,7 +22,6 @@ class SignInMessagesTest {
     assertTrue(SignInViewModel.messageFor(SignInResult.Failed(ApiError.RateLimited(30)))!!.contains("30 s"))
   }
 
-  /** Each message says what to do next, in plain words (#520). */
   @Test
   fun messagesHaveAWayOutAndNoInternalText() {
     val twoFactor = SignInViewModel.messageFor(SignInResult.TwoFactorUnsupported)!!
@@ -33,7 +32,6 @@ class SignInMessagesTest {
     assertTrue("client" !in rejected && "Try again later" in rejected, rejected)
   }
 
-  /** Sankaku answered, but not with a refusal, or didn't answer in time: no hint that the password is wrong (#493). */
   @Test
   fun anAnswerOtherThanTheRefusalSaysTryAgainLater() {
     val unavailable = "Sankaku couldn't sign you in right now. Try again later."

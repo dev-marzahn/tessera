@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Build
+import android.os.Debug
 import android.view.Window
 import android.view.WindowManager
 import java.lang.ref.WeakReference
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import dev.marzahn.sankaku.auth.TinkTokenStore
 import dev.marzahn.sankaku.auth.TokenStorageStatus
@@ -53,12 +55,6 @@ import okio.Path.Companion.toOkioPath
 import org.koin.dsl.module
 import org.koin.mp.KoinPlatform
 
-/**
- * A debuggable build takes [DebugFlags] from the launch intent's boolean extras `safeOnly`, `expireAccessToken` and
- * `expireSession`
- * (`adb shell am start … --ez safeOnly true`), the string extras `crash` and `openBook`, and `safeOnly` also from [SAFE_ONLY_PROPERTY]; a release build always
- * uses the defaults.
- */
 fun launchDebugFlags(context: Context, intent: Intent): DebugFlags =
   if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) {
     DebugFlags()
@@ -72,11 +68,6 @@ fun launchDebugFlags(context: Context, intent: Intent): DebugFlags =
     )
   }
 
-/**
- * [name]'s value through `getprop` (apps have no public API for it), or null if it can't be read within a second, so
- * a stuck `getprop` can't hang app start. Debug builds only. Its output is one short line, well under a pipe's buffer,
- * so it can finish before it's read.
- */
 private fun systemProperty(name: String): String? = runCatching {
   val process = ProcessBuilder("getprop", name).redirectErrorStream(true).start()
   try {
@@ -87,14 +78,9 @@ private fun systemProperty(name: String): String? = runCatching {
   }
 }.getOrNull()
 
-/** Where crash capture (#208) keeps the last crash's report, in the app's files folder. */
 fun androidCrashReports(context: Context): CrashReports =
   CrashReports(DiskTextFile(java.io.File(context.filesDir, "crash.txt")))
 
-/**
- * Uses the `Context` that `SankakuApplication` registers with `androidContext()`. [crashReports] is the one
- * `SankakuApplication` made at start, whose handler records crashes.
- */
 fun androidPlatformModule(flags: DebugFlags, crashReports: CrashReports): Module = module {
   single<TokenStore> { TinkTokenStore.create(androidContext()) }
   single { TokenStorageStatus.Encrypted }
@@ -109,10 +95,12 @@ fun androidPlatformModule(flags: DebugFlags, crashReports: CrashReports): Module
   single<TextFile>(ACCESSIBILITY_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "accessibility.json")) }
   single<TextFile>(QUEUE_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "queue.json")) }
   single<TextFile>(GRID_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "grid.json")) }
+  single<TextFile>(CACHE_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "cache.json")) }
   single<TextFile>(UPDATES_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "updates.json")) }
   single<TextFile>(TIPS_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "tips.json")) }
   single<TextFile>(SEEN_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "seen.json")) }
   single<TextFile>(FEED_MARKS_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "feed-marks.json")) }
+  single<TextFile>(TODAY_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "today.json")) }
   single<TextFile>(READING_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "readings.json")) }
   single<TextFile>(OUTBOX_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "outbox.json")) }
   single<TabStateStore> {
@@ -124,30 +112,27 @@ fun androidPlatformModule(flags: DebugFlags, crashReports: CrashReports): Module
     )
   }
   single<SaveFolder> { MediaStoreSaveFolder(androidContext()) }
-  // Created with Koin, so the app hears the network come back from the start.
   single(createdAtStart = true) { DefaultNetworkCallback.register(androidContext(), get()) }
-  // No PlatformContext definition: it's Coil's alias for Context here, which androidContext() already declares, and
-  // one that calls androidContext() would resolve itself.
 }
 
 actual val platformHasTabs: Boolean = true
+
+@Composable
+actual fun platformUses24HourClock(): Boolean = android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)
 
 actual fun platformOpenUrl(url: String): OpenUrlResult {
   val context = KoinPlatform.getKoin().get<Context>()
   return launchUrl(url, context::startActivity)
 }
 
-/** [platformOpenUrl] with the launcher passed in, so a test can make it throw. */
 internal fun launchUrl(url: String, start: (Intent) -> Unit): OpenUrlResult = try {
   val intent = Intent(Intent.ACTION_VIEW, url.toUri())
   intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
   start(intent)
   OpenUrlResult.Opened
 } catch (_: ActivityNotFoundException) {
-  // No browser installed, or a work profile without one.
   OpenUrlResult.Failed
 } catch (_: SecurityException) {
-  // The only app for it doesn't let others start it.
   OpenUrlResult.Failed
 }
 
@@ -157,9 +142,35 @@ actual fun platformShareText(text: String) {
   context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
+actual fun platformShareFile(fileName: String, mimeType: String, text: String) {
+  val context = KoinPlatform.getKoin().get<Context>()
+  val file = java.io.File(exportsDir(context).apply { mkdirs() }, fileName)
+  file.writeText(text)
+  val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
+  val send = Intent(Intent.ACTION_SEND)
+    .setType(mimeType)
+    .putExtra(Intent.EXTRA_STREAM, uri)
+    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+  send.clipData = ClipData.newRawUri(fileName, uri)
+  context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
+actual fun platformClearExports() {
+  exportsDir(KoinPlatform.getKoin().get<Context>()).deleteRecursively()
+}
+
+private fun exportsDir(context: Context) = java.io.File(context.cacheDir, "exports")
+
+actual fun platformAppDataText(name: String): String? {
+  val context = KoinPlatform.getKoin().get<Context>()
+  return runCatching { java.io.File(context.filesDir, name).readText() }.getOrNull()
+}
+
 actual fun plainTextClip(text: String): ClipEntry = ClipEntry(ClipData.newPlainText(text, text))
 
-actual fun processMemoryBytes(): Long? = null
+actual fun processMemoryBytes(): Long? = Debug.getPss().takeIf { it > 0 }?.let { it * 1024 }
+
+actual val processMemoryTargetBytes: Long = 512L * 1024 * 1024
 
 actual fun Modifier.platformBackKeys(onBack: () -> Unit): Modifier = this
 
@@ -185,17 +196,12 @@ actual val platformGridEdge: Dp = 6.dp
 actual fun PlatformSystemBars(hidden: Boolean, lightIcons: Boolean) {
   val window = LocalView.current.context.findActivity()?.window ?: return
   val requests = remember(window) { window.barRequests() }
-  // The app's own icon colour, restored once no viewer asks: dark icons over a light theme. Read from the theme rather
-  // than the window, which a viewer has changed.
   val appLight = MaterialTheme.colorScheme.surface.luminance() > 0.5f
   SystemBarRequest(requests, SystemBarsLook(hidden = hidden, lightIcons = lightIcons, appLight = appLight))
 }
 
-/** What one [PlatformSystemBars] asks of its window. */
 private data class SystemBarsLook(val hidden: Boolean, val lightIcons: Boolean, val appLight: Boolean)
 
-// One stack per window, so a viewer that leaves after the next one has asked doesn't undo it (#297). A stack reaches its
-// window only weakly: a strong reference from the value would keep the key, and a recreated activity's window, forever.
 private val windowBarRequests = WeakHashMap<Window, SystemBarRequests<SystemBarsLook>>()
 
 private fun Window.barRequests(): SystemBarRequests<SystemBarsLook> = windowBarRequests.getOrPut(this) {
@@ -211,8 +217,6 @@ private fun Window.barRequests(): SystemBarRequests<SystemBarsLook> = windowBarR
         isAppearanceLightStatusBars = !look.lightIcons
       }
     },
-    // After this frame's changes: a viewer that leaves before the next one asks, in the same frame, doesn't show the
-    // bars and the app's icons for a moment.
     restore = { look ->
       window.get()?.decorView?.post {
         if (requests.isEmpty) {
@@ -271,7 +275,6 @@ actual fun platformEnvironment(): AppEnvironment = AppEnvironment(
   device = androidDevice(Build.MANUFACTURER.orEmpty(), Build.MODEL.orEmpty()),
 )
 
-/** `Pixel 9` as `Google Pixel 9`; a model that already names its maker (`Nokia 8`) isn't prefixed twice. */
 internal fun androidDevice(manufacturer: String, model: String): String = when {
   manufacturer.isBlank() || model.startsWith(manufacturer, ignoreCase = true) -> model
   else -> "${manufacturer.replaceFirstChar { it.uppercase() }} $model"

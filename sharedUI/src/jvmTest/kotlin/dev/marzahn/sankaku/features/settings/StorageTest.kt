@@ -4,7 +4,10 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.disk.DiskCache
 import dev.marzahn.sankaku.Route
+import dev.marzahn.sankaku.data.CacheSettings
+import dev.marzahn.sankaku.data.CacheSizes
 import dev.marzahn.sankaku.data.InMemoryTextFile
+import dev.marzahn.sankaku.images.ResizableDiskCache
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.tabs.FileTabStateStore
 import dev.marzahn.sankaku.tabs.TabsController
@@ -20,7 +23,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Settings → Storage (#205): the cache's size in use, Clear cache and Clear saved tabs, the narrower wipes. */
 class StorageTest {
   private val dir = Files.createTempDirectory("storage-test")
 
@@ -70,8 +72,10 @@ class StorageTest {
     val images = loader()
     images.diskCache!!.put("a", 1000)
 
-    ClearSavedTabs(tabs, store).run()
+    var exportsCleared = 0
+    ClearSavedTabs(tabs, store, clearExports = { exportsCleared++ }).run()
 
+    assertEquals(1, exportsCleared)
     assertEquals(listOf("Browse"), tabs.tabs.value.map { it.title })
     assertTrue(tabs.closed.value.isEmpty())
     assertEquals("{}", tabsFile.read())
@@ -79,6 +83,53 @@ class StorageTest {
     assertNull(broken.read())
     assertEquals(1, seen.size)
     assertTrue(images.diskCache!!.size > 0)
+  }
+
+  @Test
+  fun aNewImageCacheSizeIsSavedAndAppliedWithoutARestart() = runBlocking {
+    val file = InMemoryTextFile()
+    val settings = CacheSettings(file)
+    var built = 0
+    val images = ImageLoader.Builder(PlatformContext.INSTANCE)
+      .diskCache {
+        ResizableDiskCache(settings.imageBytes.value) {
+          built++
+          DiskCache.Builder().directory(dir.toOkioPath()).fileSystem(FileSystem.SYSTEM).maxSizeBytes(it).build()
+        }
+      }
+      .build()
+    images.diskCache!!.put("a", 300_000)
+    val limits = CacheLimits(settings, images, resizeVideos = {}, videosOnDisk = { 0 })
+    assertEquals(300_000L, limits.imagesInUse())
+
+    limits.setImageBytes(512L * 1024 * 1024)
+
+    assertEquals(2, built, "a new cache at the new size")
+    assertEquals(512L * 1024 * 1024, images.diskCache!!.maxSize)
+    assertEquals(300_000L, limits.imagesInUse(), "what fits is kept")
+    assertEquals(512L * 1024 * 1024, CacheSettings(file).imageBytes.value, "kept for the next launch")
+  }
+
+  @Test
+  fun aNewVideoCacheSizeIsSavedAndHandedToThePlayersCache() = runBlocking {
+    val settings = CacheSettings(InMemoryTextFile())
+    val resized = mutableListOf<Long>()
+    val limits = CacheLimits(settings, loader(), resizeVideos = { resized += it }, videosOnDisk = { 42 })
+
+    limits.setVideoBytes(4L * 1024 * 1024 * 1024)
+
+    assertEquals(listOf(4L * 1024 * 1024 * 1024), resized)
+    assertEquals(42, limits.videosInUse())
+  }
+
+  @Test
+  fun aCacheRowSaysHowMuchItHoldsAndTakes() {
+    val gb = 1024L * 1024 * 1024
+    assertEquals("Up to 2 GB · 312 MB in use", cacheSizeHelp(2 * gb, 312L * 1024 * 1024))
+    assertEquals("Up to 1 GB · empty", cacheSizeHelp(gb, 0))
+    assertEquals("Up to 1 GB · …", cacheSizeHelp(gb, null))
+    assertEquals("2 GB (default)", cacheSizeLabel(2 * gb, CacheSizes.Images))
+    assertEquals("512 MB", cacheSizeLabel(gb / 2, CacheSizes.Images))
   }
 
   @Test

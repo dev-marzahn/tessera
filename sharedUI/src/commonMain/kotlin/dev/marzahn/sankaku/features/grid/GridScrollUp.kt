@@ -15,11 +15,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
-/**
- * Whether the user is scrolling a grid back up, more than a screen away from its top: what shows ↑ Top. The grid's
- * own scrolls go through [quietly] and count as neither up nor down, so a closing viewer that brings its cell back
- * into view never shows ↑ Top, or hides it, by itself (#299).
- */
 @Stable
 internal class ScrollUpWatch {
   var backUp by mutableStateOf(false)
@@ -27,13 +22,6 @@ internal class ScrollUpWatch {
 
   private var quiet by mutableIntStateOf(0)
 
-  /**
-   * Runs [block], the app's own scroll: whatever it moves is not the user scrolling. [watch] judges a move by the
-   * count when it next reads the position, a frame or so after the move, so [block] must end with a frame after its
-   * last move. A user scroll that cancels [block] gets that frame here, or the move [block] made would read as theirs.
-   * That user scroll moves the grid in the frame too, and that frame's move is read as ours: a swipe up ending within
-   * it shows no ↑ Top. Any move after it counts as theirs again.
-   */
   suspend fun quietly(block: suspend () -> Unit) {
     quiet++
     try {
@@ -46,7 +34,6 @@ internal class ScrollUpWatch {
     }
   }
 
-  /** Follows [state]'s scroll for as long as it's called. */
   suspend fun watch(state: LazyStaggeredGridState) {
     var lastIndex = 0
     var lastOffset = 0
@@ -65,7 +52,6 @@ internal class ScrollUpWatch {
   }
 }
 
-/** A [ScrollUpWatch] following [state]. */
 @Composable
 internal fun rememberScrollUpWatch(state: LazyStaggeredGridState): ScrollUpWatch {
   val watch = remember { ScrollUpWatch() }
@@ -73,12 +59,6 @@ internal fun rememberScrollUpWatch(state: LazyStaggeredGridState): ScrollUpWatch
   return watch
 }
 
-/**
- * The closing viewer's scroll: the least that shows the whole cell at [index], quietly for [scrollUp]. A cell the
- * scroll just composed has no bounds yet, so a scroll waits two frames before returning; closing at once would snap
- * the card into it. Those frames are inside the quiet scroll too: they are what lets [ScrollUpWatch] see the move while
- * it still counts as ours.
- */
 internal suspend fun LazyStaggeredGridState.scrollBackForClose(index: Int, scrollUp: ScrollUpWatch) {
   scrollUp.quietly {
     if (scrollFullyIntoView(index)) repeat(2) { withFrameNanos {} }

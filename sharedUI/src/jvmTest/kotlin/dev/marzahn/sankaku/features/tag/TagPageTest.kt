@@ -64,6 +64,7 @@ import dev.marzahn.sankaku.ACCESSIBILITY_FILE
 import dev.marzahn.sankaku.CACHE_DIR
 import dev.marzahn.sankaku.DebugFlags
 import dev.marzahn.sankaku.FIRST_LAUNCH_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.Navigator
@@ -117,7 +118,6 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 
-/** #486: a tag's page from a fake `/tag-and-wiki`: what it shows, where its rows lead, and closing it. */
 @OptIn(ExperimentalTestApi::class)
 class TagPageTest {
   private val opened = mutableListOf<Route>()
@@ -150,7 +150,7 @@ class TagPageTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -180,7 +180,6 @@ class TagPageTest {
   private fun ComposeUiTest.showPage(signedIn: Boolean = false) {
     startFixtureKoin(signedIn)
     setContent { TagPage(SEED, onClose = { closed++ }, navigator = navigator, onOpenTag = { linked += it.searchName }) }
-    // Loaded (its counts) or failed: Posts shows from the start.
     waitUntil(timeoutMillis = 5_000) {
       onAllNodesWithText("42 books").fetchSemanticsNodes().isNotEmpty() || onAllNodesWithText("Retry", substring = true).fetchSemanticsNodes().isNotEmpty()
     }
@@ -190,12 +189,10 @@ class TagPageTest {
   @Test
   fun showsTheTagsTypeNameCountsAndWiki() = runDesktopComposeUiTest {
     showPage()
-    // The opener's name: the page's `name` is the search key.
     onNodeWithText("Fixture Artist").assertExists()
     onNodeWithText("Artist").assertExists()
     onNodeWithText("12.3k posts").assertExists()
     onNodeWithText("42 books").assertExists()
-    // DText's wiki links read as their text.
     onNodeWithText("Draws fixtures.", substring = true).assertExists()
     assertTrue(onAllNodesWithText(FOLLOW).fetchSemanticsNodes().isEmpty(), "no Follow signed out")
   }
@@ -262,7 +259,6 @@ class TagPageTest {
 
   @Test
   fun failedItStillOffersPostsAndBooks() = runDesktopComposeUiTest {
-    // #522: the rows need only the tag's name.
     failing = true
     showPage()
     onNodeWithText(POSTS).performClick()
@@ -294,7 +290,6 @@ class TagPageTest {
 
   @Test
   fun hiddenBackOnlineItWaitsToBeShownBeforeLoadingAgain() = runDesktopComposeUiTest {
-    // REVIEW.md: nothing loads from what isn't on screen.
     unreachable = true
     startFixtureKoin(signedIn = false)
     var shown by mutableStateOf(true)
@@ -311,10 +306,6 @@ class TagPageTest {
     assertEquals(1, pageRequests)
   }
 
-  /**
-   * #522: the page as the shell has it: a stand-in for the window under it (a focusable screen with keys, some text and
-   * the window's message host), and [TagPageHost] over it with the shell's messages.
-   */
   private fun ComposeUiTest.showOverShell(sheet: Boolean = false): TagPages {
     startFixtureKoin(signedIn = false)
     val pages = GlobalContext.get().get<TagPages>()
@@ -329,7 +320,6 @@ class TagPageTest {
               .size(10.dp)
               .focusRequester(shellFocus)
               .onFocusChanged { shellFocused = it.isFocused }
-              // Presses: the release of the Esc that closed the page comes here once it's gone, as the shell's does.
               .onKeyEvent {
                 if (it.type == KeyEventType.KeyDown) shellKeys += it.key
                 true
@@ -362,7 +352,6 @@ class TagPageTest {
   private lateinit var shellScope: CoroutineScope
 
   private fun ComposeUiTest.press(key: Key) {
-    // To what has the focus: a button Tab lands on shows its tooltip (#521), a popup root of its own beside the window's.
     onNode(isFocused(), useUnmergedTree = true).performKeyInput { pressKey(key) }
     waitForIdle()
   }
@@ -386,7 +375,6 @@ class TagPageTest {
 
   @Test
   fun escThatReachesTheScreenUnderItClosesThePageNotTheScreen() = runDesktopComposeUiTest {
-    // A menu closing gave the focus back to the screen under the page (the issue's first Esc).
     val pages = showOverShell()
     shellFocus.requestFocus()
     waitForIdle()
@@ -463,7 +451,6 @@ class TagPageTest {
 
   @Test
   fun hiddenWhileItsSearchIsShownItComesBackAsItWasWithNoSecondRequest() = runDesktopComposeUiTest {
-    // #487 review: Back from the search it opened finds the page loaded, not loading it again.
     startFixtureKoin(signedIn = false)
     var shown by mutableStateOf(true)
     setContent { TagPage(SEED, onClose = { closed++ }, shown = shown, navigator = navigator) }
@@ -477,7 +464,6 @@ class TagPageTest {
     assertEquals(1, pageRequests, "loaded once")
   }
 
-  /** Where [part] of the text in [node] is laid out, in the node's own coordinates. */
   private fun at(node: SemanticsNodeInteraction, part: String): Offset {
     val layouts = mutableListOf<TextLayoutResult>()
     node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
@@ -491,13 +477,11 @@ class TagPageTest {
 
   @Test
   fun theWikiReadsAsDTextNeverRaw() = runDesktopComposeUiTest {
-    // #522: headings, bullets and links, where the page showed `h4.`, `*` and `[i]` as typed.
     pageJson = pageWith("h4. Characters\n[i]Some umamusume[/i]\n* [[other_tag|another]]\n* Last")
     showPage()
     wiki("Characters\nSome umamusume\n• another\n• Last").assertExists()
     assertTrue(onAllNodesWithText("h4.", substring = true).fetchSemanticsNodes().isEmpty())
     assertTrue(onAllNodesWithText("[i]", substring = true).fetchSemanticsNodes().isEmpty())
-    // A bullet is a paragraph of its own, with no blank line around it.
     val layouts = mutableListOf<TextLayoutResult>()
     wiki("Characters").fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
     assertEquals(4, layouts.first().lineCount)
@@ -509,7 +493,6 @@ class TagPageTest {
     wiki("Draws fixtures.").let { node -> node.performMouseInput { click(at(node, "another")) } }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("7 posts").fetchSemanticsNodes().isNotEmpty() }
     assertEquals("other_tag", pages.shown.value?.tag?.searchName)
-    // Named as the site names a tag known only by its key, until the page's own name... which the page never shows.
     onNodeWithText("Other Tag").assertExists()
     assertTrue(onAllNodesWithText("Fixture Artist").fetchSemanticsNodes().isEmpty(), "this page shows alone")
 
@@ -542,7 +525,6 @@ class TagPageTest {
 
   @Test
   fun onTouchALongPressOnAWikiLinkOpensASearchForItForLaterNotItsPage() = runDesktopComposeUiTest {
-    // #522 emulator QA: the link's own tap ran on the release, opening the tag's page instead.
     startFixtureKoin(signedIn = false)
     setContent { TagPage(SEED, onClose = { closed++ }, navigator = navigator, onOpenTag = { linked += it.searchName }, touch = true) }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("42 books").fetchSemanticsNodes().isNotEmpty() }
@@ -551,7 +533,6 @@ class TagPageTest {
     assertEquals(listOf<Route>(Route.Grid(listOf("order:popularity", "other_tag"))), later)
     assertEquals(listOf<String>(), linked, "not the tag's page")
 
-    // A tap still opens it.
     wiki("Draws fixtures.").let { node -> node.performTouchInput { click(at(node, "another")) } }
     waitForIdle()
     assertEquals(listOf("other_tag"), linked)
@@ -559,7 +540,6 @@ class TagPageTest {
 
   @Test
   fun aRowWithNothingInItGoesOnceLoaded() = runDesktopComposeUiTest {
-    // #522: "Books · 0 books" led to an empty search.
     pageJson = PAGE_JSON.replace("\"pool_count\": 42", "\"pool_count\": 0")
     showPageUntil("12.3k posts")
     onNodeWithText(POSTS).assertExists()
@@ -575,7 +555,6 @@ class TagPageTest {
     assertEquals(window.right, page.right, "at the window's right edge")
     assertEquals(window.height, page.height)
 
-    // Two pages deep, a click on the scrim closes them both.
     wiki("Draws fixtures.").let { node -> node.performMouseInput { click(at(node, "another")) } }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("7 posts").fetchSemanticsNodes().isNotEmpty() }
     onNodeWithTag(TAG_PAGE_SCRIM).performMouseInput { click(Offset(10f, 10f)) }
@@ -602,7 +581,6 @@ class TagPageTest {
 
   @Test
   fun aLinkToAPageAlreadyOpenGoesBackToItRatherThanStackingAnother() {
-    // #577 review: A → B → A → B… grew the stack without end, each page kept composed.
     val pages = TagPages()
     pages.open(SEED)
     pages.openLinked(WikiTag("other tag", "other_tag"))
@@ -613,7 +591,6 @@ class TagPageTest {
 
   @Test
   fun aLinkToASectionNamesTheTagWithoutIt() {
-    // #577 review: "[[Some Tag#Section]]" seeded the name "Some Tag#Section".
     val pages = TagPages()
     pages.open(SEED)
     pages.openLinked(WikiTag("Some Tag#Section", "some_tag"))

@@ -42,11 +42,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #521: the strip's tabs are tabs to a screen reader, named by their titles, with one stop each for Tab; its "+N" counts
- * open every tab; its icon buttons show their names on hover; and the active tab stays in view as the window resizes,
- * the tabs shrinking before the strip scrolls.
- */
 @OptIn(ExperimentalTestApi::class)
 class TabStripAccessTest {
   private val tabs = TabsController()
@@ -80,11 +75,9 @@ class TabStripAccessTest {
     val titles = tabs.tabs.value.map { it.title }
     onAllNodes(isTab).assertCountEquals(titles.size)
     titles.forEach { title ->
-      // Its title, not "Grid" from its icon, which every grid tab had.
       tab(title).assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, title == tabs.tabs.value.last().title))
     }
     onAllNodesWithContentDescription("Grid").assertCountEquals(0)
-    // One tab list around them.
     onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.SelectableGroup)).assertCountEquals(1)
   }
 
@@ -95,7 +88,6 @@ class TabStripAccessTest {
 
     val title = tabs.tabs.value.last().title
     val node = tab(title).fetchSemanticsNode()
-    // Its title alone: not its icon's "Grid", nor its ✕'s "Close tab", which is a node of its own.
     assertEquals(listOf(title), node.config[SemanticsProperties.ContentDescription])
     assertTrue(SemanticsActions.RequestFocus in node.config, "the tab takes the focus")
     assertEquals(listOf(CLOSE_TAB), node.config[SemanticsActions.CustomActions].map { it.label })
@@ -115,7 +107,6 @@ class TabStripAccessTest {
     titles.drop(1).forEach { next ->
       onRoot().performKeyInput { pressKey(Key.Tab) }
       waitForIdle()
-      // The next tab, not the ✕ of the one before.
       tab(next).assertIsFocused()
     }
   }
@@ -126,7 +117,6 @@ class TabStripAccessTest {
     tabs.activate(tabs.tabs.value[2].id)
     strip(width = 1600)
 
-    // From nothing focused, Tab enters the strip.
     onRoot().performKeyInput { pressKey(Key.Tab) }
     waitForIdle()
     tab(tabs.tabs.value[2].title).assertIsFocused()
@@ -164,7 +154,6 @@ class TabStripAccessTest {
     (1..4).forEach { tabs.open(grid("a_rather_long_search_tag_number_$it"), background = true) }
     strip(width = 900)
 
-    // Five tabs at 240 dp would need 1,200: they share 900 instead, and nothing is out of view.
     onAllNodesWithTag(HIDDEN_AFTER_TAG).assertCountEquals(0)
     tabs.tabs.value.drop(1).forEach { tab ->
       val bounds = tab(tab.title).bounds()
@@ -205,7 +194,6 @@ class TabStripAccessTest {
 
     onNodeWithContentDescription(MORE_LABEL).performClick()
     waitForIdle()
-    // Its key beside it, in a group of its own after Clear viewed.
     onNode(androidx.compose.ui.test.hasText(SHORTCUTS_ITEM) and androidx.compose.ui.test.hasText("?")).performClick()
     waitForIdle()
     assertEquals(1, opened)
@@ -225,9 +213,7 @@ class TabStripAccessTest {
   fun aTabsWidthIsSharedBetweenTheBounds() {
     assertEquals(TabMaxWidth, sharedTabWidth(1600.dp, 3, 0))
     assertEquals(TabMinWidth, sharedTabWidth(8.dp + TabMinWidth * 3 + 8.dp, 3, 0))
-    // Past the narrowest, the strip scrolls and each tab keeps its own width.
     assertEquals(TabMaxWidth, sharedTabWidth(400.dp, 12, 0))
-    // 900 − 8 start − 4 × 4 gaps = 876, over 5, in whole dp.
     assertEquals(175.dp, sharedTabWidth(900.dp, 5, 0))
   }
 

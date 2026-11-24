@@ -29,7 +29,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** #177: the queue page's blocks, seen, blur (until the queue's first use, #264), G only, Continue and a tap on a row. */
 @OptIn(ExperimentalTestApi::class)
 class QueuePageBehaviourTest {
   private val keptAt = Instant.parse("2026-11-01T12:00:00Z")
@@ -48,7 +47,6 @@ class QueuePageBehaviourTest {
 
   private fun keep(id: String, rating: String?) = tabs.openInBlock(listOf(Route.Grid(listOf("a"), at = id), post(id, rating)))
 
-  // Whether the queue was used since the app started (#264): QueueStart's, here the page's alone.
   private var used by mutableStateOf(false)
 
   private fun ComposeUiTest.show() {
@@ -63,6 +61,7 @@ class QueuePageBehaviourTest {
           clearViewed = ClearViewed(tabs, seen, messages),
           interacted = { used },
           onInteract = { used = true },
+          folding = false,
         )
       }
     }
@@ -71,7 +70,6 @@ class QueuePageBehaviourTest {
 
   private fun ComposeUiTest.blurred() = onAllNodesWithTag(BLURRED_TAG, useUnmergedTree = true).fetchSemanticsNodes().size
 
-  // Browse, then a with a G post and an R15 post kept.
   private fun block() {
     tabs.open(Route.Grid(listOf("a")), background = false)
     keep("g", "s")
@@ -86,7 +84,7 @@ class QueuePageBehaviourTest {
 
     onNodeWithText("Kept · seen").assertExists()
     onNodeWithText("Kept · R15").assertExists()
-    onNodeWithText("Grid · current").assertExists()
+    onNodeWithText("Newest · current", useUnmergedTree = true).assertExists()
   }
 
   @Test
@@ -104,7 +102,6 @@ class QueuePageBehaviourTest {
     block()
     show()
 
-    // The header's title: no button, nothing else happens.
     onNodeWithText("Queue").performTouchInput {
       down(center)
       up()
@@ -133,7 +130,6 @@ class QueuePageBehaviourTest {
     block()
     show()
 
-    // A semantics click, as TalkBack's: no touch reaches the page.
     onNodeWithText("Continue", substring = true).performSemanticsAction(SemanticsActions.OnClick)
 
     assertTrue(used)
@@ -221,7 +217,6 @@ class QueuePageBehaviourTest {
     waitForIdle()
 
     assertEquals(listOf("Browse", "A"), tabs.tabs.value.map { it.title })
-    // The button is gone; the entry is in Recently closed.
     onNodeWithContentDescription("Clear viewed", substring = true).assertDoesNotExist()
     onNodeWithText("2 posts").assertExists()
     onNodeWithText("Cleared").assertExists()

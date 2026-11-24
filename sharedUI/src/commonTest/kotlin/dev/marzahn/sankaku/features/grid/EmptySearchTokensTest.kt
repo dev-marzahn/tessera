@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** The empty grid lists every token, the unknown tags first (#135). */
 class EmptySearchTokensTest {
   private val searched = listOf("rating:s", "feed:following", "animated_gif", "ZZQQ", "-nope")
 

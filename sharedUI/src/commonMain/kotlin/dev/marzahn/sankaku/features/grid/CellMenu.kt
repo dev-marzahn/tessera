@@ -15,11 +15,6 @@ import dev.marzahn.sankaku.ui.components.MenuAction
 import dev.marzahn.sankaku.ui.components.MenuGroup
 import dev.marzahn.sankaku.ui.components.Shortcuts
 
-/**
- * A desktop grid cell's right-click menu (#504, the owner's OK on the mockup): Open, with Space's badge, and Open in
- * background tab, with E's badge and "Middle-click" under it, so the keep a middle-click makes is named where a mouse user looks; then
- * Favourite or Unfavourite ([favourited]) in a group of its own, as the cell's own toggle. Choosing closes it.
- */
 @Composable
 internal fun CellMenu(
   favourited: Boolean,
@@ -40,7 +35,6 @@ internal fun CellMenu(
         },
       )
       MenuAction(
-        // "Middle-click" on a line of its own: beside E's badge it pushed the label onto two lines in M3's 280 dp menu.
         text = {
           Column {
             Text(openInBackgroundLabel(touch = false))

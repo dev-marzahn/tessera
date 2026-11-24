@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
-/** A link no app could open says so, without the link (#358). */
 class OpenUrlMessageTest {
   @Test
   fun aFailedLinkShowsTheMessageWithoutTheUrl() = runTest {

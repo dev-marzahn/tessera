@@ -45,12 +45,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/**
- * #250 on the queue page: Recently closed rows show the closed item's thumbnail with cache-only requests, R15 and R18
- * pictures blur as a queue row's do (until the queue's first use, #264), G only leaves those entries out and counts
- * them, and TalkBack hears the row. The pictures are synthetic fixtures in the memory cache, never a real post; with `EVIDENCE_DIR` set, the frame is saved
- * there for the PR, since the emulator's `safeOnly` run shows G posts only.
- */
 @OptIn(ExperimentalTestApi::class, DelicateCoilApi::class)
 class ClosedRowPageTest {
   private val requests = mutableListOf<Boolean>()
@@ -58,8 +52,6 @@ class ClosedRowPageTest {
   @AfterTest
   fun tearDown() = SingletonImageLoader.reset()
 
-  // Restored at launch: Browse, a source with its saved mosaic, a G post and an R18 post. The clock is at the file's
-  // `touched`, so nothing fades.
   private fun restored(): TabsController {
     fun post(id: String, md5: String, label: String, rating: String) =
       """{"id":"$id","routes":[{"type":"dev.marzahn.sankaku.Route.Post","id":"$id","md5":"$md5","originTags":[],"label":"$label","rating":"$rating"}],""" +
@@ -79,7 +71,6 @@ class ClosedRowPageTest {
     tabs.value.drop(1).forEach { close(it.id) }
   }
 
-  /** A 256 px picture of coloured stripes and a square: sharp edges, so a blur is plain to see. */
   private fun fixture(first: Int, second: Int): Bitmap {
     val bitmap = Bitmap().apply { allocN32Pixels(256, 256) }
     Canvas(bitmap).apply {
@@ -129,18 +120,14 @@ class ClosedRowPageTest {
     show(tabs)
 
     onNodeWithText("Recently closed").assertExists()
-    // The source's mosaic (4), each cache-only. The two posts' previews are read straight from the memory cache, as a
-    // kept row's are, so the post each reopens can grow out of it from the first frame (#322): no request at all.
     assertEquals(4, synchronized(requests) { requests.size })
     assertTrue(synchronized(requests) { requests.none { it } }, "every thumbnail request is cache-only")
-    // m1 (R15) in the mosaic and the R18 post blur; the G tiles and the G post don't.
     assertEquals(2, onAllNodesWithTag(BLURRED_TAG, useUnmergedTree = true).fetchSemanticsNodes().size)
     System.getenv("EVIDENCE_DIR")?.let { dir ->
       ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, "recently-closed-thumbnails-fixture.png"))
     }
   }
 
-  // #264: by the queue rows' rule, unblurred once the queue was used since the app started.
   @Test
   fun closedRowsAreNotBlurredOnceTheQueueWasUsed() = runDesktopComposeUiTest(width = 1080, height = 2000) {
     val tabs = restored()

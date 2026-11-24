@@ -30,7 +30,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/** "Tessera closed unexpectedly" (#208): Report copies the trace and opens the form; either answer deletes the file. */
 @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 class CrashNoticeTest {
   private val clock = object : Clock {
@@ -48,7 +47,6 @@ class CrashNoticeTest {
     override val nativeClipboard: NativeClipboard = java.awt.datatransfer.Clipboard("test")
   }
 
-  /** A crash file as the last run left it, and the next launch's reports reading it. */
   private fun crashed(): Pair<InMemoryTextFile, CrashReports> {
     val file = InMemoryTextFile()
     CrashReports(file, clock, version = "1.2.3").record(IllegalStateException("https://sankakuapi.com/posts/1"))
@@ -72,7 +70,6 @@ class CrashNoticeTest {
       }
     }
     onNodeWithText(CrashNoticeTitle).assertIsDisplayed()
-    // What Report copies is on screen.
     onNodeWithText(diagnostics.crashText(crash)).assertExists()
 
     onNodeWithTag(CrashReportTag).performClick()
@@ -116,7 +113,6 @@ class CrashNoticeTest {
 
     onNodeWithText("$CrashReportCopied $NoAppForLink").assertIsDisplayed()
     assertTrue(reports.pending.value != null)
-    // The text is on the clipboard, so the file is gone already.
     assertNull(file.read())
     onNodeWithTag(CrashDismissTag).performClick()
     waitForIdle()

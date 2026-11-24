@@ -2,22 +2,30 @@ package dev.marzahn.sankaku.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +36,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,18 +56,8 @@ import dev.marzahn.sankaku.ui.theme.HoverShade
 import dev.marzahn.sankaku.ui.theme.Tinted
 import dev.marzahn.sankaku.ui.theme.tinted
 
-/** Where a chip's tag stands in the search it's shown against. */
 enum class TagChipState { Plain, Included, Excluded }
 
-/**
- * A post's tag in its tag list: a compact chip tinted with its [type]'s colour (neutral when the type isn't known
- * yet), the [count] inside. [TagChipState.Included] is the solid Sankaku pill with a plus, [TagChipState.Excluded] a
- * red outline with a minus and the name struck through. [selected] (the keyboard's selection) rings it with a gap of
- * the panel's colour, the same mark as the grid's keyboard cursor. [trailing] sits after the name (the followed
- * bell), in the chip's text colour; it adds the gap it's given only when it shows something. The chip shows the
- * hover of [interactionSource], which the caller also gives its pointer input. On [touch] the chip is 32 dp tall (the
- * approved Android mockup) in a 48 dp touch target that [modifier] is applied to, and a press darkens it as hover does.
- */
 @Composable
 fun TagChip(
   name: String,
@@ -67,12 +68,11 @@ fun TagChip(
   interactionSource: MutableInteractionSource,
   modifier: Modifier = Modifier,
   touch: Boolean = platformIsTouch,
-  /** Each time it goes up (a failed follow), the chip shakes with an error outline ([rejected]). */
   rejected: Int = 0,
+  later: TagLater? = null,
   trailing: (@Composable (gap: Dp) -> Unit)? = null,
 ) {
   val colors = MaterialTheme.colorScheme
-  // The info panel's colour, which the tonal fill and the ring's gap are mixed against.
   val panel = colors.surfaceContainerLowest
   fun solid(fill: Color, text: Color) = Tinted(fill, text, text.copy(alpha = CountAlpha))
   val chip = when (state) {
@@ -83,14 +83,12 @@ fun TagChip(
   val fill = chip.fill
   val text = chip.text
   val hovered by interactionSource.collectIsHoveredAsState()
-  // Touch has no hover, so a press darkens it instead.
   val pressed by interactionSource.collectIsPressedAsState()
+  val laterInteractions = remember { MutableInteractionSource() }
+  val laterPressed by laterInteractions.collectIsPressedAsState()
   val darken = hovered || (touch && pressed)
   val measures = if (touch) TouchMeasures else DesktopMeasures
   val ring = colors.primary
-  // On touch [modifier] (the caller's clicks) sits on a box at least 48 dp each way with the chip centred in it, so
-  // the touch target is 48 dp while the chip is drawn at the mockup's 32. Above its neighbours when selected, so the
-  // ring isn't covered by the next chip.
   Box(
     modifier
       .then(if (touch) Modifier.sizeIn(minWidth = TouchTarget, minHeight = TouchTarget) else Modifier)
@@ -99,7 +97,6 @@ fun TagChip(
   ) {
     Row(
       Modifier
-        // The ring is drawn outside the chip, in the gap between chips, so selecting one moves nothing.
         .drawBehind {
           if (!selected) return@drawBehind
           val out = (RingGap + SelectionRing / 2).toPx()
@@ -112,17 +109,22 @@ fun TagChip(
           )
         }
         .rejected(rejected, ChipShape)
-        // Taller with large text rather than cutting the name off (#525).
         .heightIn(min = measures.height)
+        .then(if (later != null) Modifier.height(IntrinsicSize.Min) else Modifier)
         .clip(ChipShape)
         .background(fill)
         .then(if (state == TagChipState.Excluded) Modifier.border(1.5.dp, colors.error, ChipShape) else Modifier)
-        // Hover (a press on touch) darkens the chip a little, whatever its fill.
         .drawWithContent {
           drawContent()
           if (darken) drawRect(Color.Black.copy(alpha = HoverShade))
         }
-        .padding(horizontal = measures.padding, vertical = 1.dp),
+        .then(
+          if (later != null) {
+            Modifier.padding(start = measures.padding)
+          } else {
+            Modifier.padding(horizontal = measures.padding, vertical = 1.dp)
+          },
+        ),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(measures.gap),
     ) {
@@ -132,7 +134,6 @@ fun TagChip(
         TagChipState.Plain -> null
       }
       if (sign != null) Text(sign, color = text, fontSize = measures.name, fontWeight = FontWeight.Bold)
-      // The name and [trailing] share a slot, so a trailing that shows nothing leaves no gap.
       Row(Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
         Text(
           name,
@@ -147,11 +148,46 @@ fun TagChip(
         CompositionLocalProvider(LocalContentColor provides text) { trailing?.invoke(measures.gap) }
       }
       if (count != null) Text(count, color = chip.count, fontSize = measures.count)
+      if (later != null) LaterSegment(later, text, laterPressed)
+    }
+    if (later != null) {
+      Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+        Box(
+          Modifier
+            .width(LaterSegmentWidth + measures.gap)
+            .fillMaxHeight()
+            .clickable(laterInteractions, indication = null, role = Role.Button, onClick = later.onClick)
+            .semantics { contentDescription = later.description },
+        )
+      }
     }
   }
 }
 
-/** A chip's measures: desktop's compact chip, and the approved Android mockup's (`.scratch/android-viewer/`). */
+@Composable
+private fun LaterSegment(later: TagLater, text: Color, pressed: Boolean) {
+  val colors = MaterialTheme.colorScheme
+  val queued = later.state != TagLaterState.Open
+  Row(Modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 6.dp).background(text.copy(alpha = HairlineAlpha)))
+    Box(
+      Modifier
+        .width(LaterSegmentWidth - 1.dp)
+        .fillMaxHeight()
+        .then(if (queued) Modifier.background(colors.primaryContainer) else Modifier)
+        .then(if (pressed) Modifier.background(Color.Black.copy(alpha = HoverShade)) else Modifier),
+      contentAlignment = Alignment.Center,
+    ) {
+      Icon(
+        later.state.icon,
+        contentDescription = null,
+        tint = if (queued) colors.onPrimaryContainer else text,
+        modifier = Modifier.size(18.dp),
+      )
+    }
+  }
+}
+
 private class ChipMeasures(val height: Dp, val padding: Dp, val gap: Dp, val name: TextUnit, val count: TextUnit)
 
 private val DesktopMeasures = ChipMeasures(height = 26.dp, padding = 8.dp, gap = 5.dp, name = 12.5.sp, count = 11.sp)
@@ -161,3 +197,5 @@ private val ChipCorner = 8.dp
 private val ChipShape = RoundedCornerShape(ChipCorner)
 private val RingGap = 2.dp
 private val SelectionRing = 2.dp
+private val LaterSegmentWidth = 42.dp
+private const val HairlineAlpha = 0.3f

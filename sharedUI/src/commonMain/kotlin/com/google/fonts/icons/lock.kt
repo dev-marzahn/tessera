@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `lock` (weight 400, grade 0, optical size 24). */
 public val lock: ImageVector
   get() {
     if (_lock != null) {

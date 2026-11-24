@@ -23,7 +23,6 @@ class QueueSettingsTest {
     assertFalse(QueueSettings(InMemoryTextFile()).switcherList.value)
   }
 
-  // #542: C opens the switcher as it was last left, after a restart too.
   @Test
   fun theSwitcherModeSurvivesARestart() {
     val file = InMemoryTextFile()
@@ -32,7 +31,6 @@ class QueueSettingsTest {
     assertTrue(QueueSettings(file).switcherList.value)
   }
 
-  // Each write keeps the other setting.
   @Test
   fun eachSettingKeepsTheOther() {
     val file = InMemoryTextFile()

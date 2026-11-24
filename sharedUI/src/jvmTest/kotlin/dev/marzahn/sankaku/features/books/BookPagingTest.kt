@@ -35,6 +35,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.Route
@@ -75,10 +76,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * #382: the reader over fixture results, no network. ← → (A/D) and swipes move between the results, the end of a
- * series' book is a "Next" card that continues into the next book, and Esc closes through the transition.
- */
 @OptIn(ExperimentalTestApi::class)
 class BookPagingTest {
   private val reader = BookReader { _, _ -> }
@@ -86,7 +83,6 @@ class BookPagingTest {
   private val booksAsked = mutableListOf<String>()
 
   private fun startFixtureKoin() {
-    // zoomimage checks its gestures run on the main thread; a UI test sends them from the test's thread.
     setMainThreadChecker { true }
     val cache = Files.createTempDirectory("book-paging").toFile()
     val platform = module {
@@ -94,7 +90,7 @@ class BookPagingTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -132,7 +128,6 @@ class BookPagingTest {
   @AfterTest
   fun stop() = stopKoin()
 
-  /** Results as a list shows them: [books], each with the series of [seriesOf], if any. */
   private class FixtureResults(private val books: List<ResultBook>, override val seriesId: String? = null) : BookResults() {
     override val count get() = books.size
     override val locked get() = false
@@ -151,7 +146,6 @@ class BookPagingTest {
     waitForPages(results.peek(index)!!.book.id)
   }
 
-  /** Until the book [id]'s first page is laid out (the books either side are too, so a title doesn't say which). */
   private fun ComposeUiTest.waitForPages(id: String) {
     waitUntil(timeoutMillis = 5_000) {
       onAllNodesWithContentDescription("Page 1 of 2").fetchSemanticsNodes().isNotEmpty() && reader.shown.value?.id == id
@@ -166,7 +160,6 @@ class BookPagingTest {
     waitForIdle()
   }
 
-  /** Scrolls the current book's strip to its end. */
   private fun ComposeUiTest.toEnd() = repeat(3) { key(Key.PageDown) }
 
   private fun ComposeUiTest.nextVolumes() = onAllNodesWithContentDescription("$NEXT_VOLUME:", substring = true).fetchSemanticsNodes().size
@@ -178,7 +171,6 @@ class BookPagingTest {
   @Test
   fun arrowsAndADMoveBetweenTheResults() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     open(FixtureResults(THREE.map { ResultBook(it) }))
-    // The first result: ← goes nowhere.
     key(Key.DirectionLeft)
     assertEquals("b1" to 0, where)
     key(Key.DirectionRight)
@@ -186,7 +178,6 @@ class BookPagingTest {
     assertEquals("b2" to 1, where)
     key(Key.D)
     waitForPages("b3")
-    // The last result: → goes nowhere.
     key(Key.DirectionRight)
     assertEquals("b3" to 2, where)
     key(Key.A)
@@ -206,33 +197,25 @@ class BookPagingTest {
     mainClock.advanceTimeBy(1_000)
     waitForPages("b2")
     assertEquals("b2" to 1, where)
-    // The book it came from stayed ready: swiping there and back asked for neither again. (Book one, two away while on
-    // book three, left the pager's window and is asked for again as a neighbour.)
     assertEquals(1, booksAsked.count { it == "b2" })
     assertEquals(1, booksAsked.count { it == "b3" })
   }
-
-  // #503: every book ends with the end card: "Finished", the next volume when the series is known, the next result,
-  // and Back to Books.
 
   @Test
   fun aSeriesListsBookEndsWithTheNextVolumeWhichPagesToIt() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     open(FixtureResults(THREE.take(2).map { ResultBook(it, "s1") }, seriesId = "s1"))
     toEnd()
     onNodeWithText(FINISHED).assertExists()
-    // In a series' list the next result is the next volume: offered once.
     assertEquals(0, nextResults())
     onNodeWithContentDescription(nextVolumeLabel("Book two")).performClick()
     mainClock.advanceTimeBy(1_000)
     waitForPages("b2")
     assertEquals("b2" to 1, where)
-    // The series' list has its books: the series isn't asked for.
     assertEquals(emptyList(), seriesAsked)
   }
 
   @Test
   fun aSeriesRowsBookContinuesIntoTheNextVolumeInPlace() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // A series' row shows one of its books; the books after it come from the series.
     open(FixtureResults(listOf(ResultBook(THREE[0], "s1"), ResultBook(THREE[2]))))
     toEnd()
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription(nextVolumeLabel("Book two")).fetchSemanticsNodes().isNotEmpty() }
@@ -240,8 +223,6 @@ class BookPagingTest {
     onNodeWithContentDescription(nextVolumeLabel("Book two")).performClick()
     mainClock.advanceTimeBy(1_000)
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Book two").fetchSemanticsNodes().isNotEmpty() }
-    // The series is the last there is: Book two ends with no next volume. It's still the series' row: its next result
-    // is the result after it.
     assertEquals("b2" to 0, where, "the reader shows the next book, still at the series row")
     toEnd()
     assertEquals(0, nextVolumes())
@@ -276,10 +257,8 @@ class BookPagingTest {
     assertEquals(null, reader.session.value, "Back to Books closes the reader")
   }
 
-  /** Where the current book's page [description] is in the window: the books either side have pages of that name too. */
   private fun ComposeUiTest.shownPage(description: String): Rect =
     onAllNodesWithContentDescription(description).fetchSemanticsNodes().map { node ->
-      // With the zoom and the pager's offset, unclipped by the viewport.
       val coordinates = node.layoutInfo.coordinates
       val size = coordinates.size
       Rect(coordinates.localToRoot(Offset.Zero), coordinates.localToRoot(Offset(size.width.toFloat(), size.height.toFloat())))
@@ -289,7 +268,6 @@ class BookPagingTest {
   fun aDragDownTheStripScrollsItAndStaysOnTheBook() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     open(FixtureResults(THREE.map { ResultBook(it) }), index = 1)
     val before = shownPage("Page 1 of 2")
-    // Mostly up, a little sideways, as a thumb drags.
     onRoot().performTouchInput { swipe(center + Offset(20f, 150f), center - Offset(20f, 150f), durationMillis = 300) }
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
@@ -310,13 +288,11 @@ class BookPagingTest {
     waitForIdle()
     assertEquals("b2" to 1, where, "a pinch isn't a swipe")
     val zoomed = shownPage("Page 1 of 2")
-    // A sideways drag pans the zoomed strip: the same book, moved over.
     onRoot().performTouchInput { swipe(center, center - Offset(150f, 0f), durationMillis = 300) }
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
     assertEquals("b2" to 1, where, "panned, not paged")
     assertTrue(shownPage("Page 1 of 2").left < zoomed.left - 100f, "panned left")
-    // At the strip's edge, the next swipe is the pager's.
     repeat(4) {
       onRoot().performTouchInput { swipe(centerRight - Offset(20f, 0f), centerLeft + Offset(20f, 0f), durationMillis = 200) }
       mainClock.advanceTimeBy(1_000)

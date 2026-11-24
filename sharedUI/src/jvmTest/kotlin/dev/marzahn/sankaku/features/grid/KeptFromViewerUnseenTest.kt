@@ -23,11 +23,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-/**
- * #537: a post kept from the viewer is born unseen. The viewer had fully shown it, and moving on from it then made it
- * "seen since kept", so Clear viewed removed it and "Queue done" came while it was still in the queue. That showing
- * came before the keep, so it doesn't count.
- */
 @OptIn(ExperimentalTestApi::class)
 class KeptFromViewerUnseenTest {
   private val fixture = GridScreenFixture(images = true)
@@ -47,7 +42,6 @@ class KeptFromViewerUnseenTest {
       press(Key.D)
       assertEquals(2, viewerPost())
       val seen = GlobalContext.get().get<SeenStore>()
-      // The viewer does fully show its posts here: moving on from post 1 made it seen.
       assertTrue(seen.isSeen("fixture-1"), "the viewer never fully showed a post")
 
       press(Key.E)
@@ -58,11 +52,9 @@ class KeptFromViewerUnseenTest {
 
       val kept = tabs.tabs.value.single { (it.top as? Route.Post)?.id == "fixture-2" }
       assertFalse(kept.seenSinceKept(seen), "a post kept from the viewer is born seen")
-      // Clear viewed leaves it, and with it left the queue isn't done (#502's "Queue done" reads keptLeft).
       assertEquals(emptyList(), tabs.viewedKeptPosts(seen))
       assertEquals(1, keptLeft(tabs.tabs.value) { it.seenSinceKept(seen) })
 
-      // Back in the viewer on it, E again: kept already and unseen, so "Already", not "Kept again".
       press(Key.Spacebar)
       assertEquals(2, viewerPost())
       press(Key.E)
@@ -71,10 +63,6 @@ class KeptFromViewerUnseenTest {
   }
 }
 
-/**
- * The phone's ⋮ Keep for later goes through [keepingFrom] as desktop's E does; no test composes the phone viewer, so
- * this drives that keep with the viewer's own [Viewing] and the grid's [keepPost].
- */
 class PhoneKeepUnseenTest {
   private var now = Instant.parse("2026-11-13T12:00:00Z")
   private val clock = object : Clock {
@@ -96,7 +84,6 @@ class PhoneKeepUnseenTest {
     viewing.loaded(post.id)
 
     keep(post)
-    // Force-stopped, or swiped on: the viewer leaves the post.
     viewing.leave()
 
     val kept = tabs.tabs.value.single { (it.top as? Route.Post)?.id == "p1" }

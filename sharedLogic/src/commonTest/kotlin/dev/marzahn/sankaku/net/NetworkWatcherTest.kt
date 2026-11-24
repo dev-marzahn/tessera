@@ -11,12 +11,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The watcher fed as Android's default-network callback feeds it, with plain objects for networks. */
 class NetworkWatcherTest {
   private val wifi = Any()
   private val mobile = Any()
 
-  /** Offline as a connection error leaves it, as the response hook marks it. */
   private fun ConnectivityState.loseConnection() = apply { setOffline(true) }
 
   @Test
@@ -44,7 +42,6 @@ class NetworkWatcherTest {
 
     NetworkWatcher(h.connectivity).onDefaultNetwork(wifi, validated = true)
 
-    // A network says nothing about Sankaku's servers: a 5xx waits for a Retry tap.
     assertFalse(h.connectivity.offline.value)
     assertEquals(0, h.connectivity.retryRequests.value)
   }
@@ -56,7 +53,6 @@ class NetworkWatcherTest {
     h.session.restore()
     runCatching { h.posts.keyset(emptyList()) }
 
-    // The network is up and one request gets through before Android validates it.
     fail = false
     h.posts.keyset(emptyList())
     assertFalse(h.connectivity.offline.value)
@@ -70,7 +66,6 @@ class NetworkWatcherTest {
   fun aNetworkWhileNothingFailedRetriesNothing() {
     val connectivity = ConnectivityState()
 
-    // Registering at start, or a handoff from Wi-Fi to mobile while online.
     NetworkWatcher(connectivity).onDefaultNetwork(wifi, validated = true)
 
     assertEquals(0, connectivity.retryRequests.value)
@@ -97,7 +92,6 @@ class NetworkWatcherTest {
 
     watcher.onDefaultNetwork(wifi, validated = true)
     connectivity.loseConnection()
-    // Android repeats the capabilities on any change (signal strength, say): not a network coming back.
     watcher.onDefaultNetwork(wifi, validated = true)
     assertEquals(0, connectivity.retryRequests.value)
 

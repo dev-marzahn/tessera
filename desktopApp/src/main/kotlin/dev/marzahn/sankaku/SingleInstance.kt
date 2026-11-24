@@ -8,12 +8,7 @@ import java.net.Socket
 import java.nio.channels.FileLock
 import kotlin.concurrent.thread
 
-/**
- * One app instance per user. The first instance holds a lock on `instance.lock` and listens on a loopback port
- * written into it; a second instance sends `focus` to that port and exits.
- */
 class SingleInstance private constructor(private val lock: FileLock, private val server: ServerSocket) {
-  /** Calls [onFocus] on a background thread whenever another instance starts. */
   fun listen(onFocus: () -> Unit) {
     thread(isDaemon = true, name = "single-instance") {
       while (!server.isClosed) {
@@ -27,7 +22,6 @@ class SingleInstance private constructor(private val lock: FileLock, private val
   }
 
   companion object {
-    /** Returns null after asking the running instance to come to the front. */
     fun acquire(dataDir: File): SingleInstance? {
       dataDir.mkdirs()
       val file = RandomAccessFile(File(dataDir, "instance.lock"), "rw")

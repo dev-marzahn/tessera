@@ -13,12 +13,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/**
- * #250: a Recently closed row shows the thumbnail its item had on the queue page: a post's preview (by its route's
- * md5) or a source's mosaic, also for items restored at launch. G only leaves out R15 and R18 entries and counts them.
- * Recently closed itself is kept for the session only; a faded source's mosaic is saved, optional, so Delete now's
- * entry has it too. The md5s are synthetic.
- */
 class ClosedRowThumbnailTest {
   private var now = Instant.fromEpochSeconds(1000)
   private val clock = object : Clock {
@@ -27,7 +21,6 @@ class ClosedRowThumbnailTest {
 
   private val mosaicJson = """"mosaic":[{"md5":"m0","rating":"s"},{"md5":"m1","rating":"q"},{"md5":"m2","rating":"s"},{"md5":"m3","rating":"s"}],"posts":60"""
 
-  // Saved before a relaunch: a source with its mosaic, and a G post kept from it.
   private val saved = """{"version":2,"session":"s1","activeIndex":0,"tabs":[""" +
     """{"id":"a","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":["artist_a"]}],"kind":"source","touched":1000,"addedIn":"s1",$mosaicJson},""" +
     """{"id":"p","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":["artist_a"]},""" +
@@ -141,7 +134,7 @@ class ClosedRowThumbnailTest {
   }
 
   @Test
-  fun aFadedSourceSavesItsMosaicAndAFileWithoutOneLoadsUnchanged() {
+  fun aSourceAnEarlierVersionFadedComesBackWithItsMosaic() {
     val faded = SavedFaded(
       at = 1000,
       tabs = listOf(
@@ -151,32 +144,30 @@ class ClosedRowThumbnailTest {
         ),
       ),
     )
-    val source = FadedSource.of(faded)!!
-    assertEquals(listOf("m0"), source.members.single().mosaic!!.thumbs.map { it.md5 })
-    assertEquals(faded.tabs.single().mosaic, source.saved().tabs.single().mosaic)
-    assertEquals(60, source.saved().tabs.single().posts)
+    val store = FileTabStateStore(InMemoryTextFile(null))
+    store.save(SavedTabs(activeIndex = 0, tabs = listOf(SavedTab("b", listOf(Route.Grid(emptyList())))), faded = listOf(faded)))
 
-    val without = faded.copy(tabs = listOf(faded.tabs.single().copy(mosaic = null, posts = null)))
-    val plain = FadedSource.of(without)!!
-    assertNull(plain.members.single().mosaic)
-    assertNull(plain.saved().tabs.single().mosaic)
-    assertNull(plain.saved().tabs.single().posts)
+    val tabs = TabsController(store, clock = clock)
+
+    val source = tabs.tabs.value.single { it.top == Route.Grid(listOf("artist_a")) }
+    assertEquals(listOf("m0"), source.mosaic!!.thumbs.map { it.md5 })
+    assertEquals(60, source.mosaic!!.posts)
   }
 
   @Test
-  fun aFileWithAFadedSourceAndNoMosaicLoadsAndSavesBackUnchanged() {
+  fun aFileWithAFadedSourceAndNoMosaicLoadsItAsAnItemAndSavesWithoutTheFadedList() {
     val text = """{"version":2,"session":"s1","activeIndex":0,"tabs":[""" +
       """{"id":"b","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":[]}],"kind":"source","touched":1000,"addedIn":"s1"}],""" +
       """"faded":[{"at":1000,"tabs":[{"id":"a","routes":[{"type":"dev.marzahn.sankaku.Route.Grid","tags":["artist_a"]}],""" +
       """"kind":"source","touched":900,"addedIn":"s1"}]}]}"""
     val file = InMemoryTextFile(text)
     val store = FileTabStateStore(file)
-    val before = store.load()!!
     val tabs = TabsController(store, clock = clock)
 
-    assertEquals(before, tabs.saved())
+    assertEquals(listOf(Route.Grid(emptyList()), Route.Grid(listOf("artist_a"))), tabs.tabs.value.map { it.top })
+    assertNull(tabs.tabs.value.last().mosaic)
     store.save(tabs.saved())
     assertFalse(file.read()!!.contains("mosaic"))
-    assertEquals(before, store.load())
+    assertFalse(file.read()!!.contains("faded"))
   }
 }

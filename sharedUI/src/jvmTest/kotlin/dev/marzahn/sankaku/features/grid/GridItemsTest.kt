@@ -7,7 +7,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** #314: a feed's headings are items of the grid of their own, so the grid maps posts to items and back. */
 class GridItemsTest {
   private val items = GridItems(
     listOf(
@@ -26,7 +25,6 @@ class GridItemsTest {
 
   @Test
   fun eachHeadingTakesTheItemBeforeItsPost() {
-    // Items: H0 p0 p1 p2 H3 p3 p4 H5 p5 p6 …
     assertEquals(listOf(1, 2, 3, 5, 6, 8, 9), (0..6).map(items::itemOf))
     assertEquals(listOf(null, 0, 1, 2, null, 3, 4, null, 5, 6), (0..9).map(items::postOf))
     assertEquals(FeedHeading.CaughtUp, items.headingAt(4)?.heading)
@@ -44,8 +42,6 @@ class GridItemsTest {
 
   @Test
   fun headingKeysAreDistinctNegativeLongs() {
-    // A lazy item's key must fit in an Android Bundle (a data class crashed the phone's grid) and mustn't be a String,
-    // which the reading order takes for a post id.
     val placed = listOf(
       PlacedHeading(0, FeedHeading.New(3, more = false, gapLeft = null)),
       PlacedHeading(0, FeedHeading.CaughtUp),
@@ -62,5 +58,20 @@ class GridItemsTest {
   fun theItemOfAHeading() {
     assertEquals(7, items.itemOfHeading { it is FeedHeading.Continue })
     assertNull(GridItems.None.itemOfHeading { true })
+  }
+
+  @Test
+  fun theSameHeadingsAreEqualItems() {
+    val again = GridItems(
+      listOf(
+        PlacedHeading(5, FeedHeading.Continue(2, offer = false)),
+        PlacedHeading(0, FeedHeading.New(3, more = false, gapLeft = null)),
+        PlacedHeading(3, FeedHeading.CaughtUp),
+      ),
+    )
+    assertEquals(items, again)
+    assertEquals(items.hashCode(), again.hashCode())
+    assertTrue(items != GridItems(listOf(PlacedHeading(3, FeedHeading.CaughtUp))))
+    assertEquals(GridItems.None, GridItems(emptyList()))
   }
 }

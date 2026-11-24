@@ -9,7 +9,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** #522: a tag's wiki as the page shows it, its DText read as headings, bullets, styles and links, never raw. */
 class WikiTextTest {
   private fun AnnotatedString.styledOver(part: String) = spanStyles.filter { text.substring(it.start, it.end) == part }.map { it.item }
 
@@ -28,7 +27,6 @@ class WikiTextTest {
 
   @Test
   fun starLinesReadAsBulletsNestedOnce() {
-    // Indented with an em space, not a paragraph style: a style's edge adds an empty line around it in Compose's layout.
     val text = wikiText("* one\n** two\n*** three")
     assertEquals("• one\n • two\n • three", text.text)
     assertTrue(text.paragraphStyles.isEmpty())

@@ -28,6 +28,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import com.google.fonts.icons.check
 import com.google.fonts.icons.expand_more
+import com.google.fonts.icons.favorite_filled
 import dev.marzahn.sankaku.api.dto.PostDto
 import dev.marzahn.sankaku.data.PageCursor
 import dev.marzahn.sankaku.queue.FeedHeading
@@ -40,7 +41,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import dev.marzahn.sankaku.ui.components.TonalButton
 
-/** "12 new", or "200+ new" while the newest post reached isn't loaded. */
 internal fun newText(heading: FeedHeading.New): String =
   if (heading.more || heading.count > FeedReading.NEW_COUNT_LIMIT) {
     "${minOf(heading.count, FeedReading.NEW_COUNT_LIMIT)}+ new"
@@ -48,35 +48,32 @@ internal fun newText(heading: FeedHeading.New): String =
     "${heading.count} new"
   }
 
-/** The top heading's button: "Continue · 37 left", or "Continue" when the count isn't known. */
 internal fun continueButtonText(left: Int?): String = if (left != null) "Continue · $left left" else "Continue"
 
-/** The stop mark's heading after "Continue": "· 37 left from last time", or "· from last time". */
 internal fun continueText(left: Int?): String = if (left != null) "· $left left from last time" else "· from last time"
 
 internal const val CAUGHT_UP = "You're caught up"
 
-/** The top "You're caught up"'s way to the followed tags (#539). */
 internal const val FOLLOWED_TAGS = "Followed tags"
 
-/** "N new"'s way to the late posts (#539): "2 further down", or "Further down" when they're all the new posts. */
 internal fun furtherDownText(heading: FeedHeading.New): String =
   if (heading.count > heading.late) "${heading.late} further down" else "Further down"
 
-/** The test tag of a feed heading: `feed-heading-new`, `-caught-up`, `-continue` or `-up-to-date`. */
 internal fun feedHeadingTag(heading: FeedHeading): String = "feed-heading-" + when (heading) {
   is FeedHeading.New -> "new"
   FeedHeading.CaughtUp -> "caught-up"
   is FeedHeading.Continue -> "continue"
   is FeedHeading.UpToDate -> "up-to-date"
+  is FeedHeading.LikedToday -> "liked-today"
+  FeedHeading.Earlier -> "earlier"
 }
 
-/**
- * A feed's heading in its grid (#314), full-span: "N new" (with "Continue · N left" when a gap is kept, and "N further
- * down" to the first late post, #539, [onFurtherDown] with its index), "You're caught up", the stop mark's "Continue · N
- * left from last time", which the 7-day offer gives Keep and Let go, or "You're caught up" at the top when nothing is
- * new, with Continue or "Followed tags" ([onFollowedTags]). Each is a heading for TalkBack.
- */
+internal fun likedTodayText(heading: FeedHeading.LikedToday): String = heading.count?.let { "Today · $it" } ?: "Today"
+
+internal const val SINCE_MIDNIGHT = "since 00:00"
+
+internal const val EARLIER = "Earlier"
+
 @Composable
 internal fun FeedHeadingRow(
   placed: PlacedHeading,
@@ -126,23 +123,37 @@ internal fun FeedHeadingRow(
           TextButton(onClick = onLetGo) { Text("Let go") }
         }
       }
+      is FeedHeading.LikedToday -> {
+        Row(
+          Modifier.weight(1f).semantics(mergeDescendants = true) { heading() },
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Icon(favorite_filled, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+          Text(likedTodayText(heading), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+          Text(SINCE_MIDNIGHT, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+      }
+      FeedHeading.Earlier -> {
+        Rule()
+        Text(
+          EARLIER,
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.semantics { heading() },
+        )
+        Rule()
+      }
     }
   }
 }
 
-/** A feed grid's loaded [posts] as the marks see them, each with the cursor of the page it came in on ([cursorOf]). */
 internal fun feedPostsOf(posts: List<PostDto>, cursorOf: (String) -> PageCursor?): List<FeedPost> =
   posts.map { FeedPost(it.id, it.createdAt?.epochSeconds ?: 0, cursorOf(it.id) ?: PageCursor()) }
 
-/** The first post at or just after the first visible item: a feed's heading (#314) may be the first item. */
 internal fun LazyStaggeredGridState.firstPostIndex(gridItems: GridItems): Int =
   (firstVisibleItemIndex..firstVisibleItemIndex + 2).firstNotNullOfOrNull(gridItems::postOf) ?: 0
 
-/**
- * A feed grid's part in its marks (#314): the posts on screen move them on ([GridViewModel.reach]), once the grid is
- * where it opens (not while it looks for its place). While "N new" can't count yet (the newest post reached isn't
- * loaded), the next pages load, up to [FeedReading.NEW_COUNT_LIMIT] posts.
- */
 @Composable
 internal fun FeedHeadingEffects(
   viewModel: GridViewModel,
@@ -153,7 +164,6 @@ internal fun FeedHeadingEffects(
 ) {
   if (viewModel.feed == null) return
   LaunchedEffect(viewModel, gridState) {
-    // Settled as the place reports are (GridScreen): shown or given up, never while it's pending (#492).
     viewModel.lookup.map { it == null || it == PlaceLookup.GivenUp }
       .distinctUntilChanged()
       .collectLatest { settled ->
@@ -176,7 +186,6 @@ internal fun FeedHeadingEffects(
       }
     }
       .filterNotNull()
-      // Bounded: the list may have reloaded shorter since the count was read (#472).
       .collect { items.getOrNull(it - 1) }
   }
 }

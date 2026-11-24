@@ -19,14 +19,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 
-/**
- * Copy log and Report a bug (#207). The privacy test runs real calls through the app's two clients, so the log sees
- * the paths, queries, tokens and account the requests carried, then checks none of it reaches the copied text.
- */
 class DiagnosticsTest {
   private val environment = AppEnvironment(version = "1.2.3", platform = "Android", os = "Android 16", device = "Pixel 9")
 
-  // Each sensitive value is distinctive, so finding it in the text can only mean it leaked.
   private val postId = "PostIdQx7Lm"
   private val md5 = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"
   private val tagSearched = "searchedtagzz"
@@ -91,7 +86,6 @@ class DiagnosticsTest {
       loginToken, login, password, signature, "Bearer", "?", "&", "=",
     )
     for (secret in secrets) assertFalse(secret in text, "Copy log holds \"$secret\":\n$text")
-    // The log did see every request, so the check above isn't passing on an empty log.
     assertEquals(h.requests.size, h.log.entries.value.size)
     assertTrue("/posts/{id}/favorite" in text, text)
     assertTrue("  IOException  " in text, text)
@@ -130,7 +124,7 @@ class DiagnosticsTest {
     val diagnostics = Diagnostics(log, environment.copy(device = "Pixel 9 Pro", os = "Android 16 & more"))
 
     assertEquals(
-      "https://github.com/dev-marzahn/tessera-app/issues/new?template=bug.yml&version=1.2.3&platform=Android" +
+      "https://github.com/dev-marzahn/tessera/issues/new?template=bug.yml&version=1.2.3&platform=Android" +
         "&os=Android+16+%26+more&device=Pixel+9+Pro",
       diagnostics.bugReportUrl(),
     )
@@ -143,13 +137,12 @@ class DiagnosticsTest {
     val diagnostics = Diagnostics(RequestLog(), linux)
 
     assertEquals(
-      "https://github.com/dev-marzahn/tessera-app/issues/new?template=bug.yml&version=1.2.3&os=Linux+6.8&device=aarch64",
+      "https://github.com/dev-marzahn/tessera/issues/new?template=bug.yml&version=1.2.3&os=Linux+6.8&device=aarch64",
       diagnostics.bugReportUrl(),
     )
     assertTrue("Platform: Linux" in diagnostics.copyText())
   }
 
-  /** #208: the crash notice's Report text is the environment and the saved report, not this run's log. */
   @Test
   fun crashTextIsTheEnvironmentThenTheCrash() {
     val log = RequestLog()

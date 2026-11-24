@@ -30,10 +30,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** #120: a sideways swipe on a row always closes it; only a vertical drag on ≡ (or TalkBack) moves it. */
 @OptIn(ExperimentalTestApi::class)
 class QueuePageTest {
   private var now = Instant.parse("2026-11-01T12:00:00Z")
@@ -56,13 +56,24 @@ class QueuePageTest {
     val privacy = PrivacySettings(InMemoryTextFile())
     setContent {
       SankakuTheme {
-        QueuePage(onDismiss = onDismiss, onMenu = onMenu, menuBadge = menuBadge, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen, clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { false }, onInteract = {})
+        QueuePage(onDismiss = onDismiss, onMenu = onMenu, menuBadge = menuBadge, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen, clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { false }, onInteract = {}, folding = false)
       }
     }
     waitForIdle()
   }
 
-  /** #478: ☰ opens the sidebar from the page, as the grid's top bar does, and ⌄ closes it, as Back does. */
+  @Test
+  fun sourcesUntouchedForWeeksAreRowsAndThereIsNoFadedSection() = runComposeUiTest {
+    now += 40.days
+    show()
+
+    onNodeWithText("A").assertExists()
+    onNodeWithText("B").assertExists()
+    onNodeWithText("Faded", substring = true).assertDoesNotExist()
+    onNodeWithText("Deleted in", substring = true).assertDoesNotExist()
+    assertEquals(listOf("Browse", "A", "B"), titles())
+  }
+
   @Test
   fun theHeadersMenuOpensTheSidebarAndItsChevronClosesThePage() = runComposeUiTest {
     var menus = 0
@@ -78,23 +89,22 @@ class QueuePageTest {
     onNodeWithContentDescription("Close queue").assertHasClickAction().performClick()
     waitForIdle()
     assertEquals(1, dismissed)
-    // It goes back to the item the page was opened from: the page's close changes nothing in the queue.
     assertEquals(active, tabs.active.value)
     assertEquals(1, menus)
   }
 
   @Test
-  fun theMenuStartsTheHeaderAndTheChevronEndsIt() = runComposeUiTest {
+  fun theMenuStartsTheHeaderAndTheOverflowEndsIt() = runComposeUiTest {
     show(onMenu = {})
 
     val menu = onNodeWithContentDescription("Menu").getBoundsInRoot()
     val title = onNodeWithText("Queue").getBoundsInRoot()
+    val shield = onNodeWithContentDescription("G only").getBoundsInRoot()
     val more = onNodeWithContentDescription("More").getBoundsInRoot()
     val close = onNodeWithContentDescription("Close queue").getBoundsInRoot()
     assertTrue(menu.right <= title.left, "☰ $menu, title $title")
-    assertTrue(more.right <= close.left, "⋮ $more, ⌄ $close")
-    // One row: each is centred on the title's line.
-    for (button in listOf(menu, close)) {
+    assertTrue(shield.right <= close.left && close.right <= more.left, "🛡 $shield, ⌄ $close, ⋮ $more")
+    for (button in listOf(menu, more)) {
       assertTrue(button.top < title.bottom && title.top < button.bottom, "$button against $title")
     }
   }
@@ -133,7 +143,6 @@ class QueuePageTest {
 
     assertFalse(kept.seenSinceKept(seen))
     onNodeWithText("Kept").assertExists()
-    // Nothing to take back now, so the action's gone.
     assertFalse(actions().any { it.label == "Mark unseen" })
   }
 
@@ -142,7 +151,6 @@ class QueuePageTest {
     tabs.pinFeeds(listOf(Feed.Following))
     show()
 
-    // A feed is a source that persists (#327): its row says "Feed", under no "Feeds" section.
     onNodeWithText("Feeds").assertDoesNotExist()
     onNodeWithText("Feed").assertExists()
     onNodeWithContentDescription("3 items").assertExists()
@@ -156,19 +164,12 @@ class QueuePageTest {
     assertTrue(tabs.closed.value.isEmpty())
   }
 
-  /** The ≡ of the row at [index], the spot a right thumb starts a swipe to the left from. */
   private fun ComposeUiTest.handle(index: Int): SemanticsNodeInteraction =
     onAllNodesWithContentDescription("Move", useUnmergedTree = true)[index]
 
-  /**
-   * A thumb's swipe to the left from the middle of the node: it rests [restLongPresses] long-press timeouts, rolls a
-   * little down and sideways as a thumb does (so the whole movement passes the touch slop before its sideways part),
-   * then sweeps 600 px left, one step each [stepMillis].
-   */
   private fun SemanticsNodeInteraction.thumbSwipeLeft(restLongPresses: Int, stepMillis: Long) = performTouchInput {
     down(center)
     advanceEventTime(viewConfiguration.longPressTimeoutMillis * restLongPresses)
-    // Just past the slop in all, but only 0.6 of it sideways and 0.8 of it down.
     val slop = viewConfiguration.touchSlop * 1.05f
     repeat(4) { moveBy(Offset(-0.6f * slop / 4, 0.8f * slop / 4), delayMillis = stepMillis) }
     repeat(20) { moveBy(Offset(-30f, 1f), delayMillis = stepMillis) }
@@ -190,7 +191,6 @@ class QueuePageTest {
   fun aSlowSwipeToTheLeftAfterTheFingerRestsOnTheHandleStillClosesTheTab() = runComposeUiTest {
     show()
 
-    // Resting longer than a long press must not pick the row up either.
     handle(1).thumbSwipeLeft(restLongPresses = 3, stepMillis = 40)
     waitForIdle()
 
@@ -198,11 +198,86 @@ class QueuePageTest {
     onNodeWithText("Closed “A”").assertExists()
   }
 
+  private fun SemanticsNodeInteraction.slowDragLeft(fraction: Float, heldStill: Boolean) = performTouchInput {
+    val slop = viewConfiguration.touchSlop * 1.5f
+    down(Offset(width * 0.8f, centerY))
+    moveBy(Offset(-slop, 0f), delayMillis = 16)
+    val steps = 375
+    repeat(steps) { moveBy(Offset(-(width * fraction - slop) / steps, 0f), delayMillis = 16) }
+    if (heldStill) advanceEventTime(300)
+    up()
+  }
+
+  private fun ComposeUiTest.assertClosedA() {
+    assertEquals(listOf("Browse", "B"), titles())
+    onNodeWithText("Closed “A”").assertExists()
+  }
+
+  private fun ComposeUiTest.assertSprangBack() {
+    assertEquals(listOf("Browse", "A", "B"), titles())
+    assertTrue(tabs.closed.value.isEmpty())
+    assertEquals(onNodeWithText("Browse").getBoundsInRoot().left, onNodeWithText("A").getBoundsInRoot().left)
+  }
+
+  @Test
+  fun aSlowDragPastHalfTheRowClosesIt() = runComposeUiTest {
+    show()
+
+    onNodeWithText("A").slowDragLeft(0.6f, heldStill = true)
+    waitForIdle()
+
+    assertClosedA()
+  }
+
+  @Test
+  fun aSlowDragPastHalfTheRowThatLetsGoMovingClosesIt() = runComposeUiTest {
+    show()
+
+    onNodeWithText("A").slowDragLeft(0.6f, heldStill = false)
+    waitForIdle()
+
+    assertClosedA()
+  }
+
+  @Test
+  fun aSlowDragUnderHalfTheRowSpringsBack() = runComposeUiTest {
+    show()
+
+    onNodeWithText("A").slowDragLeft(0.4f, heldStill = true)
+    waitForIdle()
+
+    assertSprangBack()
+  }
+
+  @Test
+  fun aSlowDragUnderHalfTheRowThatLetsGoMovingSpringsBack() = runComposeUiTest {
+    show()
+
+    onNodeWithText("A").slowDragLeft(0.4f, heldStill = false)
+    waitForIdle()
+
+    assertSprangBack()
+  }
+
+  @Test
+  fun aShortFlingClosesTheRow() = runComposeUiTest {
+    show()
+
+    onNodeWithText("A").performTouchInput {
+      down(Offset(width * 0.8f, centerY))
+      repeat(6) { moveBy(Offset(-width / 18f, 0f), delayMillis = 10) }
+      up()
+    }
+    waitForIdle()
+
+    assertClosedA()
+  }
+
   @Test
   fun aVerticalDragOnTheHandleMovesTheTab() = runComposeUiTest {
     show()
 
-    handle(0).performTouchInput { swipeDown(startY = centerY, endY = centerY + height * 1.6f, durationMillis = 600) }
+    handle(0).performTouchInput { swipeDown(startY = centerY, endY = centerY + height * 2f, durationMillis = 600) }
     waitForIdle()
 
     assertEquals(listOf("A", "Browse", "B"), titles())
@@ -210,12 +285,10 @@ class QueuePageTest {
 
   @Test
   fun draggingAHeadMovesItsBlockTogether() = runComposeUiTest {
-    // a, with a post kept from it, is a block of two rows.
     tabs.activate(tabs.tabs.value[1].id)
     tabs.openInBlock(listOf(Route.Grid(listOf("a"), at = "p1"), Route.Post("p1", null, listOf("a"), label = "p1")))
     show()
 
-    // Browse's ≡ down past half of a's block (one 72 dp row), not past half of b's after it.
     handle(0).performTouchInput { swipeDown(startY = centerY, endY = centerY + height * 3.5f, durationMillis = 800) }
     waitForIdle()
 
@@ -228,21 +301,18 @@ class QueuePageTest {
     tabs.openInBlock(listOf(Route.Grid(listOf("a"), at = "p1"), Route.Post("p1", null, listOf("a"), label = "p1")))
     show()
 
-    // What TalkBack reads on a row, in order (the post's rating isn't known, so it's blurred too).
     fun spoken(title: String) =
       onNodeWithText(title).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
-    assertEquals(listOf("Item 3 of 4", "Blurred", "Kept from A", "Move"), spoken("p1"))
+    assertEquals(listOf("Blurred", "Kept from A", "Move"), spoken("p1"))
+    assertTrue("Item 2 of 3" in spoken("A"), "${spoken("A")}")
     onNodeWithText("Kept").assertExists()
-    // The source's own row says nothing of the kind.
     assertFalse(spoken("A").any { "from" in it }, "${spoken("A")}")
 
-    // Closed, its kept post is from "A (closed)" (#184), and it's the current item now.
     tabs.close(tabs.tabs.value[1].id)
     waitForIdle()
     assertTrue("Kept from A (closed) · current" in spoken("p1"), "${spoken("p1")}")
   }
 
-  /** The TalkBack Close of the row titled [title], as a swipe closes it. */
   private fun ComposeUiTest.closeRow(title: String) {
     onNodeWithText(title).fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty()
       .first { it.label == "Close" }.action()
@@ -253,7 +323,6 @@ class QueuePageTest {
   fun undoOfASwipedKeptPostPutsItBackWithoutMakingItCurrent() = runComposeUiTest {
     tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
     val keptAt = tabs.tabs.value.last().keptAt
-    // A row after it, so "its place" isn't simply the end.
     tabs.open(Route.Grid(listOf("c")), background = true)
     show()
     assertEquals("Browse", tabs.tabs.value.first { it.id == tabs.active.value }.title)
@@ -263,7 +332,6 @@ class QueuePageTest {
     onNodeWithText("Undo").performClick()
     waitForIdle()
 
-    // #306: item 1 is still current, and the post is back in its place, kept as before and unseen.
     assertEquals("Browse", tabs.tabs.value.first { it.id == tabs.active.value }.title)
     assertEquals(listOf("Browse", "A", "B", "Rosehip", "C"), titles())
     val back = tabs.tabs.value[3]

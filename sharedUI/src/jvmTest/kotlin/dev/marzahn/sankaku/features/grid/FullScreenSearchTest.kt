@@ -23,7 +23,6 @@ import dev.marzahn.sankaku.ui.components.rememberFullScreenSearchState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Android's full-screen search (#28); the jvm runs the same common code. */
 @OptIn(ExperimentalTestApi::class)
 class FullScreenSearchTest {
   private val asked = mutableListOf<String>()
@@ -58,7 +57,6 @@ class FullScreenSearchTest {
 
   private fun ComposeUiTest.typeAndWaitForSuggestions(text: String) {
     text.forEach { field.performTextInput(it.toString()) }
-    // A suggestion whose name is only its key reads as a post's tag chip does: spaces for underscores (#246).
     waitUntil { onAllNodes(hasText("blue hat")).fetchSemanticsNodes().isNotEmpty() }
   }
 
@@ -73,8 +71,6 @@ class FullScreenSearchTest {
   fun theActionKeyOnPartialTextAddsItPastTheSuggestionsAndDoesntSearch() = runComposeUiTest {
     showSearch()
 
-    // A touch screen highlights no suggestion (#73), so the action key adds what's typed, not the top suggestion;
-    // "blue ha" isn't a suggested tag, so the draft is still being built (#506).
     typeAndWaitForSuggestions("blue ha")
     field.performImeAction()
 
@@ -87,7 +83,6 @@ class FullScreenSearchTest {
   fun theActionKeyOnATypedTagAddsItAndSearches() = runComposeUiTest {
     showSearch(initial = listOf("smile"))
 
-    // What's typed is a suggested tag's name, spaces as they read: one finished tag (#506).
     typeAndWaitForSuggestions("blue hair")
     field.performImeAction()
 
@@ -100,7 +95,6 @@ class FullScreenSearchTest {
     waitForIdle()
     mainClock.autoAdvance = false
 
-    // No suggestion has said "blue hair" is a tag yet.
     "blue hair".forEach { field.performTextInput(it.toString()) }
     field.performImeAction()
     mainClock.advanceTimeBy(SUGGEST_DELAY_MS)
@@ -133,7 +127,6 @@ class FullScreenSearchTest {
   fun aSecondWordFromTheKeyboardStaysInTheInput() = runComposeUiTest {
     showSearch()
 
-    // Glide typing, or a suggestion from the keyboard, puts a whole word in at once, with its space (#506).
     field.performTextInput("blue")
     field.performTextInput(" hair")
     waitUntil { asked.isNotEmpty() }
@@ -219,7 +212,6 @@ class FullScreenSearchTest {
 
     onNodeWithContentDescription("Close search").performClick()
     waitForIdle()
-    // Back to another grid, or another tab came forward, while the search was closed.
     searched = listOf("blue_hair")
     waitForIdle()
     open = true

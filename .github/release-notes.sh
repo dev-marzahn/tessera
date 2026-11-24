@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# Prints the body of the GitHub release of one version: its CHANGELOG.md section, then how to open the DMG and check
-# the files. The release workflow (.github/workflows/release.yml) runs it before anything is built.
-#   .github/release-notes.sh <version> <repository> [changelog]
-#     <version>      X.Y.Z, without the v
-#     <repository>   owner/name, for the gh attestation verify commands
-#     [changelog]    default CHANGELOG.md
-# The section starts at a "## <version>" or "## [<version>]" heading (anything may follow it, such as " - 2026-11-10")
-# and ends at the next "## " heading or link reference ("[100.0.0]: https://…"). It fails when the file or the section
-# is missing, or the section is empty. GitHub shows a single newline in a release body as a line break, so each
-# paragraph below is one line.
 set -euo pipefail
 
 die() { echo "release-notes: $*" >&2; exit 1; }
@@ -17,8 +7,6 @@ version=$1 repository=$2 changelog=${3:-CHANGELOG.md}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "the version must be X.Y.Z, not $version"
 [ -f "$changelog" ] || die "no $changelog: add the $version section before tagging"
 
-# String comparisons only, no regex built from the version: the workflow runs this with Ubuntu's mawk, the tests with
-# macOS's awk.
 section=$(awk -v version="$version" '
   function is_heading(line, rest, n) {
     if (substr(line, 1, 3) != "## ") return 0
@@ -41,7 +29,6 @@ section=$(awk -v version="$version" '
   [ $? -eq 3 ] && die "$changelog has no \"## $version\" section: add it before tagging"
   die "couldn't read $changelog"
 }
-# Without the blank lines around it.
 section=$(printf '%s\n' "$section" | awk 'NF { started = 1 } started' | awk '
   { lines[NR] = $0 } NF { last = NR }
   END { for (i = 1; i <= last; i++) print lines[i] }

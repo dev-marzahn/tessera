@@ -41,7 +41,6 @@ class SearchPanelTest {
       recent = recent,
       suggest = { prefix ->
         asked += prefix
-        // As autocomplete does, only the tags whose name holds what's typed.
         suggestions.filter { prefix.removePrefix("-") in it.tagName }
       },
       onSubmit = { submitted += it },
@@ -56,12 +55,10 @@ class SearchPanelTest {
     showPanel()
 
     "blue_ha".forEach { field.performTextInput(it.toString()) }
-    // A suggestion whose name is only its key reads as a post's tag chip does: spaces for underscores (#246).
     waitUntil { onAllNodes(hasText("blue hat")).fetchSemanticsNodes().isNotEmpty() }
     field.performKeyInput { pressKey(Key.Tab) }
     onNodeWithText("Rating").performClick()
     onNodeWithText("General").performClick()
-    // The menu stays open for more ticks; a click outside closes it and gives the input its focus back.
     field.performClick()
     onNodeWithText("General").assertDoesNotExist()
     field.assertIsFocused()
@@ -77,7 +74,6 @@ class SearchPanelTest {
     mainClock.autoAdvance = false
     showPanel()
 
-    // 200 ms between keys, quicker than the wait: nothing is asked until the typing stops.
     "blue hair".forEach {
       field.performTextInput(it.toString())
       mainClock.advanceTimeBy(200)
@@ -93,7 +89,6 @@ class SearchPanelTest {
 
     "blue ha".forEach { field.performTextInput(it.toString()) }
     waitUntil { asked.isNotEmpty() }
-    // Shift+Enter adds what's typed, past the highlighted suggestion; Enter on the empty input then searches.
     field.performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(Key.Enter) } }
     field.performKeyInput { pressKey(Key.Enter) }
 
@@ -107,12 +102,10 @@ class SearchPanelTest {
     TagSuggestion("scenery_censor", rating = "q"),
     TagSuggestion("night_scenery"),
   )
-  // As the rows read them: a name that is only its key shows with spaces (#246).
   private val hiddenByGOnly = listOf("underwater scenery", "scenery censor")
 
   @Test
   fun gOnlyLeavesOutR15AndR18TagsYetATagTypedInFullStillRuns() = runComposeUiTest {
-    // An unrated tag isn't R15 or R18 as far as the panel knows, so it's still offered.
     showPanel(safeOnly = true, suggestions = scenery)
 
     "scenery".forEach { field.performTextInput(it.toString()) }
@@ -121,7 +114,6 @@ class SearchPanelTest {
     onNodeWithText("night scenery").assertExists()
     field.performKeyInput { pressKey(Key.Enter) }
 
-    // Typed in full, a tag the panel doesn't offer is still added and searched, once its (filtered) suggestions are in.
     "underwater_scenery".forEach { field.performTextInput(it.toString()) }
     waitUntil { "underwater_scenery" in asked }
     waitForIdle()
@@ -151,7 +143,6 @@ class SearchPanelTest {
 
   private fun ComposeUiTest.typeAndWaitForSuggestions(text: String) {
     text.forEach { field.performTextInput(it.toString()) }
-    // A suggestion whose name is only its key reads as a post's tag chip does: spaces for underscores (#246).
     waitUntil { onAllNodes(hasText("blue hat")).fetchSemanticsNodes().isNotEmpty() }
   }
 
@@ -227,7 +218,6 @@ class SearchPanelTest {
   fun lettersPutInAtOnceAfterATypedSpaceStayTyped() = runComposeUiTest {
     showPanel()
 
-    // An input method's completion puts in several letters at once; the space was typed before them (#529 review).
     "blue ha".forEach { field.performTextInput(it.toString()) }
     field.performTextInput("ir")
     waitUntil { asked.isNotEmpty() }
@@ -307,8 +297,6 @@ class SearchPanelTest {
     assertEquals(listOf(listOf("fav:me", "blue_hair", "smi")), submitted)
   }
 
-  // The left hand's keys (#443).
-
   @Test
   fun optionSMovesToTheSecondSuggestionWithoutTyping() = runComposeUiTest {
     showPanel()
@@ -358,7 +346,6 @@ class SearchPanelTest {
     onNodeWithText("Feed").assertIsFocused()
     onNodeWithText("Feed").performKeyInput { pressKey(Key.A) }
     onNodeWithText("Rating").assertIsFocused()
-    // A on the first chip stays there, rather than going back up to the input and typing.
     onNodeWithText("Rating").performKeyInput { pressKey(Key.A) }
     onNodeWithText("Rating").assertIsFocused()
   }
@@ -374,7 +361,6 @@ class SearchPanelTest {
     onNodeWithText("Newest").assertIsFocused()
     onNodeWithText("Newest").performKeyInput { pressKey(Key.S) }
     onNodeWithText("Popularity").performKeyInput { pressKey(Key.Tab) }
-    // Chosen, the input has the focus back, so Enter runs the search.
     field.assertIsFocused()
     field.performKeyInput { pressKey(Key.Enter) }
 
@@ -407,7 +393,6 @@ class SearchPanelTest {
     onNode(hasContentDescription("Minimum score")).performKeyInput { pressKey(Key.Spacebar) }
     onNodeWithText("Any score").assertIsFocused()
     onNodeWithText("Any score").performKeyInput { pressKey(Key.S) }
-    // From wherever S lands in the row, A four times reaches the first star; D then moves on one.
     repeat(4) { onNode(hasContentDescription("At least 1")).performKeyInput { pressKey(Key.A) } }
     onNode(hasContentDescription("At least 1")).assertIsFocused()
     onNode(hasContentDescription("At least 1")).performKeyInput { pressKey(Key.D) }

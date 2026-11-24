@@ -19,16 +19,10 @@ import kotlinx.coroutines.flow.map
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * #419: a post tab in the strip shows ♥ on its icon while its post is favourited, from [TabPosts] (the
- * PostStateStore's favourite over the held copy's), so a toggle anywhere shows at once and an unfavourite takes it
- * away. A grid tab never has one.
- */
 @OptIn(ExperimentalTestApi::class)
 class FavouritedTabTest {
   private val tabs = TabsController()
 
-  /** Which posts are favourited, as the store would say. */
   private val favourited = MutableStateFlow(setOf<String>())
   private val posts = TabPosts { ids ->
     favourited.map { fav -> ids.associateWith { TabPost(it in fav, emptyList()) } }
@@ -48,10 +42,6 @@ class FavouritedTabTest {
     waitForIdle()
   }
 
-  /**
-   * The titles of the tabs that show a heart. A tab's heart sits on its icon, just before its title: the title it
-   * belongs to is the first one to its right.
-   */
   private fun ComposeUiTest.heartedTabs(): Set<String> {
     val titles = tabs.tabs.value.map { it.title }.associateWith {
       onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
@@ -69,7 +59,6 @@ class FavouritedTabTest {
     show()
 
     assertEquals(setOf(title("p2")), heartedTabs())
-    // A screen reader hears it as the tab's state; the tab's name stays its title (#521).
     val tab = onNode(hasContentDescription(title("p2")) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
       .fetchSemanticsNode()
     assertEquals(listOf(title("p2")), tab.config[SemanticsProperties.ContentDescription])
@@ -81,7 +70,6 @@ class FavouritedTabTest {
     show()
     assertEquals(emptySet(), heartedTabs())
 
-    // Favourited anywhere (the viewer over a grid, another tab, the grid's ♡): the store changes, the strip follows.
     favourited.value = setOf("p1")
     waitForIdle()
     assertEquals(setOf(title("p1")), heartedTabs())

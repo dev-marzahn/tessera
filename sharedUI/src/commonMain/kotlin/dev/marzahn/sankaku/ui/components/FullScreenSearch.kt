@@ -16,14 +16,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 
-/**
- * Where a [FullScreenSearchBar] grows from and shrinks back into: the collapsed search line, marked with
- * [fullScreenSearchAnchor].
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Stable
 class FullScreenSearchState internal constructor(internal val bar: SearchBarState) {
-  /** Shrunk all the way back into the line (or never opened). */
   val isCollapsed: Boolean get() = bar.currentValue == SearchBarValue.Collapsed && !bar.isAnimating
 }
 
@@ -34,17 +29,10 @@ fun rememberFullScreenSearchState(): FullScreenSearchState {
   return remember(bar) { FullScreenSearchState(bar) }
 }
 
-/** Marks the collapsed search line that [state]'s bar grows from. */
 @OptIn(ExperimentalMaterial3Api::class)
 fun Modifier.fullScreenSearchAnchor(state: FullScreenSearchState): Modifier =
   onGloballyPositioned { state.bar.collapsedCoords = it }
 
-/**
- * M3's `ExpandedFullScreenSearchBar`: while [open], a full-screen dialog over the app that grows out of the anchored
- * search line, with [inputField] in the line's place (as tall as the line) and [content] under it, above the keyboard.
- * Back (and predictive back) shrinks it into the line and calls [onClose]; setting [open] false does the same without
- * the call.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenSearchBar(
@@ -59,7 +47,6 @@ fun FullScreenSearchBar(
   val isOpen by rememberUpdatedState(open)
   val close by rememberUpdatedState(onClose)
   LaunchedEffect(open) { if (open) bar.animateToExpanded() else bar.animateToCollapsed() }
-  // The dialog collapses the bar itself on back; the owner learns of it so its `open` follows.
   LaunchedEffect(bar) {
     var previous = bar.targetValue
     snapshotFlow { bar.targetValue }.collect { target ->

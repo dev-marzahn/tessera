@@ -46,17 +46,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.unit.dp
 
-/**
- * M3 Expressive's modal wide navigation rail, hidden while closed: it slides in over the whole window with a scrim,
- * and closes with a swipe towards its edge, back (Esc on desktop) or a click on the scrim, each of which calls
- * [onClose]. [content] is one column the rail's full height, so it can push a footer down with a weighted spacer.
- *
- * Keys (#416): W/S (and ↑/↓) move focus to the entry above or below, and plain [closeKey] closes it through
- * [onClosedByKey], unless [closeKeyHeld]: the caller tracks whether that key is still down from opening or closing the
- * rail, so a held key doesn't open and close it by turns. [onCloseKeyUp] tells of the key's release when the rail
- * hears it, as it does while it opens or slides out. Focus starts on the column, unless [focusColumn] is false because an entry takes it; it comes back to the column when the
- * focused entry goes away (Sign out's question, answered), so the keys still reach the rail.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ModalNavigationRail(
@@ -74,12 +63,8 @@ fun ModalNavigationRail(
   val close by rememberUpdatedState(onClose)
   val closeByKey by rememberUpdatedState(onClosedByKey)
   val closeKeyUp by rememberUpdatedState(onCloseKeyUp)
-  // A new one for each opening: a rail closed by back or an entry leaves the last one believing it's open.
   val leaving = remember(open) { LeaveWatch() }
   LaunchedEffect(open) { if (open) state.expand() else state.collapse() }
-  // The rail collapses itself on a swipe, back or the scrim; that is reported, so [open] follows. A collapse asked
-  // for through [open] reports nothing new, since the target is then already collapsed. The first value is the
-  // starting state, not a change.
   LaunchedEffect(state) {
     snapshotFlow { state.targetValue == WideNavigationRailValue.Expanded }.drop(1).collect { expanded ->
       if (!expanded) close()
@@ -89,23 +74,17 @@ fun ModalNavigationRail(
     state = state,
     hideOnCollapse = true,
     colors = WideNavigationRailDefaults.colors(modalContainerColor = containerColor),
-    // The column below takes the whole height, so the rail adds no padding of its own above it.
     contentPadding = PaddingValues(0.dp),
-    // On the whole rail, its status bar strip included, where a drag can start too.
     modifier = Modifier.pointerInput(leaving) {
       awaitPointerEventScope {
         while (true) leaving.pressed = awaitPointerEvent(PointerEventPass.Initial).changes.any { it.pressed }
       }
     },
   ) {
-    // The rail opens in a dialog of its own, where nothing has focus, so Esc (which the rail handles) would go
-    // unheard. Focus starts on the column; Tab moves on to the entries from there.
     val focus = remember { FocusRequester() }
-    // The rail's own focus manager: the rail is in a dialog, whose focus is apart from the window's.
     val focusManager = LocalFocusManager.current
     var columnFocused by remember { mutableStateOf(false) }
     var hadFocus by remember(open) { mutableStateOf(false) }
-    // The rail pads for the status bar only; its foot stays clear of the gesture bar too.
     Column(
       Modifier
         .width(RailWidth)
@@ -127,8 +106,6 @@ fun ModalNavigationRail(
             onClose = closeByKey,
           )
         }
-        // Focus that leaves the rail's tree while it's open (its entry was removed) comes back to the column. Only
-        // once the rail has had focus: on attach nothing has it yet, and an entry may be about to take it.
         .onFocusChanged {
           columnFocused = it.isFocused
           if (it.hasFocus) hadFocus = true
@@ -142,10 +119,6 @@ fun ModalNavigationRail(
   }
 }
 
-/**
- * The rail's own keys, before its entries see them: W/S (↑/↓) move to the entry above or below, from the column
- * itself into its first entry, and plain [closeKey] closes the rail. Letter keys with Cmd, Ctrl or Alt are left alone.
- */
 internal fun railKey(
   event: KeyEvent,
   closeKey: Key?,
@@ -170,26 +143,11 @@ internal fun railKey(
   }
 }
 
-/**
- * Tells when an open rail starts to slide out by itself. A click on the scrim slides the rail out first and tells its
- * state only once that slide has settled, about half a second after the rail has left the screen on a phone, and the
- * menu button's ✕ waited that long. So the close counts from the first frame the rail moves out with no finger on it:
- * the scrim's slide, or a swipe's fling once the finger lifts. While a finger drags it, it may still come back.
- * Left to right only: the app has no right-to-left layout, where the rail would leave to the right.
- */
 internal class LeaveWatch {
-  /** Whether a finger is down on the rail. */
   var pressed = false
   private var settledOpen = false
   private var lastLeft = 0f
 
-  /**
-   * Takes the rail's left edge in the window, whether it's drawn [scaled] and whether its state has [settled] open;
-   * true once, on the frame it starts to leave. It counts only after the rail was wholly on screen: an opening rail
-   * moves in from off screen. Leaving means moving left past its open place (the opening spring overshoots to the
-   * right and comes back) at its own size: a predictive back gesture scales it, which moves its left edge without a
-   * slide, and the gesture can still be cancelled.
-   */
   fun startsLeaving(left: Float, scaled: Boolean, settled: Boolean): Boolean {
     val starts = settledOpen && !pressed && !scaled && left < lastLeft && left < -SLACK
     if (settled && left >= 0f) settledOpen = true
@@ -199,7 +157,6 @@ internal class LeaveWatch {
   }
 
   private companion object {
-    /** Pixels the rail may sit left of its open place and still count as there: what a settling spring leaves. */
     const val SLACK = 1f
   }
 }

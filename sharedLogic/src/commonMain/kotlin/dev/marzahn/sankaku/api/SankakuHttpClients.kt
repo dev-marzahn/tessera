@@ -42,7 +42,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlin.time.TimeSource
 
-/** An image host answered with something that isn't a signed image, for example a redirect to an unsigned URL. */
 class ImageRefusedException(val host: String) : Exception("Image refused by $host")
 
 internal val SankakuJson = Json {
@@ -53,21 +52,12 @@ internal val SankakuJson = Json {
 internal const val CONNECT_TIMEOUT_MS = 10_000L
 private const val SOCKET_TIMEOUT_MS = 30_000L
 
-/**
- * The image hosts' connect timeout. `s.sankakucomplex.com`, the only host of a book page without a separate sample,
- * drops a new connection's first packets now and then (2026-11-11: 3 of 20 connects took 1 to 2 s, 3 more none within
- * 3 s, against 0.1 s otherwise), and the system then waits seconds before each resend. A fresh connect after 2.5 s
- * usually gets through at once, where the 10 s wait and two retries left a page blank for 20 s or more.
- */
 internal const val IMAGE_CONNECT_TIMEOUT_MS = 2_500L
 
-/** How often an image load is tried again after a connect timeout. */
 internal const val IMAGE_CONNECT_RETRIES = 4
 
-/** How often an image load is tried again after any other connection error, a read timeout included. */
 internal const val IMAGE_RETRIES = 2
 
-/** Settings both clients share. The 30 s request timeout is set per API call, so image loads have none. */
 private fun HttpClientConfig<*>.baseConfig(
   log: RequestLog,
   limiter: RateLimiter,
@@ -85,10 +75,6 @@ private fun HttpClientConfig<*>.baseConfig(
   install(responseHook(log, connectivity))
 }
 
-/**
- * The platform's Chrome on every request, API and image hosts alike (#204); a request about a numeric id claims
- * [BrowserFingerprint.forNumericIds] instead, if there is one (#475). Endpoint headers stay in `apiRequest`.
- */
 private fun fingerprintPlugin(fingerprint: BrowserFingerprint): ClientPlugin<Unit> = createClientPlugin("Fingerprint") {
   onRequest { request, _ ->
     val about = request.attributes.getOrNull(AboutId)
@@ -98,10 +84,6 @@ private fun fingerprintPlugin(fingerprint: BrowserFingerprint): ClientPlugin<Uni
   }
 }
 
-/**
- * Records every call in [RequestLog] and updates [ConnectivityState]. Wraps `proceed()`, so connection errors, which
- * produce no response, are seen too. Decides by headers only and never consumes the body.
- */
 private fun responseHook(log: RequestLog, connectivity: ConnectivityState): ClientPlugin<Unit> =
   createClientPlugin("ResponseHook") {
     on(Send) { request ->
@@ -113,7 +95,6 @@ private fun responseHook(log: RequestLog, connectivity: ConnectivityState): Clie
         val call = proceed(request)
         val status = call.response.status.value
         log.record(method, host, path, status, start.elapsedNow().inWholeMilliseconds, null)
-        // Any answer means Sankaku is reachable: a 5xx is its trouble, shown where the load failed, not "Offline" (#520).
         connectivity.setOffline(false)
         if (host == API_HOST) {
           val isJson = call.response.contentType()?.match(ContentType.Application.Json) == true
@@ -133,10 +114,6 @@ private fun responseHook(log: RequestLog, connectivity: ConnectivityState): Clie
     }
   }
 
-/**
- * Throws [ImageRefusedException] when an image request is sent to a URL without the `e` signature, so an unsigned
- * placeholder is never decoded or cached. A redirect is checked through its `Location` before it's followed.
- */
 private val ImageRefusal: ClientPlugin<Unit> = createClientPlugin("ImageRefusal") {
   on(Send) { request ->
     val host = request.url.host
@@ -154,29 +131,18 @@ private val ImageRefusal: ClientPlugin<Unit> = createClientPlugin("ImageRefusal"
   }
 }
 
-/** Gives image requests [IMAGE_CONNECT_TIMEOUT_MS]; the rest of [HttpTimeout]'s settings stay the client's. */
 private val ImageConnectTimeout: ClientPlugin<Unit> = createClientPlugin("ImageConnectTimeout") {
   onRequest { request, _ ->
     if (request.url.host in IMAGE_HOSTS) request.timeout { connectTimeoutMillis = IMAGE_CONNECT_TIMEOUT_MS }
   }
 }
 
-/**
- * Keeps the `Auth` plugin away from every host but `sankakuapi.com`. Without it, a 401 from an image host makes the
- * plugin resend the request with the bearer token attached.
- */
 private val ApiHostOnlyAuth: ClientPlugin<Unit> = createClientPlugin("ApiHostOnlyAuth") {
   onRequest { request, _ ->
     if (request.url.host != API_HOST) request.attributes.put(AuthCircuitBreaker, Unit)
   }
 }
 
-/**
- * Drops `WWW-Authenticate` from `sankakuapi.com`'s 401s before the `Auth` plugin, installed before this, sees them.
- * Sankaku sends `Bearer, error="…"` (a comma straight after the scheme), which the plugin's parser rejects with a
- * `ParseException`, so a rejected access token never got its refresh and the grid said offline (#470, #473). The
- * plugin has one provider, which it picks for a 401 without the header, as for any 401.
- */
 private val ApiUnauthorizedHeader: ClientPlugin<Unit> = createClientPlugin("ApiUnauthorizedHeader") {
   on(Send) { request ->
     val call = proceed(request)
@@ -186,7 +152,6 @@ private val ApiUnauthorizedHeader: ClientPlugin<Unit> = createClientPlugin("ApiU
     ) {
       return@on call
     }
-    // A 401's body is a few bytes of JSON; reading it is how the new response gets it without Ktor's internal API.
     val body = call.response.readRawBytes()
     call.replaceResponse(
       headers = Headers.build {
@@ -197,7 +162,6 @@ private val ApiUnauthorizedHeader: ClientPlugin<Unit> = createClientPlugin("ApiU
   }
 }
 
-/** For login, token exchange and refresh. It has no `Auth` plugin, so it can't trigger a refresh loop. */
 fun createAuthClient(
   engine: HttpClientEngine,
   log: RequestLog,
@@ -206,7 +170,6 @@ fun createAuthClient(
   fingerprint: BrowserFingerprint = BrowserFingerprint.Current,
 ): HttpClient = HttpClient(engine) { baseConfig(log, limiter, connectivity, fingerprint) }
 
-/** For API calls and image loads. Sets [AuthSession.onTokensChanged] to drop the plugin's cached token. */
 fun createMainClient(
   engine: HttpClientEngine,
   log: RequestLog,
@@ -220,9 +183,7 @@ fun createMainClient(
     install(ImageRefusal)
     install(ImageConnectTimeout)
     install(HttpRequestRetry) {
-      // Drops Ktor's default retry on 5xx, so API calls (including favourite POST/DELETE) are never retried.
       noRetry()
-      // retryCount is the retry this would be: 1 after the first failure.
       retryOnExceptionIf(maxRetries = IMAGE_CONNECT_RETRIES) { request, cause ->
         request.url.host in IMAGE_HOSTS && cause is IOException && (cause is ConnectTimeoutException || retryCount <= IMAGE_RETRIES)
       }
@@ -238,17 +199,12 @@ fun createMainClient(
         sendWithoutRequest { it.url.host == API_HOST }
       }
     }
-    // After `Auth`, so it sees the response first: the plugin installed first wraps those installed later.
     install(ApiUnauthorizedHeader)
   }
   authSession.onTokensChanged = { client.authProvider<BearerAuthProvider>()?.clearToken() }
   return client
 }
 
-/**
- * A raw response for `:cli`: never throws on a status. `headerNames` and the keys of `headers` (each header's first
- * value) are lowercase.
- */
 data class RawResponse(
   val status: Int,
   val json: JsonElement?,
@@ -258,7 +214,6 @@ data class RawResponse(
   val headers: Map<String, String> = emptyMap(),
 )
 
-/** For `:cli` only. Sends exactly what it's given; [apiRequest] is the app's path. */
 suspend fun HttpClient.probe(
   method: HttpMethod,
   base: String,

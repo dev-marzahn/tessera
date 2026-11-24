@@ -39,23 +39,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/**
- * #321: a Recommended thumbnail opens its post through the shell's [PostHandoff]: the post tapped on keeps its
- * composition and fades out over the new lone post, which comes in on a visibility of its own, until both settle. The
- * queue gets the post where `openLone` puts it. Any other change of item cuts as before.
- */
 @OptIn(ExperimentalTestApi::class)
 class PostHandoffTest {
   private val tabs = TabsController(FileTabStateStore(InMemoryTextFile(null)))
   private val navigator = TabsNavigator(tabs)
   private val handoff = PostHandoff()
 
-  /** What each item saw on its last composition, by post id. */
   private val seen = HashMap<String, ItemSeen>()
 
   private class ItemSeen(val identity: Any, val entering: Boolean, val leaving: Boolean, val hasVisibility: Boolean)
 
-  /** Stands in for a lone post: its post id as a tag, and a "thumbnail" of [NEXT] that opens it as the sheet's does. */
   @Composable
   private fun Item(item: TabState) {
     val id = (item.top as Route.Post).id
@@ -94,7 +87,6 @@ class PostHandoffTest {
     assertTrue(handoff.sharing(from, NEXT.id), "the thumbnail's element is switched on before its post opens")
     assertEquals(from, tabs.active.value, "it opens only once the element has been laid out")
 
-    // The attach frames, then the post opens.
     repeat(4) { mainClock.advanceTimeByFrame() }
     val list = tabs.tabs.value
     val to = tabs.active.value
@@ -110,7 +102,6 @@ class PostHandoffTest {
     assertTrue(assertNotNull(seen[NEXT.id]).entering, "the new post's picture grows on its own coming in")
     assertFalse(assertNotNull(seen[NEXT.id]).leaving)
 
-    // Settled: the post left is gone, and the new one is an item as any other.
     mainClock.advanceTimeBy(2_000)
     waitForIdle()
     onAllNodesWithTag("item-${FIRST.id}").assertCountEquals(0)
@@ -156,7 +147,6 @@ class PostHandoffTest {
     val from = tabs.active.value
     withContext(InstantFrames) {
       handoff.open(from, NEXT.id, active = { tabs.active.value }) {
-        // Holding the post can wait on the repository's lock.
         kotlinx.coroutines.yield()
         assertTrue(handoff.sharing(from, NEXT.id), "switched off while the post was held, the move would start from nowhere")
         navigator.goTo(NEXT)
@@ -167,7 +157,6 @@ class PostHandoffTest {
     assertNull(handoff.current, "the queue page opening over it ends it")
   }
 
-  /** #342: a post in two strips (a child that's also recommended) shares its key only from the thumbnail tapped. */
   @Test
   fun onlyTheTappedStripsThumbnailIsSwitchedOn() = runTest {
     tabs.openLone(FIRST)

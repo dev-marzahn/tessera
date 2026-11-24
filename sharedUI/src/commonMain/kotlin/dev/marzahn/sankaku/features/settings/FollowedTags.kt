@@ -69,31 +69,20 @@ import dev.marzahn.sankaku.ui.components.TagChip
 import dev.marzahn.sankaku.ui.components.TagChipState
 import org.koin.compose.koinInject
 
-/** The page's title, and Account's row that opens it. */
 internal const val FollowedTagsTitle = "Followed tags"
 
-/** Account's row's second line. */
 internal const val FollowedTagsHelp = "The tags whose posts Following shows"
 
-/** What the page says when the account follows no tag. */
 internal const val NoFollowedTags = "You don't follow any tags. Follow one from a post's tags or a tag's page."
 
-/** What the followed tags page holds while it reads the list. */
 private sealed interface FollowedState {
   data object Loading : FollowedState
   data class Failed(val error: Throwable) : FollowedState
   data class Loaded(val tags: List<TagDto>) : FollowedState
 }
 
-/** The test tag of a followed tag's row. */
 internal fun followedTagRowTag(tag: TagDto) = "followed-tag-${tag.searchName}"
 
-/**
- * Settings → Account → Followed tags (#314): every tag the account follows (`GET /users/followings?content_type=tags`),
- * over Settings as the licences page is. A tag's chip opens its page ([TagPages], closing Settings and this page with
- * [onOpenTag]). Unfollow acts at once, through [PostActions.toggleFollow] as a tag's bell does; the row stays, dimmed,
- * with Follow to take it back until the page closes.
- */
 @Composable
 internal fun FollowedTagsPage(
   onDismiss: () -> Unit,
@@ -114,11 +103,9 @@ internal fun FollowedTagsPage(
   }
   val overrides by follows.overrides.collectAsStateWithLifecycle()
   val changed by follows.changed.collectAsStateWithLifecycle()
-  // The ids of the rows this page has shown, added once a composition is applied (never while composing).
   val shown = remember { mutableStateSetOf<String>() }
   Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     val size = if (touch) Modifier.fillMaxSize() else Modifier.widthIn(max = 720.dp).fillMaxWidth(0.9f).fillMaxHeight(0.9f)
-    // Focus moves in, so Esc and Back close only this page, not the Settings sheet behind it.
     val focus = remember { FocusRequester() }
     LaunchedEffect(focus) { focus.requestFocus() }
     Surface(
@@ -146,8 +133,6 @@ internal fun FollowedTagsPage(
           is FollowedState.Failed -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
             ApiErrorState(current.error, onRetry = { attempt++ }, onSignIn = koinInject<SignInController>()::open)
           }
-          // This run's follows show at once, even before Sankaku's list has them (#539).
-          // A row once shown stays until the page closes, so one followed here and unfollowed again can be followed back.
           is FollowedState.Loaded -> {
             val tags = follows.withChanges(current.tags, changed, overrides, keep = shown)
             SideEffect { tags.mapNotNullTo(shown) { it.id } }
@@ -180,7 +165,6 @@ internal fun FollowedTagsPage(
   }
 }
 
-/** A followed tag: its chip (which opens its page), its type, and Unfollow, or Follow once unfollowed here. */
 @Composable
 private fun FollowedTagRow(tag: TagDto, following: Boolean, onToggle: () -> Unit, onOpen: () -> Unit) {
   Row(

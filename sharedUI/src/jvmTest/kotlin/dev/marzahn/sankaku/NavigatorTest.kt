@@ -37,7 +37,6 @@ class NavigatorTest {
     assertEquals(listOf(Route.Grid(emptyList())), tabs.activeTab.backStack.toList())
   }
 
-  /** #181: a post tapped open anywhere but a grid cell is a lone post after this tab, and Back returns to this tab. */
   @Test
   fun aPostTappedOpensAloneAfterThisTabAndBackReturns() {
     navigator.goTo(grid)
@@ -49,7 +48,6 @@ class NavigatorTest {
 
     assertEquals(listOf(source.top, p1, p0), tabs.tabs.value.map { it.top })
     assertEquals(listOf(listOf<Route>(p1), listOf(p0)), tabs.tabs.value.drop(1).map { it.backStack.toList() })
-    // Both in the source's block, so it's what they were kept from.
     assertEquals(listOf(source, source), tabs.tabs.value.drop(1).map { tabs.sourceOf(it) })
     assertEquals(p0, tabs.activeTab.top)
 
@@ -57,7 +55,6 @@ class NavigatorTest {
     assertEquals(p1, tabs.activeTab.top)
     navigator.goBack()
     assertEquals(source, tabs.activeTab)
-    // A grid's Back stays within its tab.
     navigator.goBack()
     assertEquals(listOf(Route.Grid(emptyList())), source.backStack.toList())
     assertEquals(source, tabs.activeTab)
@@ -119,8 +116,6 @@ class NavigatorTest {
     tabs.open(grid, background = true)
     assertEquals(null, navigator.openInNewTab(Route.Post("p1", "m1", grid.tags)))
 
-    // From another search, or without its md5 (a parent link), it's still the same post: tab 2, in the active
-    // Browse tab's block, before the grid.
     assertEquals(2, navigator.openInNewTab(Route.Post("p1", null, emptyList())))
     assertEquals(3, tabs.tabs.value.size)
   }
@@ -130,7 +125,6 @@ class NavigatorTest {
   fun theSameSearchOpensOnce() {
     assertEquals(null, navigator.openInNewTab(grid))
 
-    // One source per search (#174): the second opens nothing and says where the source is.
     assertEquals(tabs.tabs.value.indexOfFirst { it.top == grid } + 1, navigator.openInNewTab(grid))
     assertEquals(2, tabs.tabs.value.size)
   }
@@ -293,7 +287,6 @@ class TabsControllerTest {
     tabs.open(Route.Grid(listOf("c")), background = true)
     val (_, a, _, c) = tabs.tabs.value
     tabs.close(a.id)
-    // The snackbar's Undo keeps the copy it was given.
     val undoC = tabs.close(c.id)!!
 
     tabs.reopen(tabs.closed.value.first())
@@ -412,10 +405,6 @@ class TabsControllerTest {
     assertEquals(0, store.writes)
   }
 
-  /**
-   * Created first inside a composition's snapshot (as Android did, from App()), the restored back stacks read as empty
-   * to the save, which wrote every tab with no routes. So Koin creates the controller at start, outside any snapshot.
-   */
   @Test
   fun koinCreatesTheControllerAtStartSoRestoredTabsAreSavedWithTheirRoutes() = runTest {
     val stacks = listOf(listOf(Route.Grid(emptyList())), listOf(Route.Grid(emptyList()), Route.Grid(listOf("a"))))

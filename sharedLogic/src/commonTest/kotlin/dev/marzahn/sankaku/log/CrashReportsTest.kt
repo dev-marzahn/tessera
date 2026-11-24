@@ -10,14 +10,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Crash capture (#208): what reaches the crash file, and the next launch's notice reading and deleting it. */
 class CrashReportsTest {
   private class PostLoadFailed(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
-    // Some exceptions put their message in toString too; the report never calls it.
     override fun toString(): String = "PostLoadFailed: $message"
   }
 
-  /** A cause chain that loops back, which `initCause` can't make in common code. */
   private class Looped : RuntimeException("a") {
     var next: Throwable? = null
     override val cause: Throwable? get() = next
@@ -52,7 +49,6 @@ class CrashReportsTest {
     assertTrue(lines[1].endsWith("PostLoadFailed"), lines[1])
     assertTrue(lines.any { it.startsWith("Caused by: ") && it.endsWith("IllegalStateException") }, text)
     assertTrue(lines.any { it.startsWith("Caused by: ") && it.endsWith("ArithmeticException") }, text)
-    // Frames name this test, where all three were thrown.
     assertTrue(lines.any { it.startsWith("\tat ") && "CrashReportsTest" in it }, text)
   }
 

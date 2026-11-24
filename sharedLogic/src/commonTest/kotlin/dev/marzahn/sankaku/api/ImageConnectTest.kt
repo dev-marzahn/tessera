@@ -15,10 +15,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/**
- * The original-file host drops a new connection's first packets now and then (2026-11-11: 3 of 20 connects took
- * 1 to 2 s, 3 more none within 3 s), so image hosts give up on a connect early and try again.
- */
 class ImageConnectTest {
   private fun connectTimeout(h: Harness, host: String) =
     h.requests.first { it.url.host == host }.getCapabilityOrNull(HttpTimeoutCapability)?.connectTimeoutMillis

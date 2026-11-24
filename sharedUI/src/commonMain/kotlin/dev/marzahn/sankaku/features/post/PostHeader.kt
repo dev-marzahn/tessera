@@ -63,16 +63,8 @@ import dev.marzahn.sankaku.ui.components.Shortcuts
 import dev.marzahn.sankaku.ui.components.effectsSpec
 import kotlin.math.roundToInt
 
-/** The title row is as tall as the 48 dp controls plus 8 dp above and below, level with the Details toggle. */
 val POST_TITLE_HEIGHT: Dp = 64.dp
 
-/**
- * The info panel's title row: the post's name by the tab label rule (its characters, else series, else artist), with
- * the uploader and upload date under it. [endInset] keeps it clear of the Details toggle the card draws at its end.
- *
- * It stays put while the details scroll under it. Once they have scrolled ([scrolled]) it fills in the surface
- * container, as an M3 top app bar does on scroll, so the row reads as a header over the content passing under it.
- */
 @Composable
 fun PostTitle(post: PostDto, endInset: Dp, modifier: Modifier = Modifier, scrolled: Boolean = false) {
   val container by animateColorAsState(
@@ -104,26 +96,6 @@ fun PostTitle(post: PostDto, endInset: Dp, modifier: Modifier = Modifier, scroll
   }
 }
 
-/**
- * The vote and the favourite as one connected group, with the keys under it. The favourite is a tonal toggle with
- * its count at the group's end. The vote shows five stars with the average and count after them: the average in
- * amber, or the account's own vote in the primary colour once it has voted, when the pane fills with the secondary
- * container as the favourite does. Hovering previews a vote; a click (or 1–5) votes, and the same vote again takes it
- * back ([onVote] gets null). Each time [voteRejected] or [favouriteRejected] goes up (touch: a failed vote or
- * favourite, [rememberRejections]), its control shakes back (`.scratch/android-feedback/`, C, row 9); the reason is on
- * the top line.
- *
- * To TalkBack the stars are one adjustable node, as Android's `RatingBar` ([voteSemantics]), and the favourite a toggle
- * named "Favourite, 6" (#143). [onSignIn] is set while signed out: activating the stars then opens sign-in, as a tap
- * on one does. [trailing] (the phone's ⋮, #178) sits after the group, on its line.
- *
- * [mirrored] (the phone's Left-handed setting, #528) reverses the row's arrangement: [trailing] first, then the
- * favourite, then the vote, the group's outer corners swapping ends with them. The stars, the counts and the text keep
- * their own order.
- *
- * [countsApart] (the phone's sheet, #525, owner's option C): the stars alone in full [StarCell]s and ♡ without its
- * count, so the line holds at any text size; the caller shows the counts elsewhere ([PostCounts], under the peek).
- */
 @Composable
 fun PostStats(
   post: PostDto,
@@ -136,6 +108,7 @@ fun PostStats(
   trailing: (@Composable () -> Unit)? = null,
   mirrored: Boolean = false,
   countsApart: Boolean = false,
+  leading: (@Composable () -> Unit)? = null,
 ) {
   Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -143,11 +116,12 @@ fun PostStats(
         trailing()
         Spacer(Modifier.width(4.dp))
       }
+      if (!mirrored && leading != null) {
+        leading()
+        Spacer(Modifier.width(8.dp))
+      }
       ConnectedGroup(Modifier.weight(1f)) {
         val average = averageVote(post)
-        // At the right end, under the thumb of a right hand (#81); mirrored, at the left end under a left one (#528).
-        // The arrangement is reversed by placing it first, not by an RTL layout direction: the stars still run 1 to 5
-        // left to right, and TalkBack reads the members in the order they're seen.
         val favourite: @Composable RowScope.() -> Unit = {
           ConnectedTrailingToggle(
             checked = post.isFavorited,
@@ -155,7 +129,6 @@ fun PostStats(
             rejected = favouriteRejected,
             mirrored = mirrored,
             iconOnly = countsApart,
-            // A toggle named by what it is, with its state; the key only where there is a keyboard.
             modifier = Modifier.semantics {
               contentDescription =
                 favouriteDescription(compactCount(post.favCount), Shortcuts.Favourite.label.takeUnless { platformIsTouch })
@@ -169,7 +142,6 @@ fun PostStats(
             )
             if (!countsApart) {
               Spacer(Modifier.width(8.dp))
-              // The toggle's name says the count already.
               Text(
                 compactCount(post.favCount),
                 style = MaterialTheme.typography.labelLarge,
@@ -179,7 +151,6 @@ fun PostStats(
           }
         }
         if (mirrored) favourite()
-        // Voted, the pane fills like the favourite toggle when favourited.
         ConnectedLeadingPane(
           checked = post.userVote != null,
           rejected = voteRejected,
@@ -187,13 +158,12 @@ fun PostStats(
           modifier = Modifier.weight(1f).clearAndSetSemantics { voteSemantics(post, onVote, onSignIn) },
         ) {
           if (countsApart) {
-            VoteStars(average, post.userVote, onVote, cell = TouchStarCell, narrows = false)
+            VoteStars(average, post.userVote, onVote, cell = TouchStarCell, narrows = leading != null)
           } else {
             StarsAndCounts(
             stars = { VoteStars(average, post.userVote, onVote) },
             counts = {
               Column(horizontalAlignment = Alignment.End) {
-                // Without votes, "No votes" in the average's place says it alone (#139).
                 Text(
                   averageLabel(average),
                   style = MaterialTheme.typography.labelLarge,
@@ -218,13 +188,15 @@ fun PostStats(
         }
         if (!mirrored) favourite()
       }
+      if (mirrored && leading != null) {
+        Spacer(Modifier.width(8.dp))
+        leading()
+      }
       if (!mirrored && trailing != null) {
         Spacer(Modifier.width(4.dp))
         trailing()
       }
     }
-    // Each key under its control: 1–5 under the stars, F under the toggle at the end. Details has its key beside its
-    // toggle in the title row. Touch has no keys, and only touch mirrors the row.
     if (!platformIsTouch) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         KeyHint(Shortcuts.Vote.label, "vote")
@@ -234,17 +206,11 @@ fun PostStats(
   }
 }
 
-/**
- * The [stars] at the start and the [counts] at the end, the counts as far from the end as the first star is from the
- * start, so the pane sits balanced (#104). The counts are measured first and never wrap; on a narrow screen (or with
- * large text) the stars' cells narrow, and the counts' inset with them.
- */
 @Composable
 internal fun StarsAndCounts(stars: @Composable () -> Unit, counts: @Composable () -> Unit, modifier: Modifier = Modifier) {
   Layout(listOf(stars, counts), modifier) { (starsMeasurables, countsMeasurables), constraints ->
     val countsPlaceable = countsMeasurables.single().measure(Constraints())
     val room = (constraints.maxWidth - countsPlaceable.width).coerceAtLeast(0)
-    // The room takes five cells and the end inset, (cell − star) / 2.
     val star = StarSize.toPx()
     val cell = minOf(StarCell.toPx(), (room + star / 2) / 5.5f)
     val inset = ((cell - star) / 2).coerceAtLeast(0f).roundToInt()
@@ -258,11 +224,6 @@ internal fun StarsAndCounts(stars: @Composable () -> Unit, counts: @Composable (
   }
 }
 
-/**
- * Five stars in [StarCell]s, narrower where [modifier]'s width can't fit them: the account's vote (primary) or the
- * rounded average (amber). The hovered star and those before it preview a vote; the filled stars spring a little when
- * the vote lands.
- */
 @Composable
 private fun VoteStars(
   average: Double?,
@@ -270,7 +231,6 @@ private fun VoteStars(
   onVote: (Int?) -> Unit,
   modifier: Modifier = Modifier,
   cell: Dp = StarCell,
-  /** Whether the cells narrow where the room is short; when not, the five always take 5 × [cell] (#525). */
   narrows: Boolean = true,
 ) {
   var hovered by remember { mutableIntStateOf(0) }
@@ -280,7 +240,6 @@ private fun VoteStars(
     else -> average?.roundToInt() ?: 0
   }
   val own = hovered > 0 || userVote != null
-  // A new vote pops its stars and springs them back; a post shown with a vote already doesn't.
   val pop = remember { Animatable(1f) }
   var landed by remember { mutableStateOf(userVote) }
   val popSpec = spatialSpec<Float>()
@@ -296,7 +255,6 @@ private fun VoteStars(
       awaitPointerEventScope {
         while (true) {
           val event = awaitPointerEvent()
-          // Hover is a mouse's: a finger has no Exit, so a touch would leave its preview behind.
           val change = event.changes.firstOrNull()?.takeIf { it.type == PointerType.Mouse } ?: continue
           val width = minOf(cell.toPx(), size.width / 5f)
           hovered = if (event.type == PointerEventType.Exit) 0 else (change.position.x / width).toInt().coerceIn(0, 4) + 1
@@ -308,7 +266,6 @@ private fun VoteStars(
       val filled = n <= shown
       val popping = userVote != null && n <= userVote
       Box(
-        // A fifth of the row at most, so all five always show; or the full cell, where the caller makes room.
         Modifier
           .then(if (narrows) Modifier.weight(1f, fill = false) else Modifier)
           .size(cell)
@@ -335,17 +292,10 @@ private fun VoteStars(
   }
 }
 
-/** A star's cell on touch, so each star is a finger's target (`.scratch/android-viewer/` notes). */
 private val TouchStarCell = 40.dp
 
-/** 40 dp cells on touch ([TouchStarCell]), so each star is a finger's target; 24 dp with a mouse. */
 private val StarCell = if (platformIsTouch) TouchStarCell else 24.dp
 
-/**
- * The counts the phone's sheet moves off the stars' line ([PostStats]'s `countsApart`, #525): the average (or "No
- * votes"), the vote count and the favourite count, on one line that wraps. TalkBack hears them on the stars and on ♡
- * already, so the line is silent.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PostCounts(post: PostDto, modifier: Modifier = Modifier) {
@@ -369,24 +319,18 @@ internal fun PostCounts(post: PostDto, modifier: Modifier = Modifier) {
   }
 }
 
-/** A star's icon, centred in its [StarCell]. */
 private val StarSize = 20.dp
 
-/** The search panel's minimum-score stars use the same amber. */
 private val StarColor = Color(0xFFE8A200)
 
-/** "uploader · 2026-10-30", or whichever of the two the post has. */
 internal fun postByline(post: PostDto): String =
   listOfNotNull(post.author?.name, post.createdAt?.toString()?.take(10)).joinToString(" · ")
 
-/** The average vote to one decimal, or null without votes. */
 internal fun averageVote(post: PostDto): Double? =
   if (post.voteCount > 0) (post.totalScore.toDouble() / post.voteCount * 10).roundToInt() / 10.0 else null
 
-/** The average beside the stars, or "No votes" without one (#139). */
 internal fun averageLabel(average: Double?): String = average?.toString() ?: "No votes"
 
-/** "1 vote", "1.2k votes"; null without votes. */
 internal fun votesLabel(count: Int): String? = when (count) {
   0 -> null
   1 -> "1 vote"

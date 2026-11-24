@@ -65,7 +65,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.koin.compose.koinInject
 
-/** Whether the keyboard shortcuts sheet is open (#521): `?`, the strip's ⋮ and Settings' Keyboard row open it. */
 class ShortcutSheetController {
   private val _isOpen = MutableStateFlow(false)
   val isOpen: StateFlow<Boolean> = _isOpen.asStateFlow()
@@ -83,18 +82,11 @@ class ShortcutSheetController {
   }
 }
 
-/** The sheet's title, its pane title and heading. */
 internal const val SHORTCUTS_TITLE = "Keyboard shortcuts"
 
 internal const val SHORTCUTS_FIND_TAG = "shortcuts-find"
 internal const val SHORTCUTS_SCROLL_TAG = "shortcuts-scroll"
 
-/**
- * Desktop (#521, the mockup the owner approved): every key, from [ShortcutGroups], in a side sheet like Settings', over
- * whatever is open (Settings too, which opens it). A heading with ✕, a hint row, a find field, then the groups.
- * W/S (↑/↓) scroll it, with Shift a screen; / goes to the find field and ↓ or Esc there back to the list; Esc, ? (from
- * the list), ✕ and the scrim close it.
- */
 @Composable
 fun ShortcutSheet(controller: ShortcutSheetController = koinInject()) {
   val open by controller.isOpen.collectAsStateWithLifecycle()
@@ -108,7 +100,6 @@ fun ShortcutSheet(controller: ShortcutSheetController = koinInject()) {
   val find = remember { FocusRequester() }
   var finding by remember { mutableStateOf(false) }
   ModalSideSheet(open, onClose = controller::close, title = SHORTCUTS_TITLE) {
-    // The list's keys, which the find field never sees: typing W there types it.
     Box(
       Modifier.fillMaxSize().onKeyEvent { event ->
         if (event.type != KeyEventType.KeyDown || finding || event.isCommand || event.isAltPressed) return@onKeyEvent false
@@ -122,7 +113,6 @@ fun ShortcutSheet(controller: ShortcutSheetController = koinInject()) {
         }
       },
     ) {
-      // Has the keys as the sheet opens, so W/S scroll at once.
       Box(Modifier.size(0.dp).focusRequester(list).focusable())
       LaunchedEffect(open) { if (open) list.requestFocus() }
       Column(Modifier.fillMaxSize()) {
@@ -163,7 +153,6 @@ fun ShortcutSheet(controller: ShortcutSheetController = koinInject()) {
             .fillMaxWidth()
             .focusRequester(find)
             .onFocusChanged { finding = it.isFocused }
-            // ↓ or Esc hand the keys back to the list; Esc again closes the sheet.
             .onPreviewKeyEvent { event ->
               val back = event.key == Shortcuts.Back.key || event.key == Shortcuts.Down.key
               if (back && event.type == KeyEventType.KeyDown) list.requestFocus()
@@ -206,7 +195,6 @@ private fun ShortcutGroupSection(group: ShortcutGroup) {
   group.rows.forEach { ShortcutLine(it) }
 }
 
-/** What a row does on the left, its keys on the right; one node, read "Close tab, X or ⌘W". */
 @Composable
 private fun ShortcutLine(row: ShortcutRow) {
   Row(

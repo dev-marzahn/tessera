@@ -26,7 +26,6 @@ class CardDismissTest {
     assertEquals(0.5f, runOnIdle { dismiss.fraction(600f) })
     runOnIdle { dismiss.dragBy(-500f) }
     assertEquals(0f, runOnIdle { dismiss.offset })
-    // Predictive back says where the card is.
     runOnIdle { dismiss.pullTo(900f) }
     assertEquals(1f, runOnIdle { dismiss.fraction(600f) })
     assertEquals(0f, runOnIdle { dismiss.fraction(0f) })
@@ -43,7 +42,6 @@ class CardDismissTest {
       dismiss.springBack()
     }
     mainClock.advanceTimeBy(100)
-    // Caught again: the finger has it, the spring lets go.
     runOnIdle { dismiss.dragBy(10f) }
     val caught = runOnIdle { dismiss.offset }
     assertTrue(caught in 11f..199f, "caught while springing back, at $caught")
@@ -55,7 +53,6 @@ class CardDismissTest {
     assertEquals(0f, runOnIdle { dismiss.offset })
   }
 
-  /** #105: a cell tapped while the card closed from a drag down reopened it still shrunk, over a dimmed grid. */
   @Test
   fun aReopenWhileClosingStartsWithTheCardWhole() = runComposeUiTest {
     mainClock.autoAdvance = false
@@ -63,14 +60,12 @@ class CardDismissTest {
     lateinit var dismiss: CardDismiss
     setContent { dismiss = rememberCardDismiss(opening, spec) }
 
-    // Dragged down past the threshold: the viewer closes from there, the offset held through the close.
     runOnIdle { dismiss.dragBy(400f) }
     val closing = dismiss
     mainClock.advanceTimeByFrame()
     assertSame(closing, dismiss)
     assertEquals(400f, runOnIdle { dismiss.offset })
 
-    // A cell tapped mid-close: the same composition, the next opening.
     runOnIdle { opening = 2 }
     mainClock.advanceTimeByFrame()
     assertNotSame(closing, dismiss)
@@ -85,7 +80,6 @@ class CardDismissTest {
     lateinit var dismiss: CardDismiss
     setContent { dismiss = rememberCardDismiss(opening, spec) }
 
-    // Predictive back cancelled: the card springs back, and a reopen lands before it's done.
     runOnIdle {
       dismiss.pullTo(300f)
       dismiss.springBack()
@@ -96,7 +90,6 @@ class CardDismissTest {
     mainClock.advanceTimeByFrame()
     val at = runOnIdle { last.offset }
     assertTrue(at in 1f..299f, "reopened while springing back, at $at")
-    // The last opening's spring is stopped; the new card is whole.
     mainClock.advanceTimeBy(500)
     assertEquals(at, runOnIdle { last.offset })
     assertEquals(0f, runOnIdle { dismiss.offset })

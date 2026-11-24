@@ -10,7 +10,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-/** Seen by moving on (#174): only from a post that was fully shown as the current, settled page. */
 class ViewingTest {
   private val seen = SeenStore(InMemoryTextFile(), FixedClock)
   private val viewing = Viewing(seen)
@@ -59,7 +58,6 @@ class ViewingTest {
 
   @Test
   fun aPostOnlyLoadedButNeverCurrentIsNotSeen() {
-    // A grid's cells scrolled past never reach the viewer; a page beside the current one loads but isn't current.
     viewing.loaded("p3")
     viewing.leave()
 
@@ -75,7 +73,6 @@ class ViewingTest {
     assertFalse(seen.isSeen("p1"))
   }
 
-  // #537: keeping the post the viewer shows. That showing came before the keep, so it doesn't count.
   private var now = Instant.parse("2026-11-13T12:00:00Z")
   private val ticking = SeenStore(InMemoryTextFile(), object : Clock {
     override fun now() = now.also { now += 1.seconds }
@@ -101,7 +98,6 @@ class ViewingTest {
     kept.current("p1", null)
 
     kept.keeping("p1")
-    // Loaded after the keep: still the showing it was kept from.
     kept.loaded("p1")
     kept.leave()
 

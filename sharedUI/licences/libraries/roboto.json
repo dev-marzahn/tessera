@@ -1,0 +1,8 @@
+{
+  "uniqueId": "com.google.fonts:roboto",
+  "artifactVersion": "3",
+  "name": "Roboto",
+  "description": "The typeface every screen renders its text in.",
+  "website": "https://github.com/googlefonts/roboto-classic",
+  "licenses": ["OFL-1.1"]
+}

@@ -7,7 +7,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
-/** #181: lone posts, Back and close to the previous item, and the tabs saved before them. */
 class LonePostsTest {
   private val tabs = TabsController()
   private val navigator = TabsNavigator(tabs)
@@ -62,13 +61,11 @@ class LonePostsTest {
     assertEquals(false, tabs.previous())
   }
 
-  /** The peek shows where a move lands: into a block a search was opened in front of, the tab it was left on. */
   @Test
   fun theNeighbourIsWhereAMoveLands() {
     navigator.goTo(artist)
     navigator.openInNewTab(post("k1"))
     tabs.next()
-    // A tag tapped on the kept post opens a source in front of the block, and moving on returns to the kept post.
     navigator.goTo(Route.Grid(listOf("tag_y")))
 
     val next = tabs.neighbour(forward = true)
@@ -92,7 +89,6 @@ class LonePostsTest {
 
   @Test
   fun aPostOverASearchAnotherTabShowsKeepsOnlyThePost() {
-    // The same source by its key: order and rating don't count.
     val tabs = listOf(
       saved("a", Route.Grid(listOf("order:popularity", "artist_x"))),
       saved("b", artist, post("p1")),
@@ -132,7 +128,6 @@ class LonePostsTest {
       override fun clear() = Unit
     })
     val grid = controller.tabs.value.first()
-    // One block headed by the source: both posts are kept from it.
     assertEquals(listOf(grid, grid), controller.tabs.value.drop(1).map { controller.sourceOf(it) })
   }
 

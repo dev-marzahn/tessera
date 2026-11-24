@@ -22,11 +22,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * The tab switcher (#461): it opens on the active tab, W/A/S/D move the selection, Space goes to the selected tab as a
- * click on its tab does and closes the switcher, X closes the selected tab and keeps it open, Esc closes it, and a click
- * on a card goes there.
- */
 @OptIn(ExperimentalTestApi::class)
 class TabSwitcherTest {
   private val tabs = TabsController()
@@ -88,7 +83,6 @@ class TabSwitcherTest {
 
     assertFalse(closed in ids)
     assertTrue(open)
-    // The card that took its place is selected; the active tab is unchanged.
     assertEquals(from + 1, indexOf(next))
     onNodeWithTag(switcherCardTag(from + 1)).assertIsSelected()
     assertEquals(ids[from], tabs.active.value)

@@ -38,12 +38,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/**
- * #494: the phone viewer's details sheet opens and closes without a drag. Its handle is a button that steps through
- * the stops and says which one it's at, the picture and the handle have Expand and Collapse actions, and a screen
- * reader's scroll moves the sheet a stop. The sheet here is [ViewerSheetState] with the handle, the actions and the
- * modifiers [PhoneViewer] gives it, over details that scroll as the post's do.
- */
 @OptIn(ExperimentalTestApi::class)
 class SheetHandleTest {
   private lateinit var sheet: ViewerSheetState
@@ -54,7 +48,6 @@ class SheetHandleTest {
       val scope = rememberCoroutineScope()
       sheet = remember { ViewerSheetState(scope, tween(100), flingThreshold = 1200f) }
       LaunchedEffect(Unit) { sheet.update(SheetStops(half = HALF, full = FULL)) }
-      // As PhoneViewer's picture: read in composition, so they follow the sheet.
       val pictureActions = sheetActions(sheet) { expandedFromPicture++ }
       Column(Modifier.size(400.dp, 800.dp)) {
         Box(Modifier.testTag("picture").size(400.dp, 100.dp).semantics { customActions = pictureActions })
@@ -83,14 +76,12 @@ class SheetHandleTest {
     assertEquals(Role.Button, node.config.getOrNull(SemanticsProperties.Role))
     assertEquals("Collapsed", handle().state())
     assertEquals("Expand", node.config.getOrNull(SemanticsActions.OnClick)?.label)
-    // At peek it can only go up.
     assertEquals(listOf(EXPAND), handle().actionLabels())
   }
 
   @Test
   fun theHandleTakesItsRowAcrossTheSheet() = runComposeUiTest {
     start()
-    // The handle's whole 16 dp row, the sheet's width, so peek stays 80 dp (the owner's choice on #494).
     assertEquals(onNodeWithTag("sheet").fetchSemanticsNode().boundsInRoot.width, handle().fetchSemanticsNode().boundsInRoot.width)
     handle().assertHeightIsEqualTo(16.dp)
   }
@@ -139,7 +130,6 @@ class SheetHandleTest {
     picture.performCustomAccessibilityActionWithLabel(EXPAND)
     waitForIdle()
     assertEquals(HALF, sheet.lift)
-    // Expanding from the picture brings tap-hidden chrome back first.
     assertEquals(1, expandedFromPicture)
     assertEquals(listOf(EXPAND, COLLAPSE), picture.actionLabels())
     picture.performCustomAccessibilityActionWithLabel(COLLAPSE)
@@ -150,7 +140,6 @@ class SheetHandleTest {
   @Test
   fun aScreenReadersScrollOnTheSheetMovesItAStop() = runComposeUiTest {
     start()
-    // TalkBack's scroll forward from the handle or ♡: the sheet is their nearest scrolling ancestor.
     val sheetNode = onNodeWithTag("sheet")
     assertNotNull(sheetNode.fetchSemanticsNode().config.getOrNull(SemanticsProperties.VerticalScrollAxisRange))
     sheetNode.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 500f) }
@@ -165,16 +154,13 @@ class SheetHandleTest {
   fun aScreenReadersScrollInTheDetailsLiftsTheSheetAStop() = runComposeUiTest {
     start()
     val details = onNodeWithTag("details")
-    // A scroll of 300 px from peek lands at half (400 px), not 300 px up between two stops.
     details.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 300f) }
     waitForIdle()
     assertEquals(HALF, sheet.lift)
-    // The sheet took the scroll: the details are still at their top.
     assertEquals(0f, details.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value())
     details.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 300f) }
     waitForIdle()
     assertEquals(FULL, sheet.lift)
-    // Full, the details scroll.
     details.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 300f) }
     waitForIdle()
     assertEquals(FULL, sheet.lift)
@@ -186,8 +172,6 @@ class SheetHandleTest {
     start()
     runOnIdle { sheet.animateTo(FULL) }
     waitForIdle()
-    // TalkBack itself would use the sheet's own scroll here, as the details can't go back at their top; this is the
-    // path a mouse wheel takes, through the details' nested scroll.
     onNodeWithTag("details").performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, -300f) }
     waitForIdle()
     assertEquals(HALF, sheet.lift)
@@ -203,7 +187,6 @@ class SheetHandleTest {
       moveBy(Offset(0f, -120f))
     }
     mainClock.advanceTimeByFrame()
-    // Following the finger, between stops, not sprung to one.
     val lift = sheet.lift
     assertTrue(lift > 100f && lift < HALF, "lift $lift")
     onNodeWithTag("details").performTouchInput { up() }

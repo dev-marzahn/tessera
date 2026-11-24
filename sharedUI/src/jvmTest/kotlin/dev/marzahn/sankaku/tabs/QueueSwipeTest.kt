@@ -27,10 +27,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
-/**
- * #181's queue swipe: only a deliberate sideways swipe moves between queue items (#122's thresholds), and it settles
- * as the viewer's pager does.
- */
 @OptIn(ExperimentalTestApi::class)
 class QueueSwipeTest {
   private val slop = 8f
@@ -51,37 +47,28 @@ class QueueSwipeTest {
     fun target(offset: Float, velocity: Float, previous: Boolean = true, next: Boolean = true) =
       swipeTarget(offset, velocity, width, fling, previous, next)
 
-    // Slow: past half the width moves, short of it stays.
     assertEquals(QueueMove.Next, target(-201f, 0f))
     assertEquals(QueueMove.Stay, target(-199f, 0f))
     assertEquals(QueueMove.Previous, target(201f, 0f))
-    // A fling moves however short the drag, the way it flings; a fling back stays.
     assertEquals(QueueMove.Next, target(-20f, -fling))
     assertEquals(QueueMove.Stay, target(-300f, fling))
-    // Nowhere to go that way: it stays (and the overscroll stretches).
     assertEquals(QueueMove.Stay, target(-300f, -fling, next = false))
     assertEquals(QueueMove.Stay, target(300f, fling, previous = false))
   }
 
-  /**
-   * #340: Back on the first item's lone post opens the queue page; it used to have no handler there, so it fell through
-   * to the activity and closed the app. With an item before, it goes there (#181), and on a card off it (#248).
-   */
   @Test
-  fun backOnTheFirstItemsLonePostOpensTheQueuePage() {
-    assertEquals(QueueBack.QueuePage, queueBack(cardUp = false, lonePost = true, previous = false))
+  fun backOnTheFirstItemsLonePostLeavesTheApp() {
+    assertEquals(QueueBack.Tab, queueBack(cardUp = false, lonePost = true, previous = false))
     assertEquals(QueueBack.Previous, queueBack(cardUp = false, lonePost = true, previous = true))
     for (lonePost in listOf(true, false)) {
       for (previous in listOf(true, false)) {
         assertEquals(QueueBack.Previous, queueBack(cardUp = true, lonePost = lonePost, previous = previous), "card")
       }
     }
-    // A grid, or a post over something in its tab: the tab's own Back, as before.
     assertEquals(QueueBack.Tab, queueBack(cardUp = false, lonePost = false, previous = false))
     assertEquals(QueueBack.Tab, queueBack(cardUp = false, lonePost = false, previous = true))
   }
 
-  /** #248: on a card a swipe only goes back, to the item it stands past; on an item, whichever way has somewhere to go. */
   @Test
   fun onACardASwipeGoesBackOnlyAndOnAnItemEitherWayWithSomewhereToGo() {
     for (ahead in Ahead.entries) {
@@ -91,17 +78,14 @@ class QueueSwipeTest {
     }
     assertEquals(SwipeWays(back = true, forward = true), swipeWays(cardUp = false, previous = true, ahead = Ahead.Item))
     assertEquals(SwipeWays(back = false, forward = true), swipeWays(cardUp = false, previous = false, ahead = Ahead.End))
-    assertEquals(SwipeWays(back = true, forward = true), swipeWays(cardUp = false, previous = true, ahead = Ahead.UpNext))
     assertEquals(SwipeWays(back = true, forward = false), swipeWays(cardUp = false, previous = true, ahead = Ahead.Nothing))
 
-    // With forward off, a fling towards the start stays, however far; back settles as on an item.
     val card = swipeWays(cardUp = true, previous = false, ahead = Ahead.End)
     assertEquals(QueueMove.Stay, swipeTarget(-399f, -1000f, 400f, 400f, card.back, card.forward))
     assertEquals(QueueMove.Previous, swipeTarget(201f, 0f, 400f, 400f, card.back, card.forward))
     assertEquals(QueueMove.Previous, swipeTarget(20f, 1000f, 400f, 400f, card.back, card.forward))
   }
 
-  /** Runs [gesture] on a host over [count] queue items, the second one shown, and returns the active item's index. */
   private fun landsOn(count: Int = 3, gesture: TouchInjectionScope.() -> Unit): Int {
     val tabs = TabsController()
     repeat(count - 1) { tabs.open(Route.Grid(listOf("t$it")), background = true) }
@@ -109,7 +93,6 @@ class QueueSwipeTest {
     return landsOn(tabs, gesture)
   }
 
-  /** Runs [gesture] on a host over [tabs]' queue, from the active item, and returns the active item's index. */
   private fun landsOn(tabs: TabsController, gesture: TouchInjectionScope.() -> Unit): Int {
     runComposeUiTest {
       setContent {
@@ -118,7 +101,6 @@ class QueueSwipeTest {
         val active = tabList.first { it.id == activeId }
         Box(Modifier.size(400.dp)) {
           QueueSwipeHost(active, tabs = tabs, upNext = noUpNext(tabs), undo = ClosedTabUndo(tabs), preload = { _, _ -> emptyMap() }, content = {
-            // A scrolling column stands in for the grid: its scroll sees each move first, as the grid's does.
             Box(Modifier.size(400.dp).testTag("grid").queueSwipe(enabled = true, from = active.id)) {
               Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) { Box(Modifier.height(4000.dp)) }
             }
@@ -141,11 +123,6 @@ class QueueSwipeTest {
     assertEquals(0, landsOn { swipe(Offset(20f, centerY), Offset(width - 20f, centerY), 300) })
   }
 
-  /**
-   * #236: the content follows the finger, so the finger barely moves within it; the fling is the finger's speed on the
-   * screen. A quick flick short of half the width moves, here on the item a drag down closed a kept post onto (#326:
-   * the next one).
-   */
   @Test
   fun aShortFlingRightAfterADragDownCloseMovesToTheNextItem() {
     val tabs = TabsController()
@@ -165,13 +142,8 @@ class QueueSwipeTest {
     assertSame(next, tabs.activeTab)
   }
 
-  /**
-   * #236: the content follows the finger from where it went down, the way to the swipe's taking included, so a slow
-   * drag let go just past half the width moves.
-   */
   @Test
   fun aSlowDragJustPastHalfTheWidthMoves() {
-    // Half the width and one slop: past half from the down, short of it from where the swipe is taken (twice the slop).
     assertEquals(2, landsOn {
       val half = width / 4 + viewConfiguration.touchSlop / 2
       swipe(Offset(centerX + half, centerY), Offset(centerX - half, centerY), 3000)
@@ -183,7 +155,6 @@ class QueueSwipeTest {
     assertEquals(1, landsOn { swipe(Offset(centerX, centerY), Offset(centerX - 100f, centerY), 3000) })
   }
 
-  /** #122's test: 20 diagonal scrolls, leaning 39° to 60° off horizontal, either way, move nothing. */
   @Test
   fun twentyDiagonalScrollsMoveNothing() {
     repeat(20) { i ->
@@ -203,7 +174,6 @@ class QueueSwipeTest {
     assertEquals(1, landsOn { swipe(Offset(centerX, centerY), Offset(centerX - 1.5f * viewConfiguration.touchSlop, centerY), 200) })
   }
 
-  /** A pinch spreading sideways is a zoom: the second finger lets the swipe go. */
   @Test
   fun aSidewaysPinchMovesNothing() {
     assertEquals(1, landsOn {
@@ -245,7 +215,6 @@ class QueueSwipeTest {
     tabs.pinFeeds(listOf(Feed.Following))
     tabs.open(Route.Grid(listOf("artist_x")), background = true)
     tabs.open(Route.Grid(listOf("artist_y")), background = true)
-    // A feed is a source that persists (#327): here Following stands second, with items after it.
     val all = tabs.tabs.value
     assertEquals(listOf("Browse", "Following", "Artist X", "Artist Y"), all.map { it.title })
     val feed = all[1]
@@ -253,7 +222,6 @@ class QueueSwipeTest {
     val description = queueItemDescription(countedPosition(all, 1), countedItems(all), feed, null)
 
     assertEquals("Queue, feed Following, after 1 item", description)
-    // First in the queue, it has no items before it.
     tabs.moveInQueue(feed.id, down = false)
     val moved = tabs.tabs.value
     assertEquals("Queue, feed Following, first", queueItemDescription(countedPosition(moved, 0), countedItems(moved), feed, null))

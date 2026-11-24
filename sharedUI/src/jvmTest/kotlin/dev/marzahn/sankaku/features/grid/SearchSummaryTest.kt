@@ -10,7 +10,6 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 
-/** The top bar's search line keeps its end in view, where the content tags are once filter tokens go first (#89). */
 @OptIn(ExperimentalTestApi::class)
 class SearchSummaryTest {
   @Test
@@ -25,7 +24,6 @@ class SearchSummaryTest {
       )
     }
 
-    // Items left out are still measured, so they're in the tree, just not placed.
     onNodeWithText("last_tag", substring = true, useUnmergedTree = true).assertIsDisplayed()
     onNodeWithText("Popularity", useUnmergedTree = true).assertIsNotDisplayed()
     onNodeWithText("+", substring = true, useUnmergedTree = true).assertIsDisplayed()

@@ -20,20 +20,14 @@ sealed interface SignInResult {
 
   data object TwoFactorUnsupported : SignInResult
 
-  /** The login or exchange failed for another reason, such as no connection. The state is unchanged. */
   data class Failed(val error: ApiError) : SignInResult
 }
 
-/**
- * Owns the tokens. A network failure, timeout, 403, 429 or 5xx never signs the user out; only a refresh the server
- * rejects does.
- */
 class AuthSession(
   private val authApi: AuthApi,
   private val tokenStore: TokenStore,
   private val clock: Clock = Clock.System,
   private val expireAccessTokenOnRestore: Boolean = false,
-  /** Debug only: `restore()` treats the stored session as run out, as a rejected refresh would ("Session expired"). */
   private val expireSessionOnRestore: Boolean = false,
 ) {
   private val _state = MutableStateFlow<AuthState>(AuthState.Restoring)
@@ -43,10 +37,8 @@ class AuthSession(
   val state: StateFlow<AuthState> = _state.asStateFlow()
   val isSignedIn: StateFlow<Boolean> = _isSignedIn.asStateFlow()
 
-  /** Called synchronously before every change of the signed-in user. Set once by `createMainClient`. */
   var onTokensChanged: () -> Unit = {}
 
-  /** Loads the stored session without a network call. */
   suspend fun restore() {
     val stored = tokenStore.load()
     when {
@@ -62,7 +54,6 @@ class AuthSession(
     }
   }
 
-  /** The password is passed on to the login host and kept nowhere. */
   suspend fun signIn(login: String, password: String): SignInResult {
     val pair = try {
       when (val result = authApi.passwordLogin(login, password)) {
@@ -93,10 +84,6 @@ class AuthSession(
 
   suspend fun currentBearerTokens(): BearerTokens? = tokenStore.load()?.bearer()
 
-  /**
-   * Refreshes once, however many callers saw the same expired pair. Under the lock it re-reads the store: if the
-   * stored pair differs from [seen], another caller already refreshed and that pair is returned without a request.
-   */
   suspend fun refresh(seen: BearerTokens?): BearerTokens? = mutex.withLock {
     val stored = tokenStore.load() ?: return null
     if (seen == null || stored.accessToken != seen.accessToken || stored.refreshToken != seen.refreshToken) {

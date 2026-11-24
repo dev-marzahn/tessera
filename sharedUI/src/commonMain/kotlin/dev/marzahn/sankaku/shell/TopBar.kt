@@ -61,12 +61,6 @@ import dev.marzahn.sankaku.ui.components.ToggleIconButton
 import dev.marzahn.sankaku.ui.components.spatialSpec
 import org.koin.compose.koinInject
 
-/**
- * The one bar under the tabs: back, menu, search, refresh (the account is in the [Sidebar]); on Android only menu and
- * search ([platformIsTouch]). The search shows the active grid's tags; [onOpenSearch] opens the search panel over
- * it, placed by the bounds [onSearchPlaced] reports, or on Android the full-screen search grown out of it
- * ([fullScreenSearch]).
- */
 @Composable
 fun TopBar(
   current: Route?,
@@ -88,7 +82,6 @@ fun TopBar(
   val known by tagsRepository.known.collectAsStateWithLifecycle()
   val signedIn by session.isSignedIn.collectAsStateWithLifecycle()
   val searched = current?.searchTags.orEmpty()
-  // Ratings show as badges, not chips; a locked rating is G whatever the search had.
   val tags = withoutRating(searched)
   val gOnly by privacy.gOnly.collectAsStateWithLifecycle()
   val ratings = if (ratingLocked(signedIn, gOnly)) setOf(Rating.G) else Rating.inTags(searched)
@@ -98,9 +91,6 @@ fun TopBar(
     modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    // The gap after Back is inside what shrinks: as the Row's spacing it outlived the button by a frame and the bar
-    // jumped left by it when Back was finally removed.
-    // Android has no Back button: system and predictive back do it.
     AnimatedVisibility(
       !platformIsTouch && (canGoBack || overrides.active),
       enter = expandHorizontally(spatialSpec()),
@@ -127,7 +117,6 @@ fun TopBar(
         .onPlaced { onSearchPlaced(it.boundsInRoot()) }
         .fullScreenSearchAnchor(fullScreenSearch),
     )
-    // Android refreshes a grid by pulling it down.
     if (!platformIsTouch) {
       Spacer(Modifier.width(4.dp))
       if (current is Route.Grid || current is Route.Books) RefreshButton()
@@ -135,10 +124,6 @@ fun TopBar(
   }
 }
 
-/**
- * Whether the session ran out and hasn't been signed in again since: true from [AuthState.SignedOut.Reason.Expired]
- * until [AuthState.SignedIn], whatever states pass between (a failed sign-in attempt keeps it).
- */
 @Composable
 internal fun rememberSessionExpired(state: StateFlow<AuthState>): Boolean {
   var expired by rememberSaveable { mutableStateOf(false) }
@@ -151,10 +136,6 @@ internal fun rememberSessionExpired(state: StateFlow<AuthState>): Boolean {
   return expired
 }
 
-/**
- * Reloads the grid on screen past the page cache (also Cmd/Ctrl-R), so posts released since it loaded show. The icon
- * turns while the reload runs and finishes its turn when it ends.
- */
 @Composable
 private fun RefreshButton(refresh: GridRefresh = koinInject()) {
   val running by refresh.running.collectAsStateWithLifecycle()
@@ -173,28 +154,19 @@ private fun RefreshButton(refresh: GridRefresh = koinInject()) {
   }
 }
 
-/** ↻'s name and tooltip (#521). */
 internal val REFRESH_LABEL = "Refresh (${Shortcuts.Refresh.label})"
 
-/** ☰'s tooltip on the desktop (#521): its name and G, which opens and closes the sidebar too. */
 internal fun menuHint(open: Boolean, badge: MenuBadge): String =
   "${if (open) "Close menu" else menuDescription(badge)} (${Shortcuts.Sidebar.label})"
 
-/** ☰'s description: the red badge's "session expired" (touch) outranks the dot's "update available" (#209). */
 internal fun menuDescription(badge: MenuBadge): String = when (badge) {
   MenuBadge.Expired -> "Menu, session expired"
   MenuBadge.Update -> "Menu, ${UPDATE_AVAILABLE_DOT.lowercase()}"
   MenuBadge.None -> "Menu"
 }
 
-/** What ☰ carries, wherever it is (the top bar, the phone's queue page, #478); the red expired badge wins. */
 enum class MenuBadge { None, Update, Expired }
 
-/**
- * ☰'s badge, worked out once for the shell so every ☰ shows the same. Touch: after "Session expired" on the top line,
- * a red badge stays on ☰ (the sidebar holds the account's Sign in) until signed in again (`.scratch/android-feedback/`,
- * C, row 5). A newer release (#209) puts a dot on ☰, in the primary colour.
- */
 @Composable
 internal fun rememberMenuBadge(session: AuthSession = koinInject(), updates: UpdateCheck = koinInject()): MenuBadge {
   val expired = platformIsTouch && rememberSessionExpired(session.state)
@@ -206,7 +178,6 @@ internal fun rememberMenuBadge(session: AuthSession = koinInject(), updates: Upd
   }
 }
 
-/** ☰, which opens the sidebar, and ✕ while it's open; with [badge] on it and in its name. */
 @Composable
 internal fun MenuButton(open: Boolean, badge: MenuBadge, onClick: () -> Unit) {
   BadgedBox(

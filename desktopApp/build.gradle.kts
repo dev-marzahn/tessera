@@ -14,7 +14,6 @@ dependencies {
   implementation(libs.jna)
 }
 
-// `-D` on the Gradle command line only reaches the Gradle JVM, so every `sankaku.*` property is forwarded to `run`.
 tasks.withType<JavaExec>().configureEach {
   val forwarded = providers.systemPropertiesPrefixedBy("sankaku.")
   jvmArgumentProviders += CommandLineArgumentProvider {
@@ -22,9 +21,6 @@ tasks.withType<JavaExec>().configureEach {
   }
 }
 
-// From the owner's ~/.gradle/gradle.properties: the Developer ID Application identity (the part after
-// "Developer ID Application: ") and the name of a `notarytool store-credentials` keychain profile.
-// Blank counts as unset, as in the root project's release checks.
 val signingIdentity = providers.gradleProperty("tessera.mac.signingIdentity").filter { it.isNotBlank() }
 val notaryProfile = providers.gradleProperty("tessera.mac.notaryProfile").filter { it.isNotBlank() }
 
@@ -37,13 +33,10 @@ compose.desktop {
       targetFormats(TargetFormat.Dmg)
       packageName = "Tessera"
       packageVersion = libs.versions.tessera.get()
-      // From `./gradlew :desktopApp:suggestRuntimeModules`, plus what java-keyring (JNA) and TLS need.
       modules("java.instrument", "java.management", "java.naming", "jdk.crypto.ec", "jdk.unsupported")
       macOS {
         bundleID = "dev.marzahn.tessera"
         iconFile = project.file("src/main/resources/icon.icns")
-        // Signed with the hardened runtime when the identity is set. Compose's default entitlements (JIT, unsigned
-        // executable memory, no library validation) are what the JVM and JNA need.
         signing {
           sign = signingIdentity.isPresent
           identity = signingIdentity
@@ -53,10 +46,6 @@ compose.desktop {
   }
 }
 
-/**
- * The release DMG in build/release-dmg/. With both Mac properties (so the DMG is signed), it's notarized, stapled and
- * checked with Gatekeeper; without one, only the app inside is (ad-hoc) signed, and macOS opens it after "Open Anyway".
- */
 abstract class ReleaseDmg @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
   @get:InputDirectory
   abstract val dmgDir: DirectoryProperty
@@ -83,7 +72,6 @@ abstract class ReleaseDmg @Inject constructor(private val exec: ExecOperations) 
       return
     }
     exec.exec { commandLine("xcrun", "notarytool", "submit", out, "--keychain-profile", profile, "--wait") }
-    // Fails unless Apple accepted it, so an invalid submission stops here.
     exec.exec { commandLine("xcrun", "stapler", "staple", out) }
     exec.exec { commandLine("xcrun", "stapler", "validate", out) }
     exec.exec { commandLine("spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "-v", out) }
@@ -95,12 +83,10 @@ tasks.register<ReleaseDmg>("releaseDmg") {
   dependsOn("packageDmg")
   dmgDir = layout.buildDirectory.dir("compose/binaries/main/dmg")
   appVersion = libs.versions.tessera
-  // Only with both: notarizing an unsigned DMG fails at Apple, after the upload.
   keychainProfile = signingIdentity.flatMap { notaryProfile }
   outputDir = layout.buildDirectory.dir("release-dmg")
 }
 
-// `release` checks the signing properties before the long build starts.
 tasks.matching { it.name == "packageDmg" }.configureEach {
   mustRunAfter(":checkAndroidReleaseProperties", ":checkMacReleaseProperties")
 }

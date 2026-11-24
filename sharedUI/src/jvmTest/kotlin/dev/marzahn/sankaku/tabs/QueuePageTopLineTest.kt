@@ -36,10 +36,6 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-/**
- * #309: on the queue page the top line ("Cleared 3 · Undo") sits under the header, so Find, G only and ⋮ stay in view
- * and take taps; on every other screen it's still at the top. On a phone-sized window.
- */
 @OptIn(ExperimentalTestApi::class)
 class QueuePageTopLineTest {
   private val tabs = TabsController().apply {
@@ -49,7 +45,6 @@ class QueuePageTopLineTest {
   private val privacy = PrivacySettings(InMemoryTextFile())
   private val seen = SeenStore(InMemoryTextFile())
 
-  /** The app's touch layers with "Cleared 3 · Undo" showing for [duration], the queue page open while [open]. */
   private fun ComposeUiTest.show(
     open: MutableState<Boolean> = mutableStateOf(true),
     duration: SnackbarDuration = SnackbarDuration.Indefinite,
@@ -127,7 +122,6 @@ class QueuePageTopLineTest {
   @Test
   fun theMessageStillShowsAtTheTopElsewhere() = runDesktopComposeUiTest(width = PHONE_WIDTH, height = PHONE_HEIGHT) {
     show(open = mutableStateOf(false))
-    // The JVM has no status bar: at the window's top, within the snackbar's own margin and padding.
     val top = onNodeWithText("Cleared 3").getBoundsInRoot().top
     println("message top, page closed: $top")
     assertTrue(top < 40.dp, "at $top")
@@ -138,19 +132,16 @@ class QueuePageTopLineTest {
     mainClock.autoAdvance = false
     val open = mutableStateOf(true)
     show(open = open, duration = SnackbarDuration.Short)
-    // Short is 4 s: 3 s of it on the page, then the page closes.
     mainClock.advanceTimeBy(3_000)
     onNodeWithText("Cleared 3").assertExists()
     open.value = false
     mainClock.advanceTimeBy(200)
     onNodeWithText("Cleared 3").assertExists()
     assertTrue(onNodeWithText("Cleared 3").getBoundsInRoot().top < 40.dp)
-    // The same window runs out: a new host would have started it again and still show it here.
     mainClock.advanceTimeBy(2_000)
     onNodeWithText("Cleared 3").assertDoesNotExist()
   }
 }
 
-/** A phone's window in px, at a density of 2.625. */
 private const val PHONE_WIDTH = 1080
 private const val PHONE_HEIGHT = 2402

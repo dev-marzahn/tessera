@@ -23,11 +23,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.time.Instant
 
-/**
- * [TinkTokenStore] with the real Android Keystore key, run on a device or emulator with
- * `./gradlew :sharedLogic:connectedAndroidDeviceTest`. Each "restart" is a new DataStore, key and store over the same
- * files, as a new process would have.
- */
 @RunWith(AndroidJUnit4::class)
 class TinkTokenStoreKeystoreTest {
   private val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -58,10 +53,6 @@ class TinkTokenStoreKeystoreTest {
     KeystoreTokenKey(context).delete()
   }
 
-  /**
-   * Cancels every DataStore's scope and waits for it to finish: DataStore releases its file only when the scope's job
-   * completes, not when it's cancelled, so a new instance made before that fails with "multiple DataStores active".
-   */
   private fun closeAll() = runBlocking {
     scopes.forEach { it.coroutineContext.job.cancelAndJoin() }
   }
@@ -76,7 +67,6 @@ class TinkTokenStoreKeystoreTest {
   @Test
   fun aLostKeystoreKeySignsOutAndTheNextSignInWorks() = runBlocking {
     restart().first.save(tokens)
-    // As after the lock screen or the device changed: the keyset in shared preferences stays, its Keystore key is gone.
     KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry("tessera_token_key")
 
     val (store, stored) = restart()

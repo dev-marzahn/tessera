@@ -27,16 +27,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import dev.marzahn.sankaku.platformIsTouch
 
-/**
- * The opening rule used everywhere: a click calls [onOpen]; a middle click, or a click with Cmd or Ctrl held, calls
- * [onOpenInNewTab]. On [touch] a long-press is the middle click: it calls [onLongPress] (by default [onOpenInNewTab])
- * at once, with a haptic tick. A tap opens as the finger lifts: there's no double-tap, which would make every tap wait
- * out the system's double-tap timeout (`ViewConfiguration`, about 300 ms) first (#324). The pointer is only observed,
- * never consumed, so the click keeps its ripple and semantics. With an [interactionSource] the click draws no indication of its own: something inside shows it from that source.
- * [longPressLabel] names the long-press for TalkBack ("Double-tap and hold to …"). With [inTab] (a post some tab
- * already shows, so opening it in a new tab opens nothing) the long-press's haptic is the "reject" one instead of the
- * tick. Without [focusFill] the indication leaves keyboard focus out (a grid cell's focus is its cursor ring, #418).
- */
 fun Modifier.openOnClick(
   onOpen: () -> Unit,
   onOpenInNewTab: () -> Unit,
@@ -52,7 +42,6 @@ fun Modifier.openOnClick(
   val indication = if (interactionSource == null) LocalIndication.current else null
   var modified by remember { mutableStateOf(false) }
   var middlePressed by remember { mutableStateOf(false) }
-  // The pointer loop below starts once and outlives recompositions, so it must read the latest handler.
   val openInNewTab by rememberUpdatedState(onOpenInNewTab)
   val haptics = LocalHapticFeedback.current
   val click = { if (modified) onOpenInNewTab() else onOpen() }
@@ -76,7 +65,6 @@ fun Modifier.openOnClick(
     }
     .then(
       when {
-        // Our own tick, not the long-press buzz the modifier would make: the post is queued, nothing more to come.
         touch -> Modifier.combinedClickable(
           interactionSource = source,
           indication = indication,
@@ -93,10 +81,6 @@ fun Modifier.openOnClick(
     )
 }
 
-/**
- * A right-click (a mouse's secondary button) calls [onMenu] with where it was pressed, in this node's coordinates, and
- * goes no further: it opens a context menu. Touch has no right-click; a long-press is a gesture of its own there.
- */
 fun Modifier.onRightClick(onMenu: (Offset) -> Unit): Modifier = composed {
   val handler by rememberUpdatedState(onMenu)
   pointerInput(Unit) {
@@ -112,7 +96,6 @@ fun Modifier.onRightClick(onMenu: (Offset) -> Unit): Modifier = composed {
   }
 }
 
-/** An interaction source whose indication never sees focus: the click still emits it, so focus works as before. */
 private class FocuslessInteractions(
   private val inner: MutableInteractionSource = MutableInteractionSource(),
 ) : MutableInteractionSource by inner {

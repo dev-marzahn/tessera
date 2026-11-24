@@ -27,7 +27,6 @@ internal actual fun SignInPresentation(
         }
       }
     },
-    // Sign in goes under the body, across the dialog; only Cancel sits in the button row.
     text = {
       Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         body()

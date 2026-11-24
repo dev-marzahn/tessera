@@ -9,11 +9,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * #509: a search changed on a touched grid opens as a new item in front of it (#161). That item keeps its own title,
- * and its queue row says where it came from, "Grid · from Landscape", however much the search changed. It keeps
- * that after its parent closes, after Undo and after a relaunch. A search on an untouched grid still replaces it.
- */
 class RefinedFromTest {
   private val file = InMemoryTextFile(null)
   private val store = FileTabStateStore(file)
@@ -40,7 +35,6 @@ class RefinedFromTest {
     assertEquals(listOf("Landscape Sky", "Landscape"), titles)
     assertEquals("Landscape", tabs.activeTab.refinedFrom)
     assertEquals("Grid · from Landscape", subtitle(tabs.activeTab))
-    // The parent says nothing.
     assertEquals("Grid", subtitle(tabs.tabs.value[1]))
   }
 
@@ -48,7 +42,6 @@ class RefinedFromTest {
   fun anyChangeReadsTheSame() {
     onTouchedLandscape()
 
-    // Several tags added, an exclusion, a new order: still from Landscape, under the search's own title.
     navigator.goTo(Route.Grid(listOf("Landscape", "-cloud", "tree", "river", "order:popularity")))
 
     assertEquals("Grid · popular · from Landscape", subtitle(tabs.activeTab))
@@ -58,7 +51,6 @@ class RefinedFromTest {
   fun aSearchThatKeepsNoneOfTheGridsTagsSaysNothing() {
     onTouchedLandscape()
 
-    // A sidebar entry (Popular), Child posts, another tag altogether: not a change of Landscape.
     navigator.goTo(Route.Grid(listOf("order:popularity")))
     assertNull(tabs.activeTab.refinedFrom)
     navigator.goTo(landscape)
@@ -98,7 +90,6 @@ class RefinedFromTest {
     navigator.goTo(landscapeSky)
     val refined = tabs.activeTab
 
-    // It's untouched, so this search replaces it in place.
     navigator.goTo(Route.Grid(listOf("landscape", "night")))
     assertNull(refined.refinedFrom)
 

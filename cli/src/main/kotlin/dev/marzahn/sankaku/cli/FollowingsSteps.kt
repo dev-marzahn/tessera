@@ -10,18 +10,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/**
- * The followed tags (#314): discovery step 25, the list of the account's follows that step 11 didn't find. It reads
- * `GET /users/followings?content_type=tags`, checks `content_type=tag` is refused and that `limit` and `page` page it,
- * then follows [FOLLOW_TAG] (if it isn't followed), finds it in the list, and unfollows it in the same step. Notes and
- * markers hold counts, keys and yes/no only: no tag but [FOLLOW_TAG], no id or user field.
- */
 internal class FollowingsSteps(private val smoke: SmokeSteps) {
   suspend fun run() {
     val bearer = smoke.session.currentBearerTokens()?.accessToken
     val token = bearer?.takeIf { smoke.env["SANKAKU_TRY_FOLLOW"] != "false" }
     val reason = "not signed in or SANKAKU_TRY_FOLLOW=false"
-    // How many tags the account follows isn't printed, only whether it follows any.
     var count = 0
     smoke.discover("d25 GET /users/followings (tags)", "d25-followings-list", requires = bearer, "not signed in", detail = { "follows any=${yesNo(count > 0)}" }) {
       val raw = list(it)
@@ -41,7 +34,6 @@ internal class FollowingsSteps(private val smoke: SmokeSteps) {
       tag = ((raw.obj()?.get("tag")) as? JsonObject)?.takeIf { t -> t.str("is_following") == "false" && t.str("id") != null }
       raw to "id=${yesNo((raw.obj()?.get("tag") as? JsonObject).str("id") != null)}"
     }
-    // Where a new follow lands in the list (#539): first, last or in between (the list is read right after the follow).
     var place = "not listed"
     smoke.discover("d25 follow, listed, unfollow, gone", "d25-follow-listed", requires = tag, "needs $FOLLOW_TAG unfollowed", detail = { "listed right after the follow, placed $place" }) { t ->
       val id = t.str("id")!!
@@ -69,8 +61,6 @@ internal class FollowingsSteps(private val smoke: SmokeSteps) {
       val gone = id !in allIds(token!!)
       unfollow!! to "follow=${follow.status}, listed=${yesNo(listed)}, unfollow=${unfollow!!.status}, gone=${yesNo(gone)}"
     }
-    // Whether the list and a full post's `is_following` agree (#539): the app reads the list for Settings and the flag
-    // for a post's tags, so a lag in either shows as a tag followed in one and not the other.
     smoke.discover("d25 the list agrees with is_following", "d25-list-agrees", requires = bearer?.let { smoke.firstPostId }, "not signed in or no post") { postId ->
       val listedIds = allIds(bearer!!)
       val raw = smoke.authClient.probe(HttpMethod.Get, API_BASE, "/posts/$postId", HeaderSet.POSTS, bearer = bearer, query = LANG)
@@ -80,7 +70,6 @@ internal class FollowingsSteps(private val smoke: SmokeSteps) {
     }
   }
 
-  // Every followed tag's id, a page of 40 at a time.
   suspend fun allIds(token: String): Set<String> {
     val ids = mutableSetOf<String>()
     for (page in 1..MAX_PAGES) {
@@ -106,10 +95,8 @@ internal class FollowingsSteps(private val smoke: SmokeSteps) {
     const val PAGE = 40
     const val MAX_PAGES = 10
 
-    /** What the app reads of a followed tag (`TagDto`). */
     val TAG_KEYS = setOf("id", "name", "tagName", "type", "post_count", "is_following")
 
-    /** A common general tag the step follows and unfollows again, as step 11 does with another. */
     const val FOLLOW_TAG = "blue_sky"
   }
 }

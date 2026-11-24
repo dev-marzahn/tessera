@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `auto_awesome` (weight 400, grade 0, optical size 24). */
 public val auto_awesome: ImageVector
   get() {
     if (_auto_awesome != null) {

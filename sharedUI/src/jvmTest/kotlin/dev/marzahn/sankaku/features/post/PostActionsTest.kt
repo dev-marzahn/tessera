@@ -40,6 +40,7 @@ import dev.marzahn.sankaku.data.TagFollows
 import dev.marzahn.sankaku.features.auth.SignInController
 import dev.marzahn.sankaku.log.RequestLog
 import dev.marzahn.sankaku.net.ConnectivityState
+import dev.marzahn.sankaku.ui.Message
 import dev.marzahn.sankaku.ui.Messages
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -48,8 +49,10 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -58,6 +61,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -68,23 +72,19 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
-/**
- * A grid cell's Favourite action plays its heart and haptic only when [PostActions.toggleFavourite] says it toggled. Signed
- * out, a favourite or vote opens sign-in and lands once signed in, unless sign-in was closed.
- */
 class PostActionsTest {
   private val now = Instant.parse("2026-10-31T12:00:00Z")
   private val clock = object : Clock {
     override fun now() = now
   }
   private val scope = CoroutineScope(SupervisorJob())
-  // Shaped like sharedLogic's test fixtures for a password login and its token exchange.
   private val exchangedTokens = """
     { "success": true, "token_type": "Bearer", "access_token": "new-access", "access_token_ttl": 604800,
       "refresh_token": "new-refresh", "refresh_token_ttl": 7776000,
@@ -96,14 +96,13 @@ class PostActionsTest {
   """.trimIndent()
   private val post = PostDto(id = "p1", md5 = "0123456789abcdef0123456789abcdef", rating = "s", status = "active")
 
-  /** [serverFavourited]: what the full post says once signed in. */
   private inner class Rig(
     signedIn: Boolean,
     status: HttpStatusCode = HttpStatusCode.OK,
     serverFavourited: Boolean = false,
     refusals: Flow<OutboxSender.Refusal> = emptyFlow(),
+    nextAction: suspend () -> Unit = { awaitCancellation() },
   ) {
-    /** Changing requests to the API host: signing in and reading the full post don't count. */
     var requests = 0
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
     private val fullPost =
@@ -131,7 +130,6 @@ class PostActionsTest {
     val session = AuthSession(AuthApi(createAuthClient(engine, log, limiter, connectivity), clock), InMemoryTokenStore(tokens), clock)
     private val client = createMainClient(engine, log, limiter, connectivity, session)
 
-    // Before the repository exists: it clears its overrides on every change of user after the first it sees.
     init {
       runBlocking { session.restore() }
     }
@@ -151,7 +149,157 @@ class PostActionsTest {
       TagFollows(TagsApi(client)),
       actedOn(seen, tabs),
       refusals,
+      store,
+      nextAction,
     )
+
+    suspend fun settled(favourited: Boolean) = withTimeout(5_000) {
+      store.overrides.first { it[post.id]?.let { o -> o.isFavourited == favourited && !o.inFlight } == true }
+    }
+  }
+
+  private val favourited = post.copy(isFavorited = true, favCount = 3)
+
+  @Test
+  fun unfavouritingOutsideTheGridSaysSoWithUndo() = runBlocking {
+    val rig = Rig(signedIn = true)
+    val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
+
+    assertTrue(rig.actions.toggleFavourite(favourited))
+
+    val line = message.await()
+    assertEquals("Unfavourited", line.text)
+    assertEquals("Undo", line.actionLabel)
+    assertFalse(line.isError)
+    assertNotNull(line.until)
+    assertEquals(false, rig.settled(favourited = false).getValue(post.id).isFavourited)
+  }
+
+  @Test
+  fun undoFavouritesThePostAgain() = runBlocking {
+    val rig = Rig(signedIn = true)
+    val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
+    rig.actions.toggleFavourite(favourited)
+    rig.settled(favourited = false)
+    val hearts = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.actions.hearts.first() } }
+
+    message.await().onAction()
+
+    assertEquals(FavouriteHeart(post.id, true), hearts.await())
+    assertEquals(3, rig.settled(favourited = true).getValue(post.id).favCount)
+    assertEquals(2, rig.requests)
+  }
+
+  @Test
+  fun undoOfAPostFavouritedAgainMeanwhileChangesNothing() = runBlocking {
+    val rig = Rig(signedIn = true)
+    val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
+    rig.actions.toggleFavourite(favourited)
+    rig.settled(favourited = false)
+    rig.actions.toggleFavourite(favourited.merge(rig.store.overrides.value[post.id]))
+    rig.settled(favourited = true)
+
+    message.await().onAction()
+    delay(100)
+
+    assertEquals(true, rig.store.overrides.value[post.id]?.isFavourited)
+    assertEquals(2, rig.requests)
+  }
+
+  @Test
+  fun theLineEndsAtTheNextAction() = runBlocking {
+    val next = CompletableDeferred<Unit>()
+    val rig = Rig(signedIn = true, nextAction = { next.await() })
+    val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
+    rig.actions.toggleFavourite(favourited)
+    val ended = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { message.await().until!!() } }
+    rig.settled(favourited = false)
+    delay(50)
+    assertFalse(ended.isCompleted)
+
+    next.complete(Unit)
+
+    ended.await()
+  }
+
+  @Test
+  fun theLineEndsWhenThePostIsFavouritedAgainAnotherWay() = runBlocking {
+    val rig = Rig(signedIn = true)
+    val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
+    rig.actions.toggleFavourite(favourited)
+    val ended = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { message.await().until!!() } }
+    rig.settled(favourited = false)
+    delay(50)
+    assertFalse(ended.isCompleted)
+
+    rig.actions.toggleFavourite(favourited.merge(rig.store.overrides.value[post.id]))
+
+    ended.await()
+  }
+
+  @Test
+  fun theLineEndsWhenTheViewerShowsAnotherPost() = runBlocking {
+    val rig = Rig(signedIn = true)
+    rig.actions.showing(post.id)
+    val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
+    rig.actions.toggleFavourite(favourited)
+    val ended = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { message.await().until!!() } }
+    rig.settled(favourited = false)
+    rig.actions.showing(post.id)
+    delay(50)
+    assertFalse(ended.isCompleted)
+
+    rig.actions.showing("p2")
+
+    ended.await()
+  }
+
+  @Test
+  fun aRefusedUnfavouriteEndsTheLine() = runBlocking {
+    val rig = Rig(signedIn = true, status = HttpStatusCode.NotFound)
+    val ended = CompletableDeferred<Unit>()
+    val messages = async(start = CoroutineStart.UNDISPATCHED) {
+      withTimeout(5_000) {
+        rig.messages.messages.take(2).onEach { if (it.until != null) launch { it.until!!(); ended.complete(Unit) } }.toList()
+      }
+    }
+    rig.actions.toggleFavourite(favourited)
+
+    val (line, error) = messages.await()
+    withTimeout(5_000) { ended.await() }
+
+    assertEquals("Unfavourited", line.text)
+    assertTrue(error.isError)
+    assertEquals(true, rig.settled(favourited = true).getValue(post.id).isFavourited)
+  }
+
+  @Test
+  fun favouritingStaysSilent() = runBlocking {
+    val rig = Rig(signedIn = true)
+    val messages = mutableListOf<Message>()
+    val collecting = launch(start = CoroutineStart.UNDISPATCHED) { rig.messages.messages.collect { messages += it } }
+
+    rig.actions.toggleFavourite(post)
+    rig.actions.addFavourite(favourited)
+    rig.settled(favourited = true)
+    delay(50)
+
+    collecting.cancel()
+    assertEquals(emptyList(), messages)
+  }
+
+  @Test
+  fun unfavouritingFromTheGridSaysNothing() = runBlocking {
+    val rig = Rig(signedIn = true)
+    val messages = mutableListOf<Message>()
+    val collecting = launch(start = CoroutineStart.UNDISPATCHED) { rig.messages.messages.collect { messages += it } }
+
+    rig.actions.toggleFavourite(favourited, fromGrid = true)
+    rig.settled(favourited = false)
+    delay(50)
+
+    collecting.cancel()
+    assertEquals(emptyList(), messages)
   }
 
   @Test
@@ -200,7 +348,6 @@ class PostActionsTest {
   fun aHeartFromTheGridDoesNotMakeThePostSeen() {
     val rig = Rig(signedIn = true)
 
-    // A grid cell's Favourite action and its ♡, as GridScreen passes them.
     rig.actions.toggleFavourite(post, viaDoubleTap = true, fromGrid = true)
     rig.actions.toggleFavourite(post, viaDoubleTap = false, fromGrid = true)
 
@@ -241,14 +388,12 @@ class PostActionsTest {
     val played = mutableListOf<Boolean>()
     val collecting = launch(start = CoroutineStart.UNDISPATCHED) { all.forShown { shown }.collect { played += it } }
 
-    // Each heart is collected before the next step, as in the app, where the viewer runs between them.
     suspend fun heart(postId: String, favourited: Boolean) {
       all.emit(FavouriteHeart(postId, favourited))
       delay(20)
     }
 
     heart("a", true)
-    // Stepped on to b while a's toggle still runs: a's rollback no longer pops, b's toggle does.
     shown = "b"
     heart("a", false)
     heart("b", true)
@@ -264,11 +409,9 @@ class PostActionsTest {
     val collecting = launch(start = CoroutineStart.UNDISPATCHED) { rig.actions.hearts.collect { hearts += it } }
 
     rig.actions.toggleFavourite(post)
-    // Signed in, the favourite sign-in carried runs, still without a heart: the heart was for the key press.
     rig.session.signIn("tester", "password")
     rig.signIn.succeeded()
     withTimeout(5_000) { rig.store.overrides.first { it[post.id]?.let { o -> o.isFavourited == true && !o.inFlight } == true } }
-    // The grid's own toggles play the cell's heart, not the viewer's.
     rig.actions.toggleFavourite(post.copy(isFavorited = true), fromGrid = true)
     delay(100)
 
@@ -292,12 +435,9 @@ class PostActionsTest {
 
     rig.actions.toggleFavourite(post)
     assertEquals("to favourite", rig.signIn.reason.value)
-    // What the sign-in form does on success.
     assertEquals(SignInResult.Ok, rig.session.signIn("tester", "password"))
     rig.signIn.succeeded()
 
-    // It waits out the clear for the new account, so the override it set is still there when it settles. (Reading
-    // the full post first adds an entry with only its URLs, hence the favourite must be set too.)
     val settled = withTimeout(5_000) {
       rig.store.overrides.first { all -> all[post.id]?.let { it.isFavourited != null && !it.inFlight } == true }
     }
@@ -342,12 +482,10 @@ class PostActionsTest {
 
     rig.actions.toggleFavourite(post)
     rig.signIn.close()
-    // Signed in some other way afterwards: the dropped favourite still doesn't run.
     rig.session.signIn("tester", "password")
     val running = scope.coroutineContext.job.children.count()
     rig.signIn.succeeded()
 
-    // A follow-through would have launched on the app scope by now: nothing was.
     assertEquals(running, scope.coroutineContext.job.children.count())
     assertEquals(0, rig.requests)
     assertNull(rig.store.overrides.value[post.id])
@@ -362,7 +500,6 @@ class PostActionsTest {
     val running = scope.coroutineContext.job.children.count()
     rig.signIn.succeeded()
 
-    // The follow-through reads the full post, which says favourited, and stops there.
     withTimeout(5_000) { while (scope.coroutineContext.job.children.count() > running) delay(10) }
     assertEquals(0, rig.requests)
     assertNull(rig.store.overrides.value[post.id]?.isFavourited)
@@ -379,10 +516,6 @@ class PostActionsTest {
     assertEquals(true, settled.getValue(post.id).isFavourited)
   }
 
-  /**
-   * TalkBack's adjustable rating (#143): setting its progress to 3 votes 3 through the same path as a tap on the third
-   * star, the vote showing at once (the override) before the API answers.
-   */
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun settingTheRatingsProgressVotesThroughTheUsualPath() = runComposeUiTest {
@@ -409,7 +542,6 @@ class PostActionsTest {
       .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your vote, 3"))
   }
 
-  /** #527: the phone viewer's long-press favourites as the ♡ does, optimistically, with its heart. */
   @Test
   fun aLongPressFavouritesWithTheHeart() = runBlocking {
     val rig = Rig(signedIn = true)
@@ -424,7 +556,6 @@ class PostActionsTest {
     assertEquals(1, rig.requests)
   }
 
-  /** #527, as #163: on a favourite, the long-press plays the filled heart again and never unfavourites. */
   @Test
   fun aLongPressOnAFavouriteNeverUnfavourites() = runBlocking {
     val rig = Rig(signedIn = true)
@@ -446,7 +577,6 @@ class PostActionsTest {
 
     rig.actions.addFavourite(post)
 
-    // The sheet's ♡ shakes on this rejection (feedback C), and the burst plays the state it went back to.
     assertEquals(Rejection.Favourite(post.id), rejection.await())
     assertEquals(listOf(FavouriteHeart(post.id, true), FavouriteHeart(post.id, false)), hearts.await())
     assertEquals(false, rig.store.overrides.value[post.id]?.isFavourited)
@@ -466,13 +596,11 @@ class PostActionsTest {
   @Test
   fun aFailedToggleShowsTheErrorAndRollsBack() = runBlocking {
     val rig = Rig(signedIn = true, status = HttpStatusCode.InternalServerError)
-    // Undispatched, so it's subscribed before the toggle fails: a message with no subscriber is dropped.
     val message = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
     val rejection = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.actions.rejections.first() } }
 
     assertTrue(rig.actions.toggleFavourite(post))
 
-    // The reason for the top line, and the control's cue to shake back.
     assertTrue(message.await().let { it.isError && it.text.startsWith("Couldn't favourite") })
     assertEquals(Rejection.Favourite(post.id), rejection.await())
     assertEquals(false, rig.store.overrides.value[post.id]?.isFavourited)

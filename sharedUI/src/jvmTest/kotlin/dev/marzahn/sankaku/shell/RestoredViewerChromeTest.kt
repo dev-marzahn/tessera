@@ -39,12 +39,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #287, frame by frame: what the shell draws (the top bar above or under the content, its count pill) around a grid
- * whose viewer is open. The tabs, their saved state and the shell's rule (`TabState.chromeCovered`) are the app's; the
- * grid and its viewer are stand-ins wired as `GridScreen` and `PhoneViewer` are. Each piece logs itself as it's drawn,
- * once a frame, by name only.
- */
 @OptIn(ExperimentalTestApi::class)
 class RestoredViewerChromeTest {
   private val tabs = TabsController(FileTabStateStore(InMemoryTextFile(null)))
@@ -56,13 +50,10 @@ class RestoredViewerChromeTest {
   private val drawn = mutableMapOf<Int, MutableList<String>>()
   private var queuePageOpen by mutableStateOf(false)
 
-  /** The viewer's hand-back (#103): closing, its pill on the grid's line, it stops covering the chrome. */
   private var handBack by mutableStateOf(false)
 
-  /** Each grid's viewer, open or not: saved state, as `GridScreen`'s viewer index is. */
   private val viewers = mutableMapOf<Route.Grid, MutableState<Boolean>>()
 
-  /** Reading [frame] in draw redraws the piece every frame, so each frame logs everything on screen. */
   private fun Modifier.logs(name: String) = drawBehind { drawn.getOrPut(frame) { mutableListOf() } += name }
 
   private val entryProvider: (NavKey) -> NavEntry<NavKey> = { key ->
@@ -71,7 +62,6 @@ class RestoredViewerChromeTest {
       val tab = LocalTabEntry.current!!.tab
       val viewer = rememberSaveable { mutableStateOf(false) }
       viewers[route] = viewer
-      // As GridScreen: the viewer reports on the tab, and the grid uncovers once the viewer is gone.
       val viewerShown = remember { MutableTransitionState(viewer.value) }
       viewerShown.targetState = viewer.value
       val coverChrome: (Boolean) -> Unit = remember(tab, route) { { covers -> tab.coverChrome(route, covers) } }
@@ -79,7 +69,6 @@ class RestoredViewerChromeTest {
       Box(Modifier.size(10.dp).logs("grid ${route.tags.single()}"))
       AnimatedVisibility(visibleState = viewerShown, enter = EnterTransition.None, exit = ExitTransition.None) {
         CompositionLocalProvider(LocalCoverChrome provides coverChrome) {
-          // As PhoneViewer: it covers the chrome until the hand-back, and draws its own pill.
           CoverChrome(enabled = !handBack)
           Box(Modifier.size(10.dp).logs("viewer pill"))
         }
@@ -87,7 +76,6 @@ class RestoredViewerChromeTest {
     }
   }
 
-  /** Stands in for `Shell`, with its rule for the top bar and the pill. */
   @Composable
   private fun Shell() {
     val activeId by tabs.active.collectAsState()
@@ -100,7 +88,6 @@ class RestoredViewerChromeTest {
     }
   }
 
-  /** Runs [change] at the start of frame 1, then draws [count] frames one by one. */
   private fun ComposeUiTest.frames(count: Int, change: () -> Unit) {
     mainClock.autoAdvance = false
     drawn.clear()
@@ -133,7 +120,6 @@ class RestoredViewerChromeTest {
     runOnIdle { queuePageOpen = true }
     waitForIdle()
 
-    // Continue on the queue page: the grid comes back with its viewer open.
     frames(4) { queuePageOpen = false }
     val log = log("Queue page closed over a grid with its viewer open:")
     drawn.values.forEach { assertEquals(listOf("bar under", "grid a", "viewer pill"), it.sorted(), log) }
@@ -166,13 +152,11 @@ class RestoredViewerChromeTest {
     runOnIdle { viewers.getValue(gridA).value = false }
     waitForIdle()
 
-    // Opening: the viewer draws its pill from its first frame, and covers the chrome from the next.
     frames(3) { viewers.getValue(gridA).value = true }
     val opening = log("Viewer opened over a grid:")
     drawn.values.forEach { pieces -> assertTrue(pieces.any { "pill" in it }, opening) }
     assertEquals(listOf("bar under", "grid a", "viewer pill"), drawn.getValue(3).sorted(), opening)
 
-    // The hand-back, then the viewer goes a couple of frames later, as PhoneViewer's does (#103).
     frames(3) { handBack = true }
     runOnUiThread { viewers.getValue(gridA).value = false }
     for (f in 4..6) {

@@ -59,10 +59,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
-/**
- * #383: a book's ♡ as posts' is: optimistic, rolled back with a message and a rejection on failure; signed out it opens
- * sign-in and ♡s the book once signed in, unless the account had already.
- */
 class BookActionsTest {
   private val now = Instant.parse("2026-11-06T12:00:00Z")
   private val clock = object : Clock {
@@ -80,12 +76,9 @@ class BookActionsTest {
   """.trimIndent()
   private val book = BookDto(id = "b1", favCount = 10)
 
-  /** [serverFavourited]: what `/pools/b1` says once signed in. */
   private inner class Rig(signedIn: Boolean, status: HttpStatusCode = HttpStatusCode.OK, serverFavourited: Boolean = false) {
-    /** The ♡ calls. */
     val favourites = mutableListOf<HttpMethod>()
 
-    /** Completed once the book has been asked for. */
     val bookAsked = CompletableDeferred<Unit>()
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
     private val engine = MockEngine { request ->
@@ -122,7 +115,6 @@ class BookActionsTest {
     val messages = Messages()
     val actions = BookActions(BookFavourites(api, session, scope), session, signIn, messages, scope)
 
-    /** Every heart [actions] played, in order. */
     val hearts: MutableList<BookHeart> = Collections.synchronizedList(mutableListOf())
 
     init {
@@ -131,6 +123,11 @@ class BookActionsTest {
 
     suspend fun settled(): BookFavourite = withTimeout(5_000) {
       actions.favourites.overrides.first { it["b1"]?.count == 12 }.getValue("b1")
+    }
+
+    suspend fun awaitHearts(count: Int): List<BookHeart> = withTimeout(5_000) {
+      while (hearts.size < count) delay(10)
+      hearts.toList()
     }
   }
 
@@ -188,9 +185,9 @@ class BookActionsTest {
     rig.actions.toggleFavourite(book)
     rig.settled()
     rig.actions.toggleFavourite(book)
-    withTimeout(5_000) { while (rig.favourites.size < 2 || rig.hearts.size < 2) delay(10) }
+    withTimeout(5_000) { while (rig.favourites.size < 2) delay(10) }
 
-    assertEquals(listOf(BookHeart("b1", true), BookHeart("b1", false)), rig.hearts.toList())
+    assertEquals(listOf(BookHeart("b1", true), BookHeart("b1", false)), rig.awaitHearts(2))
   }
 
   @Test
@@ -201,7 +198,7 @@ class BookActionsTest {
     rig.actions.toggleFavourite(book)
     rejection.await()
 
-    assertEquals(listOf(BookHeart("b1", true), BookHeart("b1", false)), rig.hearts.toList())
+    assertEquals(listOf(BookHeart("b1", true), BookHeart("b1", false)), rig.awaitHearts(2))
   }
 
   @Test
@@ -216,7 +213,7 @@ class BookActionsTest {
     rig.signIn.succeeded()
     rig.settled()
 
-    assertEquals(listOf(BookHeart("b1", true)), rig.hearts.toList())
+    assertEquals(listOf(BookHeart("b1", true)), rig.awaitHearts(1))
   }
 
   @OptIn(ExperimentalTestApi::class)
@@ -241,8 +238,6 @@ class BookActionsTest {
       }
     }
     onNodeWithText("10 favourites").assertExists()
-    // Named by its title, its text (#521): no description stands in for it, as the count's ♥ "Favourites" did on
-    // every row.
     onNodeWithTag(BOOK_ROW_TAG).assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ContentDescription))
     assertEquals("Fixture book", onNodeWithTag(BOOK_ROW_TAG).fetchSemanticsNode().config[SemanticsProperties.Text].first().text)
 
@@ -262,7 +257,6 @@ class BookActionsTest {
     rig.session.signIn("tester", "password")
     rig.signIn.succeeded()
     withTimeout(5_000) { rig.bookAsked.await() }
-    // Time for a ♡ call, had the answer been "not favourited".
     delay(300)
 
     assertTrue(rig.favourites.isEmpty(), "not un-favourited by a toggle from what a signed-out list showed")

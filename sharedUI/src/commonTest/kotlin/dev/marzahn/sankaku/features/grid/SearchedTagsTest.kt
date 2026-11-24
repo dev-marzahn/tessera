@@ -4,7 +4,6 @@ import dev.marzahn.sankaku.data.GridPresets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Which tags a search sends; their order is `SearchOrderTest`'s. */
 class SearchedTagsTest {
   @Test
   fun withSafeOnlyEverySearchIsSentAsGOnlyWhenSignedIn() {

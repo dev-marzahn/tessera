@@ -35,6 +35,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.QueuePageAndTopLine
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
@@ -94,15 +95,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
-/**
- * #322: a grid's mosaic on the queue page and that grid's first cells as one element each, through the app's own
- * chain: the shell's scope ([ShellBox]), the page's transitions, the tab's [ActiveTab] with the real [GridScreen] under
- * the page ([UnderQueuePage]) and the real [QueuePage] over it. Synthetic fixture posts with one-colour thumbnails,
- * never a real post. These check bounds and state only; how the move looks is QA'd in the app (#332).
- *
- * The window shows a grid's first two cells (one column), so of its mosaic's four thumbnails two have a cell to move to
- * and two don't.
- */
 @OptIn(ExperimentalTestApi::class)
 class QueueMosaicTransitionTest {
   private val png = ByteArrayOutputStream().also {
@@ -126,7 +118,6 @@ class QueueMosaicTransitionTest {
 
   private fun url(path: String) = "https://v.sankakucomplex.com/data/$path?e=${(Clock.System.now() + 1.hours).epochSeconds}"
 
-  /** 30 fixture posts, rated [rating]. */
   private fun page(rating: String): String {
     val posts = (1..30).joinToString(",") { n ->
       """{"id":"fixture-$n","md5":"fixture-md5-$n","rating":"$rating","status":"active","file_type":"image/png",""" +
@@ -142,7 +133,7 @@ class QueueMosaicTransitionTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -154,7 +145,6 @@ class QueueMosaicTransitionTest {
           val path = request.url.encodedPath
           when {
             request.url.host == "sankakuapi.com" && path == "/v2/posts/keyset" -> {
-              // An R15 grid's search names it; any other is rated G.
               val rating = if (request.url.parameters.getAll("tags").orEmpty().any { "fixture_r15" in it }) "q" else "s"
               respond(page(rating), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
             }
@@ -170,14 +160,13 @@ class QueueMosaicTransitionTest {
     return GlobalContext.get().get()
   }
 
-  /** [grids] (the first one current) and a lone post, each its own item, and nothing else. */
   private fun TabsController.only(vararg grids: Route.Grid) {
     grids.forEachIndexed { i, grid -> open(grid, background = i > 0) }
+    for (tab in tabs.value) (tab.top as? Route.Grid)?.takeIf { it in grids }?.let(tab::markTouched)
     open(LONE_POST, background = true)
     tabs.value.filter { it.top != LONE_POST && grids.none { grid -> grid == it.top } }.forEach { close(it.id) }
   }
 
-  /** The shell as `Shell` lays it out on a phone: the tab's content under the page, the page over it. */
   private fun ComposeUiTest.shell(tabs: TabsController) {
     val navigator = TabsNavigator(tabs)
     val koin = GlobalContext.get()
@@ -227,7 +216,6 @@ class QueueMosaicTransitionTest {
 
   private fun ComposeUiTest.thumbs() = List(4) { boundsOf(mosaicThumbTag(it)) }
 
-  /** Waits, on the real clock, for [tabs]' current grid to show its cells and report its mosaic. */
   private fun ComposeUiTest.gridLoaded(tabs: TabsController) {
     waitUntil(timeoutMillis = 5_000) { tabs.activeTab.mosaic?.thumbs?.size == 4 && boundsOf(mosaicCellTag(0)) != null }
     mainClock.autoAdvance = false
@@ -238,13 +226,6 @@ class QueueMosaicTransitionTest {
 
   private fun ComposeUiTest.tapRow(title: String) = onAllNodesWithText(title).onFirst().performClick()
 
-  /**
-   * The acceptance test: a grid's row tapped on the page. Each mosaic thumbnail whose post is among the grid's first
-   * cells moves to that cell's bounds as the page closes, as one element with the cell: the cell is laid out at the
-   * bounds in flight, from the thumbnail's to its own, and it's there on every frame, so no cell waits empty while a
-   * thumbnail flies to it. The thumbnails with no cell on screen stay where they are and fade with the page. Before #322
-   * the cells and the thumbnails had nothing to do with each other.
-   */
   @Test
   fun aGridRowsMosaicMovesIntoItsFirstCellsAsThePageCloses() = runDesktopComposeUiTest(WIDTH, HEIGHT) {
     val tabs = startFixtureKoin()
@@ -256,8 +237,6 @@ class QueueMosaicTransitionTest {
     val offScreen = cellsAtRest.indices - onScreen.toSet()
     assertTrue(onScreen.isNotEmpty() && offScreen.isNotEmpty(), "some of the mosaic's posts have a cell on screen, some not: $cellsAtRest")
 
-    // The queue page, from the pill (the current item is the grid); then another item comes forward under it, and
-    // the grid's row is tapped.
     pageOpen = true
     settle()
     tabs.activate(tabs.tabs.value.first { it.top == LONE_POST }.id)
@@ -288,7 +267,6 @@ class QueueMosaicTransitionTest {
     }
   }
 
-  /** The other way, from the pill (optional in #322): the grid's cells move into its mosaic as the page opens. */
   @Test
   fun fromThePillTheCellsMoveIntoTheMosaic() = runDesktopComposeUiTest(WIDTH, HEIGHT) {
     val tabs = startFixtureKoin()
@@ -309,16 +287,11 @@ class QueueMosaicTransitionTest {
     assertTrue(path.last().width < thumb.width * 2, "it ends at its thumbnail: ${path.last()}, $thumb")
   }
 
-  /**
-   * A grid that hasn't loaded when the page closes (a restored item, shown for the first time) keeps the plain fade:
-   * its row's thumbnails stay put on every frame, before and after its cells come, and the cells come in their place.
-   */
   @Test
   fun aGridStillLoadingKeepsThePlainFade() = runDesktopComposeUiTest(WIDTH, HEIGHT) {
     val tabs = startFixtureKoin()
     tabs.only(GRID)
     tabs.activate(tabs.tabs.value.first { it.top == LONE_POST }.id)
-    // As saved at the last launch: the grid has its mosaic, and nothing loaded.
     val grid = tabs.tabs.value.first { it.top == GRID }
     grid.reportMosaic(GRID, QueueMosaic((1..4).map { QueueThumb("fixture-md5-$it", "s") }, 30))
     pageOpen = true
@@ -334,7 +307,6 @@ class QueueMosaicTransitionTest {
     val cellSizes = mutableListOf<Rect>()
     repeat(40) { frame ->
       mainClock.advanceTimeByFrame()
-      // Real time for the page to load meanwhile.
       Thread.sleep(10)
       thumbs().forEachIndexed { i, thumb ->
         thumb?.let { assertTrue(it.near(thumbsAtRest[i]!!), "frame $frame: thumbnail $i stays put: $it") }
@@ -347,7 +319,6 @@ class QueueMosaicTransitionTest {
     assertTrue(cellSizes.all { it.near(landed) }, "its cells come in their place, never in flight: $cellSizes")
   }
 
-  /** An R15 grid's blurred mosaic (#164) never moves: the page opens and closes over its cells with the plain fade. */
   @Test
   fun aBlurredMosaicNeverMoves() = runDesktopComposeUiTest(WIDTH, HEIGHT) {
     val tabs = startFixtureKoin()
@@ -381,8 +352,6 @@ class QueueMosaicTransitionTest {
     val R15_GRID = Route.Grid(listOf("fixture_r15"))
     val LONE_POST = Route.Post("fixture-lone", "fixture-lone-md5", emptyList(), "Lone")
 
-    // A phone's 411 dp width: one column of cells, two of them in view. At 1 px per dp, so each frame costs little to
-    // draw: what's checked is bounds, never pixels.
     const val WIDTH = 411
     const val HEIGHT = 610
     const val DENSITY = 1f

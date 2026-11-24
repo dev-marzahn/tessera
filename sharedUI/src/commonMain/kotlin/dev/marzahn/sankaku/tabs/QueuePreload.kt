@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,22 +35,6 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-/**
- * Touch: the items beside the one shown in the queue ([neighbours], the items a swipe or ‹ and › land on) load what
- * they show first as soon as they're neighbours, so a move lands on it instead of starting its load.
- * - A lone post loads its post and the images the viewer shows first ([firstShownRequests]), so it lands on a decoded
- *   picture (#263). The requests are the viewer's own, cache first, so a cached image costs no request.
- * - A grid or feed loads the page it opens on into the page cache ([PostsRepository.gridStart]) and decodes the
- *   thumbnails of its first screen ([firstScreen]) with the cells' own requests (#317), so the grid starts with them in
- *   its first frame and asks for nothing more. It's the search the grid would make ([searchedTags]), once the stored
- *   session is known.
- *
- * Only what can still be landed on loads: an item that stops being a neighbour, and isn't [shown], has its load
- * cancelled, so swiping through the queue never has more than three items' loads in flight. The one a move lands on
- * keeps going, as its screen then makes the same requests, and joins the page request if it's still on the way.
- *
- * Returns the posts whose picture has loaded, by id, for the swipe's peek to draw them ([QueuePeek]).
- */
 @Composable
 internal fun PreloadNeighbours(
   shown: TabState,
@@ -66,29 +51,25 @@ internal fun PreloadNeighbours(
   val minCellWidth = with(LocalDensity.current) { minCellDp.roundToPx() }
   val auth by session.state.collectAsStateWithLifecycle()
   val gOnly by privacy.gOnly.collectAsStateWithLifecycle()
-  // The host's scope: it stays across moves, so a load outlives the move that made its item the one shown.
   val scope = rememberCoroutineScope()
   val loads = remember { mutableMapOf<Preload, Job>() }
   val ready = remember { mutableStateMapOf<String, LoadedNeighbour>() }
-  // Before the stored session is known the search isn't: a grid waits for it, as the grid itself does.
-  fun preloadOf(tab: TabState): Preload? = when (val top = tab.top) {
+  fun preloadOf(tab: TabState, place: (Route.Grid) -> GridPlace? = tab::placeFor): Preload? = when (val top = tab.top) {
     is Route.Post -> Preload.Post(top.id)
     is Route.Grid -> if (auth is AuthState.Restoring) {
       null
     } else {
-      Preload.Grid(searchedTags(top.tags, auth is AuthState.SignedIn, gOnly), tab.placeFor(top))
+      Preload.Grid(searchedTags(top.tags, auth is AuthState.SignedIn, gOnly), place(top))
     }
     is Route.Books, is Route.BookSeries, is Route.Book, null -> null
   }
-  val near = neighbours.mapNotNull(::preloadOf).distinct()
-  val keep = near + listOfNotNull(preloadOf(shown))
+  val near = neighbours.mapNotNull { preloadOf(it) }.distinct()
+  val keep = near + listOfNotNull(preloadOf(shown) { Snapshot.withoutReadObservation { shown.placeFor(it) } })
   LaunchedEffect(near, keep, window, minCellWidth) {
     loads.keys.filter { it !in keep }.forEach { loads.remove(it)?.cancel() }
     ready.keys.filter { Preload.Post(it) !in keep }.forEach { ready.remove(it) }
-    // Unmeasured, the requests would be sized by nothing and decode at another size under the same key.
     if (window.width <= 0 || window.height <= 0) return@LaunchedEffect
     for (preload in near) {
-      // Loading or loaded already; a load that failed is the item's own screen's to retry once it's shown.
       if (preload in loads) continue
       loads[preload] = when (preload) {
         is Preload.Post -> scope.preloadPost(preload.id, repository, imageLoader, context, window.width, window.height) {
@@ -100,7 +81,6 @@ internal fun PreloadNeighbours(
           } catch (_: ApiError) {
             return@launch
           }
-          // A grid restored at its place scrolls to its post, so its first screen starts there.
           val shown = preload.place?.let { place -> posts.dropWhile { it.id != place.post }.ifEmpty { null } } ?: posts
           firstScreen(shown, window.width, window.height, minCellWidth)
             .map { launch { imageLoader.execute(gridCellRequest(context, it)) } }
@@ -112,7 +92,6 @@ internal fun PreloadNeighbours(
   return ready
 }
 
-/** What a neighbour loads: a lone post's, or a grid's search (as it's asked) and the [Grid.place] it opens at. */
 private sealed interface Preload {
   data class Post(val id: String) : Preload
 
@@ -128,14 +107,11 @@ private fun CoroutineScope.preloadPost(
   height: Int,
   onReady: (LoadedNeighbour) -> Unit,
 ): Job = launch {
-  // The post as the lone post's view model loads it: held, or fetched once (the repository shares the fetch).
   val post = repository.cachedPost(id) ?: try {
     repository.fullPost(id)
   } catch (_: ApiError) {
     return@launch
   }
-  // Ready with the first picture decoded, the preview (on disk from the grid) while the sample still downloads, and
-  // again with the sharper one.
   firstShownRequests(context, post, width, height).map { request ->
     launch {
       imageLoader.execute(request)
@@ -144,12 +120,6 @@ private fun CoroutineScope.preloadPost(
   }.joinAll()
 }
 
-/**
- * The posts of [posts] (a grid's first page) a [windowWidth] × [windowHeight] px window shows before it's scrolled,
- * without those that need signing in, which the grid leaves out. It lays them out as the grid does, each in the
- * shortest of the columns of at least [minCellWidth] px ([gridCellRatio]), but in the whole window: the grid's edges
- * and gaps only make its cells narrower and fewer, so this never counts one short.
- */
 internal fun firstScreen(posts: List<PostDto>, windowWidth: Int, windowHeight: Int, minCellWidth: Int): List<PostDto> {
   if (windowWidth <= 0 || windowHeight <= 0) return emptyList()
   val lanes = (windowWidth / minCellWidth.coerceAtLeast(1)).coerceAtLeast(1)
@@ -157,7 +127,6 @@ internal fun firstScreen(posts: List<PostDto>, windowWidth: Int, windowHeight: I
   val heights = FloatArray(lanes)
   val shown = mutableListOf<PostDto>()
   for (post in posts) {
-    // The grid leaves out a post that needs signing in (#507).
     if (post.redirectToSignup) continue
     val lane = heights.indices.minBy { heights[it] }
     if (heights[lane] >= windowHeight) break
@@ -167,8 +136,4 @@ internal fun firstScreen(posts: List<PostDto>, windowWidth: Int, windowHeight: I
   return shown
 }
 
-/**
- * A neighbour [PreloadNeighbours] has loaded: its [post] and the best [picture] decoded for it. The map holds the
- * pictures of at most three posts (the neighbours and the one shown), which the memory cache can't evict meanwhile.
- */
 class LoadedNeighbour(val post: PostDto, val picture: Image)

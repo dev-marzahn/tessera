@@ -17,11 +17,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Finding a grid's saved place again (#162): its cursor, then `date:`, then paging from the top. */
 class GridPlaceTest {
   private val artist = listOf("artist_a")
 
-  // 2025-10-29T12:00:00Z, the fixture posts' upload time.
   private val time = 1_761_739_200L
 
   private val dated = "date:2000-01-01..2025-10-29T13:00:00"
@@ -63,17 +61,14 @@ class GridPlaceTest {
     val start = repo.locate(artist, GridPlace("p9", "expired", 5, time))
 
     assertEquals(GridStart(artist + dated, PageCursor("d2", 2)), start)
-    // The pager's first page is the one locate loaded.
     val posts = repo.posts(artist, start).asSnapshot()
     assertEquals(listOf("p9", "older"), posts.map { it.id })
     assertEquals(1, h.keysetRequests().count { it.next == "d2" })
-    // It goes on in the dated search, which holds every older post.
     assertTrue(h.keysetRequests().filter { it.next == "d3" }.all { it.tags == "artist_a $dated" })
   }
 
   @Test
   fun newPostsAboveAFirstPagePlaceAreSkippedByDate() = runTest {
-    // The post was on the first page; newer posts have pushed it down since.
     val h = harness { request ->
       if (request.tags == "artist_a $dated") json(Fixtures.page("d2", "p3")) else json(Fixtures.page("c2", "new1", "new2"))
     }
@@ -93,7 +88,6 @@ class GridPlaceTest {
     val repo = PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope)
 
     assertNull(repo.locate(artist, GridPlace("gone", "c5", 5, time)))
-    // The cursor's page, then the dated search to its end.
     assertEquals(3, h.keysetRequests().size)
   }
 
@@ -109,7 +103,6 @@ class GridPlaceTest {
 
     val start = repo.locate(popular, GridPlace("p9", "stale", 4, time))
 
-    // The stale cursor's page didn't hold it; the fourth page from the top does.
     assertEquals(GridStart(popular, PageCursor("n4", 4)), start)
     assertTrue(h.keysetRequests().none { it.tags!!.contains("date:") })
 
@@ -153,10 +146,33 @@ class GridPlaceTest {
   }
 
   @Test
+  fun aListFromTheTopReportsEachPageAndWhetherMoreFollow() = runTest {
+    val h = harness { request ->
+      if (request.next == "c2") json(Fixtures.page(null, "p3")) else json(Fixtures.page("c2", "p1", "p2"))
+    }
+    val repo = PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope)
+    val pages = mutableListOf<TopPage>()
+
+    repo.posts(artist, onTopPage = { pages += it }).asSnapshot { appendScrollWhile { true } }
+
+    assertEquals(listOf(true to true, false to false), pages.map { it.isFirst to it.more })
+    assertEquals(listOf(listOf("p1", "p2"), listOf("p3")), pages.map { page -> page.posts.map { it.id } })
+  }
+
+  @Test
+  fun aListOpenedMidwayReportsNoTopPage() = runTest {
+    val h = harness { json(Fixtures.page(null, "p8", "p9")) }
+    val repo = PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope)
+    val pages = mutableListOf<TopPage>()
+
+    repo.posts(artist, GridStart(artist, PageCursor("c5", 5)), onTopPage = { pages += it }).asSnapshot()
+
+    assertEquals(emptyList(), pages)
+  }
+
+  @Test
   fun theDatedSearchEndsAfterTheUploadHour() {
-    // 12:34:56 UTC: up to and including 12:xx, so the end is 13:00.
     assertEquals(artist + "date:2000-01-01..2025-10-29T13:00:00", datedSearch(artist, time + 34 * 60 + 56))
-    // The last second of the day rolls over to the next.
     assertEquals("date:2000-01-01..2025-10-30T00:00:00", datedSearch(emptyList(), 1_761_782_399).last())
   }
 

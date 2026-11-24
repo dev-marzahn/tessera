@@ -17,11 +17,6 @@ import kotlinx.io.RawSink
 import kotlinx.io.asSink
 import java.io.IOException
 
-/**
- * `Download/Tessera` through MediaStore's Downloads collection: an app may add files there without any storage
- * permission (API 29+, and `minSdk` is 31). A file stays pending, so invisible to other apps and to [find], until it's
- * written whole. Only the files this app added are visible to it, so a reinstall saves a post again as `name (1)`.
- */
 class MediaStoreSaveFolder(private val context: Context) : SaveFolder {
   private val collection: Uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
@@ -60,11 +55,6 @@ class MediaStoreSaveFolder(private val context: Context) : SaveFolder {
       file(uri, mimeType ?: resolver.getType(uri))
     }
 
-  /**
-   * Deletes a pending [name] left by a process that died mid-download (MediaStore keeps it for about a week). Without
-   * this, the new file would be renamed `name (1)`, which [find] never matches, so every later Save would download
-   * again. `PostSaver` never saves one post twice at once, so a pending file here is never a live one.
-   */
   private fun dropUnfinished(name: String) {
     val args = Bundle().apply {
       putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaColumns.DISPLAY_NAME} = ? AND ${MediaColumns.RELATIVE_PATH} = ? AND ${MediaColumns.IS_PENDING} = 1")
@@ -81,7 +71,6 @@ class MediaStoreSaveFolder(private val context: Context) : SaveFolder {
     try {
       context.startActivity(view)
     } catch (_: ActivityNotFoundException) {
-      // No app opens this type; the file is still saved.
     }
   }
 

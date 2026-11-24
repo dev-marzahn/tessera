@@ -20,6 +20,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.Route
@@ -65,12 +66,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * #313: on a post opened from a `scenery` grid, a click (a tap on the phone) on the Scenery chip, which the search
- * already includes, runs no search and says "Already searching Scenery": the grid keeps its route, order and place.
- * A plain chip still opens its popular search "now"; a middle-click and the menu are unchanged. The real
- * [PostDetails] with a real [TabsController] and [TabsNavigator]; fixture tags, no network.
- */
 @OptIn(ExperimentalTestApi::class)
 class IncludedTagTapTest {
   private val grid = Route.Grid(listOf("scenery"))
@@ -83,7 +78,6 @@ class IncludedTagTapTest {
   private val tabCount = tabs.tabs.value.size
   private val shown = mutableListOf<String>()
 
-  /** [TabsNavigator], recording which way each route went. */
   private val calls = mutableListOf<String>()
   private val tabsNavigator = TabsNavigator(tabs)
   private val navigator = object : Navigator by tabsNavigator {
@@ -115,7 +109,7 @@ class IncludedTagTapTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -134,15 +128,11 @@ class IncludedTagTapTest {
   private fun ComposeUiTest.showPost() {
     setContent {
       SankakuTheme {
-        // The app's own Messages, which the top line shows.
         val messages = koinInject<Messages>()
         LaunchedEffect(messages) { messages.messages.collect { message: Message -> shown += message.text } }
         PostDetails(post, searchTags = grid.tags, navigator = navigator, tabs = tabs)
       }
     }
-    // The recommendations' request fails on Ktor's own dispatcher, which waitForIdle doesn't wait for. Until it does,
-    // their loading box is 48 px taller and the chips sit lower: a click aimed at a chip before then landed beside it
-    // once the box shrank (the CI flake).
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Couldn't load recommendations").fetchSemanticsNodes().isNotEmpty() }
     waitForIdle()
   }
@@ -186,8 +176,6 @@ class IncludedTagTapTest {
     }
     waitForIdle()
 
-    // As before, it goes to openInNewTab; its popular search's source is the grid shown (one source per search), so
-    // the navigator adds no tab and the grid stays as it was.
     assertEquals(listOf("new tab ${Route.Grid(listOf("order:popularity", "scenery"))}"), calls)
     assertGridKept()
     assertEquals(emptyList(), shown)

@@ -53,10 +53,6 @@ import dev.marzahn.sankaku.ui.runWindow
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-/**
- * The account, at the foot of the sidebar: "Sign in" when signed out; otherwise [AccountRow], the avatar and name
- * with Sign out beside them. [open] is whether the sidebar is; [onClose] closes it before the sign-in dialog opens.
- */
 @Composable
 fun AccountSection(
   open: Boolean,
@@ -82,13 +78,6 @@ fun AccountSection(
   AccountRow(user.name, user.avatarUrl, open, onSignOut = { scope.launch { session.signOut() } }, modifier)
 }
 
-/**
- * The avatar and [name], with Sign out beside them (#134). A tap on Sign out doesn't sign out: the row turns into an
- * error-tonal "Sign out? Tap again" with a countdown ring for [windowMillis] (M3's Short snackbar time, through the
- * accessibility settings), and a second tap within it calls [onSignOut]. When the window runs out, or the sidebar
- * closes ([open] false), the row comes back. TalkBack hears the question from a polite live region, and Sign out's
- * custom action signs out at once.
- */
 @Composable
 internal fun AccountRow(
   name: String,
@@ -105,7 +94,6 @@ internal fun AccountRow(
   LaunchedEffect(open) { if (!open) asking = false }
   LaunchedEffect(asking) {
     if (!asking) return@LaunchedEffect
-    // A press on the question holds the window, as feedback C's controls do.
     runWindow(windowMillis, isPaused = { pressed }) { left = it }
     asking = false
   }
@@ -134,10 +122,8 @@ internal fun AccountRow(
   }
 }
 
-/** Sign out's name and its tooltip on the desktop (#521). */
 internal const val SIGN_OUT = "Sign out"
 
-/** The avatar and [name], with Sign out: a tap calls [onAsk]; its TalkBack custom action, [onSignOutNow]. */
 @Composable
 private fun SignedIn(name: String, avatarUrl: String?, onAsk: () -> Unit, onSignOutNow: () -> Unit) {
   Row(
@@ -178,11 +164,6 @@ private fun SignedIn(name: String, avatarUrl: String?, onAsk: () -> Unit, onSign
   }
 }
 
-/**
- * "Sign out? Tap again" in the error container, the row's full width and Sign out's 48 dp height, with Sign out's
- * icon in the window's ring where Sign out was, so the second tap lands where the first did. It takes the focus Sign
- * out had, so Enter on a keyboard confirms too; a touch screen gives none, and nothing changes there.
- */
 @Composable
 private fun ConfirmSignOut(onClick: () -> Unit, left: () -> Float, interactionSource: MutableInteractionSource) {
   val focus = remember { FocusRequester() }

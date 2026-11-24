@@ -47,13 +47,8 @@ import dev.marzahn.sankaku.ui.components.TagChipState
 import dev.marzahn.sankaku.ui.openOnClick
 import kotlinx.coroutines.launch
 
-/** A Books search for [tag] alone: what a tag in the book sheet opens. */
 internal fun booksSearchFor(tag: TagDto): Route.Books = Route.Books(listOf(tag.searchName))
 
-/**
- * A book's description as plain text: the site writes it in DText, whose wiki links (`[[tag]]`, `[[tag|shown]]`) and
- * links (`"text":https://…`) read as their text.
- */
 internal fun plainDescription(dtext: String): String = dtext
   .replace(WIKI_LINK) { it.groupValues[2].ifEmpty { it.groupValues[1] } }
   .replace(LINK) { it.groupValues[1] }
@@ -62,17 +57,10 @@ internal fun plainDescription(dtext: String): String = dtext
 private val WIKI_LINK = Regex("""\[\[([^\]|]+)(?:\|([^\]]*))?]]""")
 private val LINK = Regex(""""([^"]+)":(?:https?://|/)\S+""")
 
-/**
- * The series the reader knows a book is in (#383): the [id] of the result it was opened as ([ResultBook.seriesId]), and
- * whether the reader was opened from that series' own list ([listed]), which is then under it. A book's own data doesn't
- * name its series (`:cli` step d20), so a book opened any other way has none.
- */
 data class SheetSeries(val id: String, val listed: Boolean)
 
-/** A series as the sheet shows it: [route] opens its books; the book is [position] of [count]. */
 internal data class InSeries(val route: Route.BookSeries, val title: String, val position: Int?, val count: Int)
 
-/** [series] as the sheet shows it for [bookId]. */
 internal fun inSeries(series: SeriesDto, bookId: String): InSeries = InSeries(
   route = Route.BookSeries(series.id, series.title),
   title = series.title,
@@ -80,16 +68,9 @@ internal fun inSeries(series: SeriesDto, bookId: String): InSeries = InSeries(
   count = maxOf(series.poolCount, series.books.size),
 )
 
-/** "Book 2 of 6", or "6 books" when the book's place isn't known. */
 internal fun seriesPlace(series: InSeries): String =
   series.position?.let { "Book $it of ${series.count}" } ?: booksLabel(series.count)
 
-/**
- * The book sheet (#377 decision 10): the book's title, ♡ and page count, its description, artist and genre tags and
- * the series it was opened from. A tag opens its page ([onOpenTag], #486: its posts and books), or on a middle-click or
- * long-press a Books search for it ([onOpenInNewTab]); the series opens its books: [onOpen], or [onOpenInNewTab]. It
- * opens at its full height when it fits, as the tag sheet does.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BookSheet(
@@ -106,7 +87,6 @@ internal fun BookSheet(
 ) {
   val sheet = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))
   val scope = rememberCoroutineScope()
-  // The chips stay tappable while the sheet slides away, so a second tap mustn't open a second search.
   var chosen by remember { mutableStateOf(false) }
   fun choose(action: () -> Unit) {
     if (chosen) return

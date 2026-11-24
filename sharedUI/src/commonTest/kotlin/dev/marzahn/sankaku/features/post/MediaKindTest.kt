@@ -5,10 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * The mark a grid cell and a recommended post carry (#524): videos the platform plays (▶ and the length), GIFs, Flash,
- * and a video it can't play here (a WebM on macOS, #226); a still image carries none.
- */
 class MediaKindTest {
   private val post = PostDto(id = "1", md5 = "abc", rating = "g", status = "active", fileType = "image/jpeg")
 

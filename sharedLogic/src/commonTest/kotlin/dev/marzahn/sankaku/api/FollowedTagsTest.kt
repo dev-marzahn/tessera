@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** #314: the followed tags, `GET /users/followings?content_type=tags` with V2, paged by `limit` and `page` (step 25). */
 class FollowedTagsTest {
   private val harness = Harness(InMemoryTokenStore(null)) { request ->
     when (request.url.encodedPath) {

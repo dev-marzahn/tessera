@@ -13,7 +13,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** #520: a failed load says what happened in plain words and offers the next step. */
 @OptIn(ExperimentalTestApi::class)
 class ApiErrorStateTest {
   @Test
@@ -54,7 +53,6 @@ class ApiErrorStateTest {
     assertTrue(onAllNodesWithText("Retry").fetchSemanticsNodes().isEmpty())
   }
 
-  /** A screen that can't edit a search still offers a way on: never a message without a button. */
   @Test
   fun withNoneOfItsStepsHereRetryStands() = runComposeUiTest {
     setContent { SankakuTheme { ApiErrorState(ApiError.TagLimit(4), onRetry = {}) } }
@@ -62,7 +60,6 @@ class ApiErrorStateTest {
     onNodeWithText("Retry").assertIsEnabled()
   }
 
-  /** The owner's journey re-check (#520): a kept post, signed out after a restart, reads like the grids' cells. */
   @Test
   fun aNotFoundSignedOutOffersSignIn() = runComposeUiTest {
     var signIns = 0

@@ -138,29 +138,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-/**
- * A tag's page open over the queue [item] that showed [over] when it opened (#486), with the [tag] as its opener knew
- * it, so its name and, if [typed], its type show while the page loads. A wiki link knows only the tag's name (#522).
- */
 data class OpenTagPage(val tag: TagDto, val item: TabId?, val over: Route?, val typed: Boolean = true)
 
-/**
- * Which tags' pages are open, if any (#486): opened from a tag in the book sheet or the tag menu's "About this tag",
- * then from the wiki links on them, each over the one before ([stack], #522). They belong to the item they were opened
- * over ([tabs]' active one): a search opened from one is a new item, as one from a grid's tag is, and Back from that
- * search comes back to the page. The last is the one [shown], only while its item is active and shows what it showed
- * then ([tagPageShown]). ← and Back go back to the one before ([back]); they all go when the item is closed or the
- * desktop's scrim is clicked ([close]).
- */
 class TagPages(internal val tabs: TabsController? = null) {
   private val _stack = MutableStateFlow<List<OpenTagPage>>(emptyList())
 
-  /** The pages open, the first opened first. */
   val stack: StateFlow<List<OpenTagPage>> = _stack.asStateFlow()
 
   private val _shown = MutableStateFlow<OpenTagPage?>(null)
 
-  /** The last of [stack], the page that shows. */
   val shown: StateFlow<OpenTagPage?> = _shown.asStateFlow()
 
   fun open(tag: TagDto) {
@@ -168,10 +154,6 @@ class TagPages(internal val tabs: TabsController? = null) {
     set(listOf(OpenTagPage(tag, active?.id, active?.top)))
   }
 
-  /**
-   * A wiki link on the shown page: [tag]'s page over it, ← coming back to it. A link to a page already open goes back
-   * to that one as it was, so links between two pages don't stack them without end (#577 review).
-   */
   internal fun openLinked(tag: WikiTag) {
     val top = _stack.value.lastOrNull() ?: return
     val open = _stack.value.indexOfFirst { it.tag.searchName == tag.searchName }
@@ -179,14 +161,11 @@ class TagPages(internal val tabs: TabsController? = null) {
       set(_stack.value.take(open + 1))
       return
     }
-    // A tag known only by its key reads as the site names one ("other_tag" is "Other Tag"); one typed with its case
-    // ("Admire Groove (umamusume)") as it was typed. A section ("#History") isn't part of its name.
     val shown = tag.shown.substringBefore('#').trim()
     val name = if (shown == shown.lowercase()) TagNames.ofKey(tag.searchName) else shown
     set(_stack.value + top.copy(tag = TagDto(name = name, tagName = tag.searchName), typed = false))
   }
 
-  /** Back to the page before the shown one, or none. */
   fun back() {
     set(_stack.value.dropLast(1))
   }
@@ -200,25 +179,20 @@ class TagPages(internal val tabs: TabsController? = null) {
     _shown.value = pages.lastOrNull()
   }
 
-  /** Counts the times a key reached the window under the shown page ([underTagPage]): each brings the keys back to it. */
   internal var keyReturns by mutableIntStateOf(0)
     private set
 
-  /** A key reached the window under the shown page: the page asks for the keys again ([keyReturns]). */
   internal fun takeKeys() {
     keyReturns++
   }
 }
 
-/** Whether [page] shows now: while its item is [active] and shows what it did when the page opened. */
 internal fun tagPageShown(page: OpenTagPage, active: TabId?, activeTop: Route?): Boolean =
   page.item == null || (page.item == active && page.over == activeTop)
 
-/** Whether a tag's page shows now (#522): one is open and its item is shown as it was ([tagPageShown]). */
 @Composable
 fun rememberTagPageShown(pages: TagPages = koinInject()): Boolean {
   val open by pages.shown.collectAsStateWithLifecycle()
-  // No queue (a test's): an open page always shows. The same instance throughout, so the calls below never change.
   val tabs = pages.tabs ?: return open != null
   val all by tabs.tabs.collectAsStateWithLifecycle()
   val active by tabs.active.collectAsStateWithLifecycle()
@@ -226,12 +200,6 @@ fun rememberTagPageShown(pages: TagPages = koinInject()): Boolean {
   return tagPageShown(page, active, all.firstOrNull { it.id == active }?.top)
 }
 
-/**
- * The window under a shown tag's page (#522): out of the accessibility tree, and none of its keys. A key that reaches it
- * anyway (a menu closing gave the focus back to the screen it was opened on) is the page's: Esc goes back as on the
- * page, any other key brings the keys back to it. Without this, Esc went back in the grid under the page, or closed its
- * viewer.
- */
 fun Modifier.underTagPage(shown: Boolean, pages: TagPages): Modifier =
   if (!shown) {
     this
@@ -244,13 +212,6 @@ fun Modifier.underTagPage(shown: Boolean, pages: TagPages): Modifier =
     }
   }
 
-/**
- * The tag pages while any is open ([TagPages.stack]) and their item shown, over everything, the book reader too, with
- * the window's messages ([snackbar]) over the shown one: the window's own host is under it (#522). As a [sheet]
- * (desktop, #522) they're Settings' side sheet: [SideSheetWidth] at the window's right edge over a scrim that closes
- * them, sliding in and out as it does; otherwise (touch) they cover the window. When they stop showing (closed, or
- * their item left) [onKeysBack] hands the keys back to the screen under them.
- */
 @Composable
 fun TagPageHost(
   pages: TagPages = koinInject(),
@@ -261,14 +222,12 @@ fun TagPageHost(
 ) {
   val shownNow = rememberTagPageShown(pages)
   var wasShown by remember { mutableStateOf(false) }
-  // The latest: the effect below runs on the frame the page goes, with what the window under it is by then.
   val keysBack by rememberUpdatedState(onKeysBack)
   LaunchedEffect(shownNow) {
     if (!shownNow && wasShown) keysBack()
     wasShown = shownNow
   }
   val stack by pages.stack.collectAsStateWithLifecycle()
-  // The pages last open, kept through the sheet's slide out once closed.
   val lastOpen = remember { mutableStateOf(emptyList<OpenTagPage>()) }
   SideEffect { if (stack.isNotEmpty()) lastOpen.value = stack }
   val slide = remember { Animatable(1f) }
@@ -284,7 +243,6 @@ fun TagPageHost(
   val drawn = if (closing) lastOpen.value else stack
   if (drawn.isEmpty()) return
   val all by tabs.tabs.collectAsStateWithLifecycle()
-  // Their item closed: the pages go with it.
   LaunchedEffect(stack, all) { stack.firstOrNull()?.item?.let { item -> if (all.none { it.id == item }) pages.close() } }
   Box(Modifier.fillMaxSize()) {
     if (sheet && (shownNow || closing)) {
@@ -310,8 +268,6 @@ fun TagPageHost(
         Modifier.fillMaxSize()
       },
     ) {
-      // All kept composed: the one under the shown one, and all while their item isn't shown (the search one opened
-      // is), so ← and Back find each as it was: loaded, scrolled and expanded, with no second request (#487 review).
       drawn.forEachIndexed { i, open ->
         val top = i == drawn.lastIndex
         key(i, open) {
@@ -332,38 +288,20 @@ fun TagPageHost(
   }
 }
 
-/** What the page shows below the tag's rows: loading, its wiki, or why it couldn't load. */
 internal sealed interface TagPageState {
   data object Loading : TagPageState
 
   data class Loaded(val page: TagAndWiki) : TagPageState
 
-  /** [unreachable]: Sankaku couldn't be reached, so the network coming back loads it again (#522). */
   data class Failed(val error: ApiError) : TagPageState {
     val unreachable: Boolean get() = error is ApiError.Network
   }
 }
 
-/** "1 post", "9.8k posts": the Posts row's count. */
 internal fun postsCount(count: Int): String = if (count == 1) "1 post" else "${compactCount(count)} posts"
 
-/** "1 book", "42 books": the Books row's count. */
 internal fun booksCount(count: Int): String = if (count == 1) "1 book" else "${compactCount(count)} books"
 
-/**
- * A tag's page (#486, the mockup the owner OK'd in its thread): ← and ⋮ (Copy name; Blacklist tag… signed in), the
- * tag's type and name, Follow (signed in, once its id is known), a row to its posts and one to its books with their
- * counts, and its wiki text, collapsed past [WIKI_LINES] lines. A row opens its search with a tap as a grid's tag does,
- * and the page stays with its item for Back to return to (over the window the book reader closes); a long-press or
- * middle-click opens it for later. ←, Back and Esc call [onClose].
- *
- * [seed] is the tag as its opener knew it: its name, type (if [typed]) and rows show at once, the counts and wiki once
- * `/tag-and-wiki` answers; a row with nothing in it then goes (#522). Failed, the rows stay (#522), and a failure for
- * want of a connection loads again once back online. The wiki reads as DText ([wikiText]): a link to a tag calls
- * [onOpenTag], and a long-press or middle-click on one opens a search for it for later. Shown, it has the keys, asked
- * for again each time [keyReturns] changes, and Tab doesn't leave it; [snackbar]'s messages show over it. [leaving], it
- * is drawn as it slides out but has none of that.
- */
 @Composable
 internal fun TagPage(
   seed: TagDto,
@@ -394,8 +332,6 @@ internal fun TagPage(
       TagPageState.Failed(e)
     }
   }
-  // Back online, a page that failed for want of a connection loads again, as a grid does (#128).
-  // Hidden (the search it opened is shown), it waits to be shown again: no load from what isn't on screen (REVIEW.md).
   var retryWhenShown by remember { mutableStateOf(false) }
   RetryWhenBack {
     if ((state as? TagPageState.Failed)?.unreachable == true) {
@@ -409,17 +345,12 @@ internal fun TagPage(
     }
   }
   val loaded = (state as? TagPageState.Loaded)?.page
-  // The page's own fields where they've come, the opener's until then. The name stays the opener's: the page's `name`
-  // is the search key ("hinghoi"), where a chip shows "Hinghoi".
   val tag = loaded?.tag?.let { it.copy(name = seed.name, tagName = it.tagName ?: seed.tagName) } ?: seed
   val signedIn by session.isSignedIn.collectAsState()
   val overrides by actions.follows.overrides.collectAsState()
   val following = actions.follows.isFollowing(tag, overrides)
   val focus = remember { FocusRequester() }
   LaunchedEffect(shown, keyReturns) { if (shown) focus.requestFocus() }
-  // Android gives Back to the handler registered last. Shown again after its search, the screen under it (its grid, its
-  // viewer) has just registered its handlers anew, after the page's: the page registers its own a frame after it shows,
-  // so Back is the page's (#522).
   var backArmed by remember { mutableStateOf(false) }
   LaunchedEffect(shown) {
     backArmed = false
@@ -429,11 +360,8 @@ internal fun TagPage(
     }
   }
   if (backArmed) PlatformBackHandler(enabled = true, onBack = onClose)
-  // Over the black reader, whose light icons and hidden bars would stay: the page's own, for its own surface.
   if (shown) PlatformSystemBars(hidden = false, lightIcons = MaterialTheme.colorScheme.surface.luminance() < 0.5f)
 
-  // As a grid's tag opens its search (#486): a new item opened from this one, which Back closes, back to this page. The
-  // page stays with its item; over the window, the reader closes for the search.
   fun open(route: Route) {
     reader.close()
     navigator.goTo(route)
@@ -443,7 +371,6 @@ internal fun TagPage(
   val books = Route.Books(listOf(tag.searchName))
   Surface(
     Modifier
-      // Hidden, it's measured but not placed: not drawn, not touched, not in the accessibility tree. Leaving, it's drawn.
       .then(
         when {
           shown -> Modifier
@@ -453,7 +380,6 @@ internal fun TagPage(
       )
       .fillMaxSize()
       .semantics { paneTitle = tag.displayName }
-      // Tab and Shift-Tab stay on the page: past its last control they'd reach the window under it (#522).
       .focusProperties {
         onExit = {
           if (shown && (requestedFocusDirection == FocusDirection.Next || requestedFocusDirection == FocusDirection.Previous)) {
@@ -477,8 +403,6 @@ internal fun TagPage(
             .padding(bottom = 24.dp),
         ) {
           Header(tag, typed || loaded != null, following, onToggleFollow = { actions.toggleFollow(tag) }.takeIf { signedIn && tag.id != null })
-          // The rows need only the tag's name: they're there while it loads and if it fails (#522), their counts once
-          // it has loaded, and a row with nothing in it goes then (#522).
           if (loaded == null || tag.postCount != 0) {
             OpenRow(grid_view, POSTS, tag.postCount?.let(::postsCount), onOpen = { open(posts) }, onOpenInNewTab = { navigator.openInNewTab(posts) })
           }
@@ -506,8 +430,6 @@ internal fun TagPage(
           }
         }
       }
-      // The window's messages (Blacklisted … · Undo, Couldn't follow …, a row opened for later): its own host is under
-      // the page (#522). Where the window has it: desktop at the bottom, touch on the top line.
       if (snackbar != null && shown) {
         AppSnackbarHost(
           snackbar,
@@ -568,7 +490,6 @@ private fun Header(tag: TagDto, typed: Boolean, following: Boolean, onToggleFoll
     Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    // A tag a wiki links to has no type until it loads: none, rather than General for a moment.
     Row(
       Modifier.heightIn(min = 20.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -596,7 +517,6 @@ private fun Header(tag: TagDto, typed: Boolean, following: Boolean, onToggleFoll
   }
 }
 
-/** A row to a search: [label] and its [count] if known; a tap opens it, a long-press or middle-click for later. */
 @Composable
 private fun OpenRow(icon: ImageVector, label: String, count: String?, onOpen: () -> Unit, onOpenInNewTab: () -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -617,10 +537,6 @@ private fun OpenRow(icon: ImageVector, label: String, count: String?, onOpen: ()
   }
 }
 
-/**
- * The wiki ([body], DText, [wikiText]), [WIKI_LINES] lines until More shows the rest. A click on a link to a tag calls
- * [onTag]; a long-press (touch) or middle-click on one calls [onTagForLater] with its search name.
- */
 @Composable
 private fun About(body: String, onTag: (WikiTag) -> Unit, onTagForLater: (String) -> Unit, touch: Boolean = platformIsTouch) {
   val linkColor = MaterialTheme.colorScheme.primary
@@ -633,10 +549,8 @@ private fun About(body: String, onTag: (WikiTag) -> Unit, onTagForLater: (String
   var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
   val haptics = LocalHapticFeedback.current
 
-  // The tag linked where [at] is, if any.
   fun tagAt(at: Offset): String? {
     val laid = layout ?: return null
-    // The caret's offset nearest to it: the character after it or the one before.
     val near = laid.getOffsetForPosition(at)
     val char = listOf(near, near - 1).firstOrNull { it in text.indices && laid.getBoundingBox(it).contains(at) } ?: return null
     return text.getLinkAnnotations(char, char + 1).firstNotNullOfOrNull { (it.item as? LinkAnnotation.Clickable)?.tag }
@@ -647,10 +561,7 @@ private fun About(body: String, onTag: (WikiTag) -> Unit, onTagForLater: (String
     Text(
       text,
       Modifier
-        // A middle-click or (touch) a long-press on a tag's link, as on a row. Seen before the link, which takes the
-        // press and would open the tag's page on the long-press's release: that release goes no further.
         .pointerInput(text) {
-          // Not a gesture: a gesture's first down is the primary button's.
           awaitPointerEventScope {
             var middleAt: Offset? = null
             while (true) {
@@ -670,7 +581,6 @@ private fun About(body: String, onTag: (WikiTag) -> Unit, onTagForLater: (String
           awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val tag = tagAt(down.position) ?: return@awaitEachGesture
-            // Lifted or moved (a scroll) before the long-press timeout: not a long-press.
             val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
               while (true) {
                 val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break

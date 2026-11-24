@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** #231: the queue page opens at a start only when the queue holds more than the current item. */
 class QueuePageAtStartTest {
   @Test
   fun oneSourceAloneOpensOnItsGrid() {

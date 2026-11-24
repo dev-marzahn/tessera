@@ -41,7 +41,6 @@ class TabStepTest {
 
     keys.performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(Key.D) } }
     keys.performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(Key.A) } }
-    // Plain A/D move the grid cursor or step posts; Shift with another key, or Ctrl-Shift-D, is something else.
     keys.performKeyInput { pressKey(Key.D) }
     keys.performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(Key.W) } }
     keys.performKeyInput { withKeyDown(Key.CtrlLeft) { withKeyDown(Key.ShiftLeft) { pressKey(Key.D) } } }

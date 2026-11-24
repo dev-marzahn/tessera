@@ -42,7 +42,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import dev.marzahn.sankaku.features.grid.PostOrigin
+import dev.marzahn.sankaku.tabs.Ahead
 import dev.marzahn.sankaku.tabs.ClosedTabUndo
+import dev.marzahn.sankaku.tabs.LATER_HINT_POSTS
 import dev.marzahn.sankaku.tabs.LocalTabEntry
 import dev.marzahn.sankaku.tabs.TabState
 import dev.marzahn.sankaku.tabs.TabsController
@@ -73,25 +75,17 @@ sealed interface PostUiState {
 
   data class Loaded(val post: PostDto) : PostUiState
 
-  /** [unreachable]: Sankaku couldn't be reached, so the network coming back retries it (#128). */
   data class Failed(val error: ApiError) : PostUiState {
     val unreachable: Boolean get() = error is ApiError.Network
   }
 }
 
-/**
- * A post in a tab of its own. It shows the copy the app already holds (from the grid it was opened from) at once,
- * and fetches only a post it doesn't hold, such as a parent link's; it retries by itself when the signed-in status
- * changes. The details panel fetches the full tag list either way.
- */
 class PostViewModel(
   private val id: String,
   private val repository: PostsRepository,
   store: PostStateStore,
   session: AuthSession,
 ) : ViewModel() {
-  // A post the app holds is loaded from the first frame: started as loading, a queue swipe's landing showed the
-  // loading box for a frame between the peek and the post (#277).
   private val loaded = MutableStateFlow(repository.heldPost(id)?.let(PostUiState::Loaded) ?: PostUiState.Loading)
 
   val state: StateFlow<PostUiState> = combine(loaded, store.overrides, ::withOverrides)
@@ -117,28 +111,18 @@ class PostViewModel(
   }
 }
 
-/**
- * Where the lone post [route] in [tab] came from, for its top line (#181): "Kept · from artist_x" while its source is in
- * the queue ([TabsController.sourceOf]), going there; else its own search, which opens as a search does from a post
- * (its source if one is open, [TabsController.sourceFor], else a new source in front, "now"); else nothing.
- */
 internal fun postOrigin(tab: TabState, route: Route.Post, tabs: TabsController, navigator: Navigator): PostOrigin? {
   val label = postOriginLabel(tab, route, tabs) ?: return null
   val source = tabs.sourceOf(tab)
-  return PostOrigin(label) { if (source != null) tabs.activate(source.id) else navigator.goTo(Route.Grid(route.originTags)) }
+  return PostOrigin(label) { if (source != null) tabs.jumpTo(source.id) else navigator.goTo(Route.Grid(route.originTags)) }
 }
 
-/** [postOrigin]'s label alone, for the queue swipe's peek of a lone post (#263), which goes nowhere. */
 internal fun postOriginLabel(tab: TabState, route: Route.Post, tabs: TabsController): String? {
   tabs.sourceOf(tab)?.let { source -> return kindLabel(tab, source) }
   if (route.originTags.isEmpty()) return null
   return "From ${tabTitle(Route.Grid(route.originTags), names = tabs.tagNames)}"
 }
 
-/**
- * A lone post (#181) draws the viewer's card ([ViewerMode.Tab]): the same panels, corners and controls, with a small
- * inset and no arrows. It has no grid behind it: Back goes to the previous queue item.
- */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PostScreen(
@@ -150,33 +134,25 @@ fun PostScreen(
   upNext: UpNextState = koinInject(),
   session: AuthSession = koinInject(),
   signIn: SignInController = koinInject(),
-  // The phone's lone post; a JVM test draws it too.
   touch: Boolean = platformIsTouch,
 ) {
   val viewModel = koinViewModel<PostViewModel>(key = "post-${route.id}") { parametersOf(route.id) }
   val state by viewModel.state.collectAsStateWithLifecycle()
   val signedIn by session.isSignedIn.collectAsStateWithLifecycle()
   RetryWhenBack { if ((viewModel.state.value as? PostUiState.Failed)?.unreachable == true) viewModel.load() }
-  // A post opened without a label (a parent link) is named once it loads, in the strip, the queue page and the previews.
   val loadedPost = (state as? PostUiState.Loaded)?.post
   val name = loadedPost?.let(PostTitle::of)
-  // A reload that names it differently, or no longer at all, changes or clears the title.
   if (route.label == null && loadedPost != null) LaunchedEffect(route.id, name) { tabs.loadedTitle(route, name) }
   DescribeTab(route) { TabContents.post(route.id, route.md5 ?: (viewModel.state.value as? PostUiState.Loaded)?.post?.md5) }
-  // A lone post (#181): its tab, for its top line, its drag down and the queue swipe on its image.
   val tab = LocalTabEntry.current?.tab
+  val keptHere = tab?.takeIf { it.kind.isKept && it.backStack.size == 1 }
   val tabList by tabs.tabs.collectAsStateWithLifecycle()
   val origin = remember(tab, tabList, route) { tab?.let { postOrigin(it, route, tabs, navigator) } }
   Surface(Modifier.fillMaxSize()) {
     when (val s = state) {
       is PostUiState.Loaded -> SharedTransitions {
-        // On a phone, under the queue page (#320): the picture grows out of its row's thumbnail as the page closes and
-        // shrinks back into it as the page opens, on the page's transition, in the shell's scope. Opened from another
-        // post's Recommended thumbnail (#321), it grows out of that thumbnail on its own coming in, then is the page's.
         val underPage = (LocalHandoffEntering.current ?: LocalUnderQueuePage.current)?.takeIf { touch }
-        // A phone shows the same sheet without the pager; system back goes to the previous queue item (#181).
         if (touch) {
-          // Elsewhere shown, settled, from the first frame: the card has nothing to grow from.
           val shown = remember { MutableTransitionState(true) }
           val phone: @Composable AnimatedVisibilityScope.() -> Unit = {
             PhoneViewer(
@@ -184,7 +160,6 @@ fun PostScreen(
               postAt = { s.post },
               loadedCount = 1,
               hasMore = false,
-              // Only the picture is shared, with its row's thumbnail.
               sharedId = s.post.id.takeIf { underPage != null },
               visibilityScope = this,
               onShow = {},
@@ -192,10 +167,10 @@ fun PostScreen(
               mode = ViewerMode.Tab,
               searchTags = route.originTags,
               origin = origin,
-              // Dragged down, it closes through the close ✕ makes, with its Undo, and moves on: to the next item, or at
-              // the end to the card moving on would show (#326).
               onDragClose = tab?.let { { undo.dragClose(it.id, upNext) } },
               queueFrom = tab?.id,
+              onDrop = keptHere?.let { { undo.dragClose(it.id, upNext) } },
+              laterHint = keptHere != null && tabs.laterStreak < LATER_HINT_POSTS && upNext.ahead() != Ahead.Nothing,
             )
           }
           if (underPage != null) {
@@ -205,7 +180,6 @@ fun PostScreen(
           }
           return@SharedTransitions
         }
-        // Shown, settled, from the first frame: the card has nothing to grow from here.
         AnimatedVisibility(remember { MutableTransitionState(true) }, enter = EnterTransition.None, exit = ExitTransition.None) {
           PostViewer(
             index = 0,
@@ -225,19 +199,15 @@ fun PostScreen(
         Modifier
           .fillMaxSize()
           .postShortcuts(post = { null }, actions = actions, onBack = navigator::goBack)
-          // Still loading, or failed, it can be swiped past all the same (#181).
           .queueSwipe(enabled = true, from = tab?.id),
         contentAlignment = Alignment.Center,
       ) {
         KeyFocusHolder()
-        // Signed out, a 404 is a post only accounts may see: Sign in, as the grids' cells say (#520).
         if (s is PostUiState.Failed) {
           ApiErrorState(s.error, onRetry = viewModel::load, onSignIn = signIn::open, signedIn = signedIn)
         } else {
           AppLoadingIndicator()
         }
-        // Touch: a lone post covers the shell's count pill from its first frame, so its own stands in while the post
-        // loads or has failed, on the grid's line (there's no sheet yet), and the queue is still one tap away.
         if (touch) {
           QueueBar(
             onOpenQueue = LocalOpenTabList.current,

@@ -9,7 +9,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The queue's titles use the names the search chips show, from the tags the app has learnt (#246). */
 class TagNameTitleTest {
   private val known = MutableStateFlow(mapOf("k-suwabe" to TagSuggestion(tagName = "k-suwabe", name = "K-Suwabe")))
 

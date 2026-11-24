@@ -1,7 +1,13 @@
 package dev.marzahn.sankaku.features.grid
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import dev.marzahn.sankaku.ui.Tips
+import dev.marzahn.sankaku.ui.components.TipLayer
+import dev.marzahn.sankaku.ui.components.tipGestures
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -31,6 +37,7 @@ import dev.marzahn.sankaku.ActiveTab
 import dev.marzahn.sankaku.CACHE_DIR
 import dev.marzahn.sankaku.DebugFlags
 import dev.marzahn.sankaku.FIRST_LAUNCH_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
@@ -79,7 +86,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import okio.Path.Companion.toOkioPath
+import dev.marzahn.sankaku.images.PostImage
 import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Paint
+import org.jetbrains.skia.Rect
+import kotlin.random.Random
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -88,18 +100,12 @@ import java.nio.file.Files
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
-/**
- * The real [GridScreen] in its tab, with the app's modules and six synthetic fixture posts (no network): "Fixture 1"
- * to "Fixture 6", each titled by its own tag, PNGs but for the file types in [types] by number. Those numbered in
- * [locked] come back as the API sends posts hidden from signed-out users (`redirect_to_signup`, no URLs). A [player]
- * stands in for the video player; with [images], every picture loads as a plain synthetic bitmap (otherwise none
- * loads); [tokens] signs in. [start] before a test and [stop] after it.
- */
 @OptIn(ExperimentalTestApi::class)
 internal class GridScreenFixture(
   private val types: Map<Int, String> = emptyMap(),
   private val player: VideoPlayback? = null,
   private val images: Boolean = false,
+  private val pictures: Map<Int, Int> = emptyMap(),
   private val locked: Set<Int> = emptySet(),
   private val tokens: StoredTokens? = null,
   secondPageAtStart: SecondPage = SecondPage.None,
@@ -107,16 +113,10 @@ internal class GridScreenFixture(
   val grid = Route.Grid(listOf("fixture_tag"))
   private var collecting: Job? = null
 
-  /** Every message shown since [start], by its text. */
   val messages = mutableListOf<String>()
 
   private fun url(path: String) = "https://v.sankakucomplex.com/data/$path?e=${(Clock.System.now() + 1.hours).epochSeconds}"
 
-  /**
-   * What the list's second page does (#524): with [None] the first page is the last; otherwise the first says there's
-   * more, and asking for it fails (a 500, or Sankaku's search timeout), serves "Fixture 7" and "Fixture 8", or holds
-   * until [releaseSecondPage] and then serves them. Changeable while a test runs.
-   */
   enum class SecondPage { None, Hold, Fail, SearchTimeout, Serve }
 
   @Volatile
@@ -124,7 +124,6 @@ internal class GridScreenFixture(
 
   private val held = CompletableDeferred<Unit>()
 
-  /** A held second page is served now. */
   fun releaseSecondPage() {
     held.complete(Unit)
   }
@@ -152,7 +151,7 @@ internal class GridScreenFixture(
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -182,12 +181,17 @@ internal class GridScreenFixture(
       }
       single<ImageLoader> {
         ImageLoader.Builder(PlatformContext.INSTANCE).apply {
-          // Every picture a plain synthetic bitmap, so the viewer's posts are fully shown (#174).
           if (images) {
             components {
               add(object : Interceptor {
                 override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-                  val bitmap = Bitmap().apply { allocN32Pixels(30, 40); erase(0xFF2E7D32.toInt()) }
+                  val n = (chain.request.data as? PostImage)?.postId?.removePrefix("fixture-")?.toIntOrNull()
+                  val seed = n?.let { pictures[it] }
+                  val bitmap = if (seed == null) {
+                    Bitmap().apply { allocN32Pixels(30, 40); erase(0xFF2E7D32.toInt()) }
+                  } else {
+                    picture(seed)
+                  }
                   return SuccessResult(bitmap.asImage(), chain.request, DataSource.MEMORY)
                 }
               })
@@ -197,11 +201,24 @@ internal class GridScreenFixture(
       }
     }
     startKoin { modules(sharedModule, platform, shellModule, authModule, gridModule, postModule, booksModule, fixtures) }
-    // The cells' AsyncImage uses the singleton: set here and reset after, so no later test finds one made already.
     SingletonImageLoader.setUnsafe(GlobalContext.get().get<ImageLoader>())
     collecting = CoroutineScope(Dispatchers.Unconfined).launch {
       GlobalContext.get().get<Messages>().messages.collect { messages += it.text }
     }
+  }
+
+  private fun picture(seed: Int): Bitmap {
+    val random = Random(seed)
+    val bitmap = Bitmap().apply { allocN32Pixels(90, 120) }
+    val canvas = Canvas(bitmap)
+    canvas.clear(0xFF101010.toInt())
+    repeat(8) {
+      val x = random.nextInt(70).toFloat()
+      val y = random.nextInt(100).toFloat()
+      val paint = Paint().apply { color = 0xFF000000.toInt() or random.nextInt(0xFFFFFF) }
+      canvas.drawRect(Rect.makeXYWH(x, y, 10f + random.nextInt(40), 10f + random.nextInt(50)), paint)
+    }
+    return bitmap
   }
 
   fun stop() {
@@ -212,7 +229,6 @@ internal class GridScreenFixture(
 
   val tabs: TabsController get() = GlobalContext.get().get()
 
-  /** The grid alone in the queue, shown, once its first cell is in. */
   fun ComposeUiTest.showGrid() {
     tabs.open(grid, background = false)
     tabs.tabs.value.filter { it.top != grid }.forEach { tabs.close(it.id) }
@@ -227,14 +243,17 @@ internal class GridScreenFixture(
           }
         }
         val fake = player
-        if (fake == null) grid() else CompositionLocalProvider(LocalVideoPlayback provides { fake }) { grid() }
+        val tips = GlobalContext.get().get<Tips>()
+        Box(Modifier.fillMaxSize().tipGestures(tips)) {
+          if (fake == null) grid() else CompositionLocalProvider(LocalVideoPlayback provides { fake }) { grid() }
+          TipLayer(tips)
+        }
       }
     }
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Fixture 1", substring = true).fetchSemanticsNodes().isNotEmpty() }
     waitForIdle()
   }
 
-  /** Sends [key] as the desktop window does, with [downs] presses before its release (more than one is a held key). */
   @OptIn(InternalComposeUiApi::class)
   fun ComposeUiTest.press(key: Key, downs: Int = 1, shift: Boolean = false, alt: Boolean = false) {
     val scene = (this as SkikoComposeUiTest).scene
@@ -245,7 +264,6 @@ internal class GridScreenFixture(
     waitForIdle()
   }
 
-  /** The number n of the cell the keyboard cursor is on ("Fixture n"), or null with no cursor. */
   fun ComposeUiTest.cursorPost(): Int? =
     onAllNodesWithContentDescription("Fixture", substring = true)
       .fetchSemanticsNodes()
@@ -253,7 +271,6 @@ internal class GridScreenFixture(
       ?.config?.get(SemanticsProperties.ContentDescription)?.first()
       ?.let { Regex("Fixture (\\d+)").find(it)?.groupValues?.get(1)?.toInt() }
 
-  /** Moves the cursor onto fixture post [n]'s cell with D, from wherever it is. */
   fun ComposeUiTest.cursorTo(n: Int) {
     repeat(12) {
       if (cursorPost() == n) return
@@ -264,10 +281,8 @@ internal class GridScreenFixture(
 
   fun ComposeUiTest.viewerOpen(): Boolean = onAllNodesWithText("of 6", substring = true).fetchSemanticsNodes().isNotEmpty()
 
-  /** The post the open viewer shows: its title, "Fixture n", in the info panel. */
   fun ComposeUiTest.viewerPost(): Int = (1..8).single { n -> onAllNodesWithText("Fixture $n").fetchSemanticsNodes().isNotEmpty() }
 
-  /** The queue as its tops: a grid by its tags, a post by its id. */
   fun queue(): List<String> =
     tabs.tabs.value.map { (it.top as? Route.Post)?.id ?: (it.top as Route.Grid).tags.joinToString(" ") }
 }

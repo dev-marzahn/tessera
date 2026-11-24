@@ -8,7 +8,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The sidebar opened over Settings (#460) or the phone's queue page (#478): what it opens closes them. */
 class SidebarNavigatorTest {
   private class RecordingNavigator : Navigator {
     val calls = mutableListOf<Pair<String, Route>>()
@@ -33,7 +32,6 @@ class SidebarNavigatorTest {
     for (inNewTab in listOf(false, true)) {
       val navigator = RecordingNavigator()
       val settings = SettingsController().apply { open() }
-      // The sidebar opened from the queue page's ☰ shows what it opens, not the page over it.
       var queuePageOpen = true
       val sidebar = SidebarNavigator(navigator, settings, closeQueuePage = { queuePageOpen = false })
 

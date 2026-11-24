@@ -5,7 +5,6 @@ import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Only an image whose host couldn't be reached retries by itself when the network comes back (#128). */
 class ImageFailureTest {
   @Test
   fun aConnectionErrorAnywhereInTheCausesIsUnreachable() {

@@ -23,6 +23,7 @@ import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.CACHE_DIR
 import dev.marzahn.sankaku.DebugFlags
 import dev.marzahn.sankaku.FIRST_LAUNCH_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
@@ -66,18 +67,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
-/**
- * #542, the whole desktop shell: Cmd/Ctrl-T (and the strip's +) brings a Browse tab with its search field focused, so
- * what's typed next goes into the search instead of acting as the grid's letter keys; C opens the tab switcher in the
- * mode it was last left in, which is saved; and Shift+X from the screen takes "Done with …?"'s offer.
- */
 @OptIn(ExperimentalTestApi::class)
 class DesktopShellKeysTest {
   private val queueFile = InMemoryTextFile()
 
   @BeforeTest
   fun start() {
-    // An earlier test class may have left one set (FirstLaunchGateTest starts the whole app too).
     SingletonImageLoader.reset()
     val cache = Files.createTempDirectory("new-tab-search").toFile().apply { deleteOnExit() }
     val platform = module {
@@ -85,7 +80,7 @@ class DesktopShellKeysTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, ACCESSIBILITY_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, READING_FILE, OUTBOX_FILE, FIRST_LAUNCH_FILE, PRIVACY_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, ACCESSIBILITY_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, READING_FILE, OUTBOX_FILE, FIRST_LAUNCH_FILE, PRIVACY_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TextFile>(QUEUE_FILE) { queueFile }
       single { CrashReports(InMemoryTextFile()) }
@@ -93,7 +88,6 @@ class DesktopShellKeysTest {
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
       single<PlatformContext> { PlatformContext.INSTANCE }
     }
-    // Nothing needs an answer here: every request is refused.
     val engine = module { single<HttpClientEngine> { MockEngine { respondError(HttpStatusCode.NotFound) } } }
     startKoin { modules(appModules(platform) + engine) }
     KoinPlatform.getKoin().get<FirstLaunch>().accept()
@@ -101,7 +95,6 @@ class DesktopShellKeysTest {
 
   @AfterTest
   fun stop() {
-    // The app sets Coil's process-wide loader as it starts: the next test (this class's or another's) starts its own.
     SingletonImageLoader.reset()
     stopKoin()
   }
@@ -142,7 +135,6 @@ class DesktopShellKeysTest {
   @Test
   fun theSwitcherOpensInTheModeItWasLastLeftIn() = runComposeUiTest {
     QueueSettings(queueFile).setSwitcherList(true)
-    // Read at startup, as after a restart.
     stopKoin()
     start()
     assertEquals(true, KoinPlatform.getKoin().get<QueueSettings>().switcherList.value)
@@ -153,15 +145,12 @@ class DesktopShellKeysTest {
     waitForIdle()
     onNodeWithTag(modeTag("Queue")).assertIsSelected()
 
-    // Q back to the cards is saved too.
     onNodeWithTag(modeTag("Queue")).performKeyInput { pressKey(Key.Q) }
     waitForIdle()
     onNodeWithTag(modeTag("Cards")).assertIsSelected()
     assertEquals(false, QueueSettings(queueFile).switcherList.value)
   }
 
-  // #502's claim, checked from the shell (#542): with the screen holding the keys, Shift+X while the offer shows closes
-  // the block it names.
   @Test
   fun shiftXFromTheScreenTakesTheOffer() = runComposeUiTest {
     val koin = KoinPlatform.getKoin()
@@ -175,10 +164,8 @@ class DesktopShellKeysTest {
     tabs.openInBlock(listOf(Route.Grid(listOf("cat"), at = "c1"), post("c1")))
     setContent { App(onQuit = {}) }
     waitForIdle()
-    // The kept post is seen, then the next block comes forward: Landscape is done with.
     tabs.activate(id("l1"))
     waitForIdle()
-    // Seen after it was kept, on a clock that may not have moved yet.
     Thread.sleep(20)
     seen.record("l1", null)
     tabs.activate(id("Cat"))

@@ -47,7 +47,6 @@ internal const val QueueIntroStartTag = "queue-intro-start"
 
 internal const val QueueIntroTitle = "Your queue"
 
-/** The page's four points (#559), in order: each a row with its icon. */
 internal val QueueIntroPoints = listOf(
   "Every search is an item in your queue. The count at the bottom shows where you are: 2 / 5. Tap it to see them all.",
   "Long-press a post to keep it. Kept posts wait right after their search.",
@@ -55,14 +54,8 @@ internal val QueueIntroPoints = listOf(
   "Swipe sideways to move through the queue.",
 )
 
-/** Settings → Queue's row that shows the page again (#559). */
 internal const val QueueIntroSettingsLabel = "How the queue works"
 
-/**
- * Whether the "Your queue" page shows (#559): once on a phone, right after the first-launch screen's Continue (an
- * install that had accepted it before never sees it unasked), and again from Settings → Queue. Not saved: the page is
- * a one-off, and an app closed while it shows doesn't bring it back.
- */
 class QueueIntro {
   private val _shown = MutableStateFlow(false)
   val shown: StateFlow<Boolean> = _shown.asStateFlow()
@@ -76,11 +69,6 @@ class QueueIntro {
   }
 }
 
-/**
- * The "Your queue" page (#559, option 3 of `.scratch/queue-onboarding/mockup.html`): what the queue is, in four points,
- * with a small queue of a search, a kept post and a tag opened in front, then Start ([onStart]). Laid out as the
- * first-launch screen is: centred when it fits, scrolling on a short window or with large text.
- */
 @Composable
 internal fun QueueIntroScreen(onStart: () -> Unit) {
   Surface(Modifier.fillMaxSize().testTag(QueueIntroTag), color = MaterialTheme.colorScheme.background) {
@@ -110,7 +98,6 @@ internal fun QueueIntroScreen(onStart: () -> Unit) {
   }
 }
 
-/** One point: its icon in a tile, then its words. The icon says nothing to TalkBack: the words say it all. */
 @Composable
 private fun Point(icon: ImageVector, text: String) {
   Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
@@ -124,11 +111,6 @@ private fun Point(icon: ImageVector, text: String) {
   }
 }
 
-/**
- * A queue of four rows, as the queue page lists them: a tag tapped on a kept post, opened in front of its block (the
- * current item), the search the post was kept from, the post (indented, in its block), and another search.
- * Decoration: TalkBack skips it, the points say what it shows.
- */
 @Composable
 private fun QueueSketch(modifier: Modifier = Modifier) {
   Column(modifier.clearAndSetSemantics {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {

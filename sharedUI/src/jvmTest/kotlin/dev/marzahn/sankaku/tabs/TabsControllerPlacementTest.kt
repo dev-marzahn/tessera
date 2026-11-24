@@ -9,7 +9,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Where new tabs go (#161): blocks, "now" (a search in place), "later" (a new tab) and the touched rule. */
 class TabsControllerPlacementTest {
   private val tabs = TabsController()
   private val navigator = TabsNavigator(tabs)
@@ -22,7 +21,6 @@ class TabsControllerPlacementTest {
 
   private fun positionOf(title: String) = titles.indexOf(title) + 1
 
-  // What GridScreen does once the grid is scrolled or a post is opened from it.
   private fun touchActiveGrid() {
     val tab = tabs.activeTab
     tab.markTouched(tab.top as Route.Grid)
@@ -33,7 +31,6 @@ class TabsControllerPlacementTest {
 
   @Test
   fun postsOpenedInTheBackgroundGoAtTheEndOfTheirGridsBlock() {
-    // Grid A is tab 2, followed by 47 other tabs.
     val a = grid("a")
     tabs.open(a, background = false)
     repeat(47) { tabs.open(grid("other$it"), background = true) }
@@ -56,7 +53,6 @@ class TabsControllerPlacementTest {
     openPost("p2", a)
     tabs.activate(tabs.tabs.value[2].id)
 
-    // A recommended post, or a parent, held from post p1.
     navigator.openInNewTab(Route.Post("p9", "m9", emptyList(), label = "p9"))
 
     assertEquals(listOf("Browse", "A", "p1", "p2", "p9", "B"), titles)
@@ -106,7 +102,6 @@ class TabsControllerPlacementTest {
 
   @Test
   fun movingOnPastANewSearchsBlockLandsOnTheItemYouLeft() {
-    // Blue with 50 posts in its block, the 31st of them active.
     val blue = grid("blue")
     tabs.open(blue, background = false)
     touchActiveGrid()
@@ -114,7 +109,6 @@ class TabsControllerPlacementTest {
     tabs.open(grid("after"), background = true)
     tabs.activate(tabs.tabs.value[positionOf("b31") - 1].id)
 
-    // Tapping the tag red: red opens right before blue, and its posts follow it.
     val red = grid("red")
     navigator.goTo(red)
     assertEquals(positionOf("Blue") - 1, positionOf("Red"))
@@ -127,7 +121,6 @@ class TabsControllerPlacementTest {
     tabs.step(forward = true, wrap = false)
 
     assertEquals("b31", tabs.activeTab.title)
-    // Once back, the block steps as usual.
     tabs.step(forward = false, wrap = false)
     assertEquals("b30", tabs.activeTab.title)
     repeat(31) { tabs.step(forward = false, wrap = false) }
@@ -165,7 +158,6 @@ class TabsControllerPlacementTest {
     tabs.activate(tabs.tabs.value[positionOf("b1") - 1].id)
     navigator.goTo(grid("red"))
 
-    // ✕ or "Done with red?", as moving on past it would: the post it was opened on, not Blue to its right.
     tabs.close(tabs.active.value)
 
     assertEquals("b1", tabs.activeTab.title)
@@ -211,7 +203,6 @@ class TabsControllerPlacementTest {
     navigator.goTo(grid("red"))
     val block = tabs.tabs.value.filter { it.title == "Blue" || it.title == "b1" }.map { it.id }
 
-    // A batch with no active member comes back without activating, so the marker carries over to the new ids.
     tabs.closeAll(block)
     tabs.reopen(tabs.closed.value.last())
     tabs.step(forward = true, wrap = false)
@@ -228,7 +219,6 @@ class TabsControllerPlacementTest {
     tabs.activate(tabs.tabs.value[positionOf("b1") - 1].id)
     navigator.goTo(grid("red"))
 
-    // From the queue page, a look at blue, then back to red and on.
     tabs.activate(tabs.tabs.value[positionOf("Blue") - 1].id)
     tabs.step(forward = false, wrap = false)
     tabs.step(forward = true, wrap = false)
@@ -245,7 +235,6 @@ class TabsControllerPlacementTest {
     tabs.activate(tabs.tabs.value[positionOf("b1") - 1].id)
     navigator.goTo(grid("red"))
 
-    // Reached from the queue page: moving on from red is its neighbour again.
     tabs.activate(tabs.tabs.value[positionOf("b1") - 1].id)
     tabs.activate(tabs.tabs.value[positionOf("Red") - 1].id)
     tabs.step(forward = true, wrap = false)
@@ -259,11 +248,9 @@ class TabsControllerPlacementTest {
     val tabs = TabsController(FakeStore(saved))
     val navigator = TabsNavigator(tabs)
 
-    // Nothing added in this session yet: the end of the queue, never ahead of what's being gone through.
     navigator.openInNewTab(grid("red"))
     assertEquals(listOf("Old1", "Old2", "Old3", "Old4", "Red"), tabs.tabs.value.map { it.title })
 
-    // After a post opened into an old grid's block, which joins this session, "later" goes after the last item added.
     tabs.activate(TabId("old2"))
     navigator.openInNewTab(Route.Post("p1", "m1", listOf("old2"), label = "p1"))
     navigator.openInNewTab(grid("green"))
@@ -328,8 +315,6 @@ class TabsControllerPlacementTest {
 
   @Test
   fun aFileSavedBeforeBlocksLoadsWithItsTabsAndNoBlocks() {
-    // The format as it was before blocks: each tab only its id and routes. It migrates to v2 (#174), with nothing added
-    // to the tabs but the queue's facts.
     fun routes(vararg routes: Route) = routes.joinToString(",", "[", "]") { Json.encodeToString(Route.serializer(), it) }
     val text = """{"activeIndex":1,"tabs":[{"id":"t0","routes":${routes(Route.Grid(emptyList()))}},""" +
       """{"id":"t1","routes":${routes(Route.Grid(listOf("a"), at = "p1"), Route.Post("p1", "m1", listOf("a")))}}]}"""

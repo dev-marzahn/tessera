@@ -40,11 +40,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
-/**
- * #177: the blur drawn, with synthetic fixture pictures (never a real post): a G post shows its picture, a post with a
- * mocked R15 rating shows it blurred under an eye-slash. With `EVIDENCE_DIR` set, the frame is saved there as a PNG for
- * the PR, since the emulator's `safeOnly` run hides R15 items altogether.
- */
 @OptIn(ExperimentalTestApi::class, DelicateCoilApi::class)
 class QueuePageBlurRenderTest {
   private val tabs = TabsController()
@@ -52,7 +47,6 @@ class QueuePageBlurRenderTest {
   @AfterTest
   fun tearDown() = SingletonImageLoader.reset()
 
-  /** A 256 px picture of coloured stripes and a square: sharp edges, so a blur is plain to see. */
   private fun fixture(first: Int, second: Int): Bitmap {
     val bitmap = Bitmap().apply { allocN32Pixels(256, 256) }
     Canvas(bitmap).apply {
@@ -97,11 +91,6 @@ class QueuePageBlurRenderTest {
     }
   }
 
-  /**
-   * #264 through the real [QueueStart]: a launch shows the queue page blurred, its queue row and its Recently closed
-   * row alike; one touch unblurs both; a return after more than 5 minutes opens the page again, still unblurred; only a
-   * new process (a new [QueueStart]) blurs again. With `EVIDENCE_DIR` set, each step's frame is saved.
-   */
   @Test
   fun theBlurLastsUntilTheFirstUseInTheProcess() = runDesktopComposeUiTest(width = 1080, height = 1500) {
     val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
@@ -143,14 +132,12 @@ class QueuePageBlurRenderTest {
       ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, name))
     }
 
-    // 1. A cold launch: the page opens, the R15 row and the R15 Recently closed row blurred.
     start.launched()
     waitForIdle()
     onNodeWithText("Recently closed").assertExists()
     assertEquals(2, blurred())
     frame("1-launch-blurred.png")
 
-    // 2. One touch on the page, on the header's title, where nothing else happens.
     onNodeWithText("Queue").performTouchInput {
       down(center)
       up()
@@ -159,7 +146,6 @@ class QueuePageBlurRenderTest {
     assertEquals(0, blurred())
     frame("2-after-one-touch.png")
 
-    // 3. Continue, then back after more than 5 minutes away: a start, the page opens again, still unblurred.
     onNodeWithText("Continue", substring = true).performClick()
     waitForIdle()
     start.left()
@@ -170,7 +156,6 @@ class QueuePageBlurRenderTest {
     assertEquals(0, blurred())
     frame("3-return-after-6-min.png")
 
-    // 4. The app killed and started again: a new process, so a new QueueStart, blurred again.
     start = QueueStart(tabs, privacy, time).apply { launched() }
     waitForIdle()
     assertEquals(2, blurred())
