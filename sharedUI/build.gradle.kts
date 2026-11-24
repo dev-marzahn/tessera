@@ -31,17 +31,21 @@ aboutLibraries {
   }
 }
 
-val licencesResourcesDir = layout.buildDirectory.dir("generated/licencesResources")
-val licencesResources = tasks.register<Sync>("licencesResources") {
-  from(tasks.named("exportLibraryDefinitions")) { include("aboutlibraries.json") }
-  into(licencesResourcesDir.map { it.dir("files") })
+val commonResourcesDir = layout.buildDirectory.dir("generated/commonResources")
+val commonResources = tasks.register<Sync>("commonResources") {
+  from("src/commonMain/composeResources")
+  from(tasks.named("exportLibraryDefinitions")) {
+    include("aboutlibraries.json")
+    into("files")
+  }
+  into(commonResourcesDir)
 }
 
 compose.resources {
   packageOfResClass = "dev.marzahn.sankaku.resources"
   customDirectory(
     sourceSetName = "commonMain",
-    directoryProvider = licencesResources.map { licencesResourcesDir.get() },
+    directoryProvider = commonResources.map { commonResourcesDir.get() },
   )
 }
 

@@ -182,7 +182,7 @@ class PillSourceTest {
   fun theWholeNameIsShownOnlyWhereItFitsWhole() = runDesktopComposeUiTest(width = px(420.dp), height = px(height)) {
     val width = mutableStateOf(420.dp)
     showPill(place("Lighthouse Night", listOf("Lighthouse", "Night")), width)
-    val wholeAt = listOf(372, 376, 380, 384, 388, 392).filter { phone ->
+    val wholeAt = listOf(360, 364, 368, 372, 376, 380).filter { phone ->
       width.value = phone.dp
       waitForIdle()
       val whole = shown("Lighthouse Night").isNotEmpty()

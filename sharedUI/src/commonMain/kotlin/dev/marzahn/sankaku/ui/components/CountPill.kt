@@ -208,9 +208,16 @@ private fun PillArrow(icon: ImageVector, label: String, enabled: Boolean, onClic
   }
 }
 
-private val PillCountStyle = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum")
+private val PillCountStyle: TextStyle
+  @Composable get() = TextStyle(
+    fontFamily = MaterialTheme.typography.labelLarge.fontFamily,
+    fontSize = 15.sp,
+    fontWeight = FontWeight.SemiBold,
+    fontFeatureSettings = "tnum",
+  )
 
-private val PillSourceStyle = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium)
+private val PillSourceStyle: TextStyle
+  @Composable get() = TextStyle(fontFamily = MaterialTheme.typography.labelLarge.fontFamily, fontSize = 15.sp, fontWeight = FontWeight.Medium)
 
 private val PillBarHeight = 3.dp
 
