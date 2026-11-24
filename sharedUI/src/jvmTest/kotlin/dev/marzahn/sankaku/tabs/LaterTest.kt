@@ -19,23 +19,10 @@ class LaterTest {
   private val clock = object : Clock {
     override fun now() = now
   }
-  private val store = Store()
-  private val tabs = TabsController(store, clock = clock)
+  private val tabs = TabsController(RecordingTabStateStore(), clock = clock)
   private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
   private val undo = ClosedTabUndo(tabs)
   private val seen = SeenStore(InMemoryTextFile(), clock)
-
-  private class Store(var saved: SavedTabs? = null) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) {
-      saved = tabs
-    }
-
-    override fun clear() {
-      saved = null
-    }
-  }
 
   private fun source(tag: String): TabState {
     val route = Route.Grid(listOf(tag))
@@ -86,7 +73,7 @@ class LaterTest {
     val saved = tabs.saved()
     assertEquals(true, saved.tabs.first { (it.routes.last() as? Route.Post)?.id == "p1" }.later)
     assertNull(saved.tabs.first { (it.routes.last() as? Route.Post)?.id == "p2" }.later)
-    val relaunched = TabsController(Store(saved), clock = clock)
+    val relaunched = TabsController(RecordingTabStateStore(saved), clock = clock)
 
     assertTrue(relaunched.tabs.value.first { (it.top as? Route.Post)?.id == "p1" }.later)
   }

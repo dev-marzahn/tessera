@@ -68,7 +68,7 @@ class FeedItemsTest {
   @Test
   fun aFollowingRestoredWhileSignedOutLeaves() {
     val saved = SavedTabs(1, listOf(SavedTab("x", listOf(grid("x"))), SavedTab("f", listOf(following))))
-    val restored = TabsController(FakeStore(saved))
+    val restored = TabsController(RecordingTabStateStore(saved))
     restored.pinFeeds(FeedItems.pinned(signedIn = false, forYouInQueue = false))
 
     assertEquals(listOf("X"), titles(restored))
@@ -219,7 +219,7 @@ class FeedItemsTest {
         SavedTab("y", listOf(grid("y"))),
       ),
     )
-    val restored = TabsController(FakeStore(saved))
+    val restored = TabsController(RecordingTabStateStore(saved))
     restored.pinFeeds(listOf(Feed.Following))
 
     assertEquals(listOf("X", "Following", "Post k", "Y"), titles(restored))
@@ -232,7 +232,7 @@ class FeedItemsTest {
   @Test
   fun aFeedSavedOverAnotherGridBecomesTheFeedAlone() {
     val saved = SavedTabs(0, listOf(SavedTab("f", listOf(grid(), following))))
-    val restored = TabsController(FakeStore(saved))
+    val restored = TabsController(RecordingTabStateStore(saved))
     restored.pinFeeds(listOf(Feed.Following))
 
     assertEquals(listOf(following), restored.activeTab.backStack.toList())
@@ -290,13 +290,5 @@ class FeedItemsTest {
     ClosedTabUndo(tabs).dragClose(tabs.active.value, upNext)
     assertSame(feed, tabs.activeTab)
     assertEquals(UpNextCard.End, upNext.card)
-  }
-
-  private class FakeStore(val saved: SavedTabs?) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) = Unit
-
-    override fun clear() = Unit
   }
 }

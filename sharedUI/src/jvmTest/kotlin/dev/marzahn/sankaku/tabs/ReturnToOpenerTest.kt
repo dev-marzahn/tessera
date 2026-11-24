@@ -181,7 +181,7 @@ class ReturnToOpenerTest {
     val saved = tabs.saved()
     assertTrue(saved.returns.isNotEmpty())
 
-    tabs = TabsController(FakeStore(saved))
+    tabs = TabsController(RecordingTabStateStore(saved))
     navigator = TabsNavigator(tabs, messages)
     assertEquals("Tag Y", active)
     tabs.close(tabs.active.value)
@@ -263,13 +263,5 @@ class ReturnToOpenerTest {
     assertEquals(1, navigator.openInNewTab(artist))
 
     assertTrue(shown.isEmpty())
-  }
-
-  private class FakeStore(val saved: SavedTabs?) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) = Unit
-
-    override fun clear() = Unit
   }
 }

@@ -245,7 +245,7 @@ class TabsControllerPlacementTest {
   @Test
   fun aSearchOpenedInTheBackgroundGoesAfterThisSessionsTabs() {
     val saved = SavedTabs(0, (1..4).map { SavedTab("old$it", listOf(Route.Grid(listOf("old$it")))) })
-    val tabs = TabsController(FakeStore(saved))
+    val tabs = TabsController(RecordingTabStateStore(saved))
     val navigator = TabsNavigator(tabs)
 
     navigator.openInNewTab(grid("red"))
@@ -262,7 +262,7 @@ class TabsControllerPlacementTest {
   @Test
   fun aNewForegroundTabGoesAtTheEndOfTheSessionToo() {
     val saved = SavedTabs(0, listOf(SavedTab("old", listOf(grid("old")))))
-    val tabs = TabsController(FakeStore(saved))
+    val tabs = TabsController(RecordingTabStateStore(saved))
 
     tabs.open(Route.Grid(emptyList()), background = false)
 
@@ -319,7 +319,7 @@ class TabsControllerPlacementTest {
     val text = """{"activeIndex":1,"tabs":[{"id":"t0","routes":${routes(Route.Grid(emptyList()))}},""" +
       """{"id":"t1","routes":${routes(Route.Grid(listOf("a"), at = "p1"), Route.Post("p1", "m1", listOf("a")))}}]}"""
     val loaded = FileTabStateStore(InMemoryTextFile(text)).load()!!
-    val controller = TabsController(FakeStore(loaded))
+    val controller = TabsController(RecordingTabStateStore(loaded))
 
     val saved = controller.saved()
 
@@ -328,13 +328,5 @@ class TabsControllerPlacementTest {
     assertEquals(listOf("t0", "t1"), saved.tabs.map { it.id })
     assertEquals(listOf(null, null), saved.tabs.map { it.block })
     assertEquals(listOf(null, null), saved.tabs.map { it.place })
-  }
-
-  private class FakeStore(val saved: SavedTabs?) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) = Unit
-
-    override fun clear() = Unit
   }
 }

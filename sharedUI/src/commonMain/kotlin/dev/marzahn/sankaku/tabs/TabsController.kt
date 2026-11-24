@@ -14,6 +14,7 @@ import dev.marzahn.sankaku.api.Feed
 import dev.marzahn.sankaku.platformIsTouch
 import dev.marzahn.sankaku.ui.components.CLOSE_LABEL
 import dev.marzahn.sankaku.ui.components.ShortSource
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -38,9 +39,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.merge
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
@@ -100,8 +101,7 @@ class TabState(
 
   val feed: Feed? get() = (top as? Route.Grid)?.takeIf { kind == QueueKind.Feed }?.let { QueueKind.feedOf(it.tags) }
 
-  var addedIn: SessionId = addedIn
-    internal set
+  val addedIn: SessionId = addedIn
 
   var touched: Instant by mutableStateOf(touched)
     private set
@@ -248,6 +248,29 @@ class TabState(
   val refinedFrom: String? get() = refines?.takeIf { it.isNotEmpty() && backStack.size == 1 }?.let { sourceTitle(it, tagNames) }
 
   val untitled: Boolean get() = tabIsUntitled(top, loadedTitle)
+
+  internal val savedForm: SavedTab by derivedStateOf(::savedTab)
+
+  private fun savedTab() = SavedTab(
+    id.value,
+    backStack.filterIsInstance<Route>(),
+    block?.value,
+    place,
+    kind = kind,
+    touched = touched.epochSeconds,
+    addedIn = addedIn.value,
+    keptAt = keptAt?.epochSeconds,
+    closedSource = closedSource,
+    title = loadedTitle,
+    mosaic = mosaic?.thumbs?.takeIf { it.isNotEmpty() },
+    posts = mosaic?.posts,
+    gridTouched = savedTouched,
+    openedFrom = openedFrom?.value,
+    refines = refines,
+    preview = preview,
+    foundOn = foundOn,
+    later = true.takeIf { later },
+  )
 }
 
 private fun loadedTitleOf(top: Route?, loaded: (String) -> String?): String? =
@@ -633,9 +656,11 @@ class TabsController(
     saved?.jumps.orEmpty().forEach { jumps += Jump(TabId(it.to), TabId(it.from), it.moved) }
     saved?.faded.orEmpty().sortedBy { it.at }.filter { f -> tabs.none { it.id.value == f.tabs.firstOrNull()?.id } }.forEach(::restoreFaded)
     _closed.value = restoredClosed(saved?.closed.orEmpty())
-    val atLaunch = savedState(_tabs.value, _active.value).takeIf { saved?.faded.isNullOrEmpty() }
+    val restoredFadedItems = !saved?.faded.isNullOrEmpty()
+    val launchState = savedState(_tabs.value, _active.value).takeUnless { restoredFadedItems }
     counting = true
-    scope?.launch { changes().dropWhile { it == atLaunch }.collect { runCatching { store.save(it) } } }
+    val saves = changes().skipFirstIf(launchState)
+    scope?.launch { saves.collect { runCatching { store.save(it) } } }
     if (knownTags != null) scope?.launch { knownTags.collect { known = it } }
   }
 
@@ -1616,40 +1641,23 @@ class TabsController(
     later = saved.later == true,
   )
 
-  private fun savedState(tabs: List<TabState>, activeIndex: Int, closed: List<ClosedTab>) = SavedTabs(
-    activeIndex = activeIndex,
-    tabs = tabs.map { tab ->
-      SavedTab(
-        tab.id.value,
-        tab.backStack.filterIsInstance<Route>(),
-        tab.block?.value,
-        tab.place,
-        kind = tab.kind,
-        touched = tab.touched.epochSeconds,
-        addedIn = tab.addedIn.value,
-        keptAt = tab.keptAt?.epochSeconds,
-        closedSource = tab.closedSource,
-        title = tab.loadedTitle,
-        mosaic = tab.mosaic?.thumbs?.takeIf { it.isNotEmpty() },
-        posts = tab.mosaic?.posts,
-        gridTouched = tab.savedTouched,
-        openedFrom = tab.openedFrom?.value,
-        refines = tab.refines,
-        preview = tab.preview,
-        foundOn = tab.foundOn,
-        later = true.takeIf { tab.later },
-      )
-    },
-    version = SavedTabs.VERSION,
-    session = sessions.current.value,
-    returns = returns.entries
-      .filter { (head, item) -> tabs.any { it.head == head } && tabs.any { it.id == item } }
-      .associate { (head, item) -> head.value to item.value },
-    jumps = jumps
-      .filter { jump -> tabs.any { it.id == jump.to } && tabs.any { it.id == jump.from } }
-      .map { SavedJump(it.to.value, it.from.value, it.moved) },
-    closed = startOfToday().let { since -> closed.filter { it.closedAt >= since }.map(::savedClosed) },
-  )
+  private fun savedState(tabs: List<TabState>, activeIndex: Int, closed: List<ClosedTab>): SavedTabs {
+    val ids by lazy(LazyThreadSafetyMode.NONE) { tabs.mapTo(HashSet()) { it.id } }
+    val heads by lazy(LazyThreadSafetyMode.NONE) { tabs.mapTo(HashSet()) { it.head } }
+    return SavedTabs(
+      activeIndex = activeIndex,
+      tabs = tabs.map { it.savedForm },
+      version = SavedTabs.VERSION,
+      session = sessions.current.value,
+      returns = returns.entries
+        .filter { (head, item) -> head in heads && item in ids }
+        .associate { (head, item) -> head.value to item.value },
+      jumps = jumps
+        .filter { jump -> jump.to in ids && jump.from in ids }
+        .map { SavedJump(it.to.value, it.from.value, it.moved) },
+      closed = startOfToday().let { since -> closed.filter { it.closedAt >= since }.map(::savedClosed) },
+    )
+  }
 
   private fun newTab(
     routes: List<Route>,
@@ -1685,3 +1693,13 @@ class TabsController(
 }
 
 internal data class Jump(val to: TabId, val from: TabId, val moved: Boolean = false)
+
+private fun <T : Any> Flow<T>.skipFirstIf(launchState: T?): Flow<T> {
+  var unchanged = launchState
+  return flow {
+    collect { value ->
+      if (value != unchanged) emit(value)
+      unchanged = null
+    }
+  }
+}
