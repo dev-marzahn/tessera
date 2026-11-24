@@ -37,6 +37,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.Route
 import androidx.compose.runtime.remember
 import dev.marzahn.sankaku.tabs.ClosedTabUndo
+import dev.marzahn.sankaku.tabs.SortDeck
 import dev.marzahn.sankaku.tabs.TabsController
 import dev.marzahn.sankaku.tabs.UpNextState
 import dev.marzahn.sankaku.ui.Messages
@@ -212,11 +213,12 @@ class ReadingProgressReaderTest {
       CompositionLocalProvider(LocalLifecycleOwner provides lifecycle) {
         if (shown) {
           val tabs = remember { TabsController() }
+          val undo = remember { ClosedTabUndo(tabs) }
           KeptBookScreen(
             Route.Book(BookReaderTest.BOOK, "Fixture"),
             tabs = tabs,
-            undo = remember { ClosedTabUndo(tabs) },
-            upNext = remember { UpNextState(tabs, KoinPlatform.getKoin().get()) },
+            undo = undo,
+            upNext = remember { UpNextState(tabs, KoinPlatform.getKoin().get(), SortDeck(tabs, undo)) },
           )
         }
       }

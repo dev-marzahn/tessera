@@ -21,7 +21,7 @@ class LaterTest {
   }
   private val store = Store()
   private val tabs = TabsController(store, clock = clock)
-  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
+  private val upNext = noUpNext(tabs)
   private val undo = ClosedTabUndo(tabs)
   private val seen = SeenStore(InMemoryTextFile(), clock)
 

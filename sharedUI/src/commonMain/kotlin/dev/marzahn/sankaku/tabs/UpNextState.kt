@@ -19,40 +19,87 @@ sealed interface UpNextCard {
   }
 }
 
-enum class Ahead {
-  Item,
+sealed interface Ahead {
+  val title: String?
 
-  End,
+  fun closePane(hasPrevious: Boolean): Pane? = when (this) {
+    Sort -> Sort
+    is End -> takeIf { hasPrevious }
+    is Item, Ahead.Nothing -> null
+  }
 
-  Nothing,
+  data class Item(val next: TabState) : Ahead {
+    override val title: String get() = next.title
+  }
+
+  sealed interface Pane : Ahead {
+    override val title: String
+
+    val label: String
+  }
+
+  data object Sort : Pane {
+    override val title: String = SORT
+
+    override val label: String = nextLine(SORT)
+  }
+
+  data class End(override val title: String) : Pane {
+    override val label: String get() = title
+  }
+
+  data object Nothing : Ahead {
+    override val title: String? = null
+  }
 }
 
 class UpNextState(
   internal val tabs: TabsController,
   private val privacy: PrivacySettings,
+  private val deck: SortDeck,
 ) {
   var card: UpNextCard? by mutableStateOf(null)
     private set
 
   val gOnly: StateFlow<Boolean> get() = privacy.gOnly
 
-  fun ahead(): Ahead = when {
-    card != null -> Ahead.Nothing
-    tabs.neighbour(forward = true) != null -> Ahead.Item
-    else -> Ahead.End
+  val sortGoneInto: TabId? get() = deck.goneIn
+
+  fun ahead(): Ahead {
+    if (card != null) return Ahead.Nothing
+    val next = tabs.neighbour(forward = true)
+    return when {
+      deck.goneInEndsAt(next?.id) -> Ahead.Sort
+      next != null -> Ahead.Item(next)
+      else -> Ahead.End(endName())
+    }
   }
 
   fun forward(): Boolean = when (ahead()) {
-    Ahead.Item -> {
+    is Ahead.Item -> {
       dismiss()
       tabs.next()
     }
-    Ahead.End -> {
-      tabs.movedOnPastEnd()
+    Ahead.Sort -> {
+      dismiss()
+      tabs.movedOn()
+      backToSort()
+      false
+    }
+    is Ahead.End -> {
+      tabs.movedOn()
       showEnd()
       false
     }
     Ahead.Nothing -> false
+  }
+
+  fun backToSort() {
+    deck.backToDeck()
+  }
+
+  fun closeGoneIn() {
+    deck.closeAndNext()
   }
 
   fun backToStart() {
@@ -71,13 +118,16 @@ class UpNextState(
     tabs.startKeptRun(posts.map { it.id }, at.id)
   }
 
-  fun sort(deck: SortDeck) {
+  fun sort() {
     dismiss()
     deck.start()
   }
 
-  fun showAhead(ahead: Ahead) {
-    if (ahead == Ahead.End) showEnd()
+  fun showAhead(pane: Ahead.Pane) {
+    when (pane) {
+      is Ahead.End -> showEnd()
+      Ahead.Sort -> backToSort()
+    }
     if (card != null) landedOn = tabs.activeTab.let { it.id to it.top }
   }
 

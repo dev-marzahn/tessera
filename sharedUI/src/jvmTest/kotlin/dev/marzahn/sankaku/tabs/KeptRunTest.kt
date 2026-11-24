@@ -6,6 +6,7 @@ import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -14,28 +15,16 @@ import kotlin.test.assertTrue
 class KeptRunTest {
   private val tabs = TabsController()
   private val navigator = TabsNavigator(tabs)
-  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
-
-  private fun source(tag: String): TabState {
-    val route = Route.Grid(listOf(tag))
-    tabs.open(route, background = true)
-    return tabs.tabs.value.last { it.top == route }
-  }
-
-  private fun keepInto(into: TabState, id: String): TabState {
-    tabs.activate(into.id)
-    tabs.openInBlock(listOf(Route.Post(id, md5 = "m$id", originTags = emptyList(), label = "Post $id", rating = "s")))
-    return tabs.tabs.value.first { (it.top as? Route.Post)?.id == id }
-  }
+  private val upNext = noUpNext(tabs)
 
   private fun shown() = (tabs.activeTab.top as? Route.Post)?.id
 
   private fun run(): List<TabState> {
-    val a = source("artist_a")
-    val b = source("artist_b")
-    val p1 = keepInto(a, "p1")
-    val p2 = keepInto(a, "p2")
-    val p3 = keepInto(b, "p3")
+    val a = tabs.openSource("artist_a")
+    val b = tabs.openSource("artist_b")
+    val p1 = tabs.keepInto(a, "p1")
+    val p2 = tabs.keepInto(a, "p2")
+    val p3 = tabs.keepInto(b, "p3")
     val order = listOf(p3, p1, p2)
     tabs.startKeptRun(order.map { it.id }, p3.id)
     return order
@@ -54,7 +43,7 @@ class KeptRunTest {
     assertEquals("p2", shown())
     assertEquals(3 to 3, tabs.keptPlace())
     assertNull(tabs.neighbour(forward = true))
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     assertFalse(upNext.forward())
     assertEquals(UpNextCard.KeptEnd, upNext.card)
 
@@ -94,7 +83,7 @@ class KeptRunTest {
     run()
     tabs.endKeptRun()
     assertNull(tabs.keptPlace())
-    assertFalse(tabs.neighbour(forward = true)?.top == Route.Post("p1", md5 = "mp1", originTags = emptyList(), label = "Post p1", rating = "s"))
+    assertFalse(tabs.neighbour(forward = true)?.top == keptPost("p1"))
   }
 
   @Test

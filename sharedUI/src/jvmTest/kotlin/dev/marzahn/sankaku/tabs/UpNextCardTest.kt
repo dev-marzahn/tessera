@@ -54,7 +54,7 @@ class UpNextCardTest {
     override fun now() = now
   }
   private val tabs = TabsController(clock = clock)
-  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
+  private val upNext = noUpNext(tabs)
 
   private fun grid(vararg tags: String) = Route.Grid(tags.toList())
 

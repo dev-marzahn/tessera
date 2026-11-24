@@ -846,5 +846,3 @@ private fun liveRegion(text: String) = SemanticsMatcher("live region \"$text\"")
 private val DpRect.centre get() = DpCenter((left + right) / 2, (top + bottom) / 2)
 
 private data class DpCenter(val x: Dp, val y: Dp)
-
-private fun noTips() = Tips(InMemoryTextFile(), touch = false)
