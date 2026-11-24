@@ -16,26 +16,16 @@ class CloseToKeptTest {
   private val undo = ClosedTabUndo(tabs)
   private val deck = SortDeck(tabs, undo)
 
-  private fun source(tag: String): TabState {
-    val route = Route.Grid(listOf(tag))
-    tabs.open(route, background = true)
-    return tabs.tabs.value.single { it.top == route }
-  }
-
-  private fun post(id: String) = Route.Post(id, md5 = "md5-$id", originTags = emptyList(), label = id, rating = "s")
-
-  private fun keep(vararg ids: String) = ids.forEach { tabs.openInBlock(listOf(post(it))) }
-
   private fun id(title: String) = tabs.tabs.value.single { it.title == title }.id
 
   private fun shown() = tabs.activeTab.title
 
   private fun goneIntoWithKept(): Pair<TabState, TabState> {
-    val a = source("artist_a")
-    val b = source("artist_b")
+    val a = tabs.openSource("artist_a")
+    val b = tabs.openSource("artist_b")
     deck.start()
     deck.goIn()
-    keep("k1", "k2", "k3")
+    tabs.keep("k1", "k2", "k3")
     return a to b
   }
 
@@ -87,7 +77,8 @@ class CloseToKeptTest {
     val (_, b) = goneIntoWithKept()
     deck.closeAndNext()
 
-    assertEquals("1 / 2", deck.pillText()?.figures)
+    assertEquals(0, deck.position)
+    assertEquals(2, deck.total)
     deck.backToDeck()
 
     assertTrue(deck.shown)
@@ -144,8 +135,8 @@ class CloseToKeptTest {
 
   @Test
   fun fromSortWithNothingKeptCloseShowsTheNextCardAsBefore() {
-    source("artist_a")
-    val b = source("artist_b")
+    tabs.openSource("artist_a")
+    val b = tabs.openSource("artist_b")
     deck.start()
     deck.goIn()
 
@@ -158,10 +149,10 @@ class CloseToKeptTest {
 
   @Test
   fun notFromSortCloseShowsTheFirstKeptPostAndMovingOnPastThemTheNextItem() {
-    val a = source("artist_a")
-    val next = source("cat")
+    val a = tabs.openSource("artist_a")
+    val next = tabs.openSource("cat")
     tabs.activate(a.id)
-    keep("k1", "k2")
+    tabs.keep("k1", "k2")
 
     undo.close(a.id)
 

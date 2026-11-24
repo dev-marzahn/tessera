@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
+import dev.marzahn.sankaku.tabs.SHOW_QUEUE
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,7 +52,7 @@ class PillSourceTest {
               pill = {
                 CountPill(
                   text = text,
-                  onOpen = {},
+                  tap = PillTap(SHOW_QUEUE) {},
                   canReopen = false,
                   onReopen = { false },
                   actions = emptyList(),

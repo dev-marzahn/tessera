@@ -126,7 +126,7 @@ val shellModule = module {
   }
   single { ClearViewed(get(), get(), get()) }
   single<TabPosts> { CachedTabPosts(get(), get()) }
-  single { UpNextState(get(), get()) }
+  single { UpNextState(get(), get(), get()) }
   single { QueueStart(get(), get(), get(), get()) }
   single { SettingsController() }
   single { ShortcutSheetController() }

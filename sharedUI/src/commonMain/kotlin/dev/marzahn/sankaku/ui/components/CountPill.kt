@@ -63,7 +63,7 @@ import com.google.fonts.icons.view_agenda
 @Composable
 fun CountPill(
   text: CountPillText,
-  onOpen: () -> Unit,
+  tap: PillTap,
   canReopen: Boolean,
   onReopen: () -> Boolean,
   actions: List<CustomAccessibilityAction>,
@@ -101,10 +101,10 @@ fun CountPill(
               indication = null,
               role = Role.Button,
               hapticFeedbackEnabled = false,
-              onClickLabel = "Show queue",
+              onClickLabel = tap.label,
               onLongClickLabel = if (canReopen) REOPEN_LABEL else null,
               onLongClick = reopen,
-              onClick = onOpen,
+              onClick = tap.action,
             )
             .semantics {
               contentDescription = description
@@ -220,6 +220,8 @@ private val PillSourceStyle: TextStyle
   @Composable get() = TextStyle(fontFamily = MaterialTheme.typography.labelLarge.fontFamily, fontSize = 15.sp, fontWeight = FontWeight.Medium)
 
 private val PillBarHeight = 3.dp
+
+class PillTap(val label: String, val action: () -> Unit)
 
 data class CountPillText(
   val source: String?,

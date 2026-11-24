@@ -504,7 +504,7 @@ class TabsController(
     laterStreak++
   }
 
-  fun movedOnPastEnd() {
+  fun movedOn() {
     movedOnFrom(activeTab)
   }
 

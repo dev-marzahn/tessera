@@ -72,10 +72,13 @@ class ClosedTabUndo(
 
   fun dragClose(id: TabId, upNext: UpNextState) {
     if (controller.keptRunOver() && upNext.card != UpNextCard.KeptEnd) controller.endKeptRun()
-    val ahead = upNext.ahead()
-    val toCard = controller.activeTab.id == id && controller.neighbour(forward = false) != null && ahead == Ahead.End
-    opened(controller.close(id, toPrevious = toCard) ?: return)
-    if (toCard) upNext.showAhead(ahead) else if (controller.keptRunOver()) upNext.showKeptEnd()
+    if (controller.activeTab.id == id && upNext.sortGoneInto == id) {
+      upNext.closeGoneIn()
+      return
+    }
+    val pane = if (controller.activeTab.id == id) upNext.ahead().closePane(hasPrevious = controller.neighbour(forward = false) != null) else null
+    opened(controller.close(id, toPrevious = pane is Ahead.End) ?: return)
+    if (pane != null) upNext.showAhead(pane) else if (controller.keptRunOver()) upNext.showKeptEnd()
   }
 
   fun opened(closed: ClosedTab, alsoUndo: (() -> Unit)? = null) {

@@ -224,7 +224,8 @@ class SortDeckTest {
     assertTrue(deck.running)
     assertEquals(a.id, tabs.active.value)
     assertEquals(a.id, deck.goneIn)
-    assertEquals("1 / 2", deck.pillText()?.figures)
+    assertEquals(0, deck.position)
+    assertEquals(2, deck.total)
     deck.backToDeck()
     assertEquals(a, deck.card)
     assertEquals(SortDeck.WentIn(sourceProgress(a), kept = 0, liked = 0), deck.wentIn)
@@ -392,15 +393,14 @@ class SortDeckTest {
 
     assertEquals(a.id, tabs.active.value)
     assertFalse(deck.shown)
-    assertEquals("Sort", deck.pillText()?.source)
-    assertEquals("1 / 2", deck.pillText()?.figures)
+    assertEquals(a.id, deck.goneIn)
     assertEquals(0, deck.tally.sorted)
 
     deck.backToDeck()
 
     assertTrue(deck.shown)
     assertEquals(a, deck.card)
-    assertNull(deck.pillText())
+    assertNull(deck.goneIn)
   }
 
   @Test

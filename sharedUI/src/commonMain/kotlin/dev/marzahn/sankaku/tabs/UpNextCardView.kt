@@ -150,7 +150,7 @@ private fun CardContent(card: UpNextCard, state: UpNextState, sources: EndLeftov
     goThroughLater = { state.goThroughLater(later.map { it.id }) },
   )
   val waiting = if (card == UpNextCard.End && sources != null) rememberEndLeftovers(state, sources) else EndLeftovers.NONE
-  val rows = leftoverRows(waiting, state, sources?.sort)
+  val rows = leftoverRows(waiting, state)
   val text = cardText(card, counts, rows.isNotEmpty())
   val actions = rows.map { row -> CustomAccessibilityAction(row.spoken) { row.onClick(); true } } +
     cardActions(card, state, kept) + LocalQueueActions.current
@@ -287,21 +287,16 @@ class EndLeftoverSources(
   val seen: SeenStore?,
   val posts: TabPosts = TabPosts.None,
   val today: TodayStore? = null,
-  val sort: SortDeck? = null,
 )
 
 @Composable
-internal fun endLeftoverSourcesOrNull(): EndLeftoverSources? {
-  val sort = sortDeckOrNull()
-  return remember(sort) {
-    KoinPlatform.getKoinOrNull()?.let { koin ->
-      EndLeftoverSources(
-        seen = koin.getOrNull<SeenStore>(),
-        posts = koin.getOrNull<TabPosts>() ?: TabPosts.None,
-        today = koin.getOrNull<TodayStore>(),
-        sort = sort,
-      )
-    }
+internal fun endLeftoverSourcesOrNull(): EndLeftoverSources? = remember {
+  KoinPlatform.getKoinOrNull()?.let { koin ->
+    EndLeftoverSources(
+      seen = koin.getOrNull<SeenStore>(),
+      posts = koin.getOrNull<TabPosts>() ?: TabPosts.None,
+      today = koin.getOrNull<TodayStore>(),
+    )
   }
 }
 
@@ -321,7 +316,6 @@ private fun rememberEndLeftovers(state: UpNextState, sources: EndLeftoverSources
       gOnly = gOnly,
       post = { tab -> (tab.top as? Route.Post)?.let { known[it.id] } },
       seen = { tab -> seen != null && tab.seenSinceKept(seen) },
-      sorting = sources.sort != null,
       foundToday = sources.today?.counts()?.found ?: 0,
       now = Clock.System.now(),
       zone = zone,
@@ -333,7 +327,7 @@ private class LeftoverRow(val icon: ImageVector, val title: String, val detail: 
   val spoken: String get() = listOfNotNull(title, detail).joinToString(", ")
 }
 
-private fun leftoverRows(waiting: EndLeftovers, state: UpNextState, sort: SortDeck?): List<LeftoverRow> = buildList {
+private fun leftoverRows(waiting: EndLeftovers, state: UpNextState): List<LeftoverRow> = buildList {
   val start = waiting.keptStart
   if (waiting.keptUnseen > 0 && start != null) {
     add(LeftoverRow(bookmark, keptNotSeen(waiting.keptUnseen), waiting.keptWhere) { state.goThroughKept(waiting.kept, start) })
@@ -341,9 +335,9 @@ private fun leftoverRows(waiting: EndLeftovers, state: UpNextState, sort: SortDe
   if (waiting.later.isNotEmpty()) {
     add(LeftoverRow(replay, "${grouped(waiting.later.size)} for later", waiting.laterWhere) { state.goThroughLater(waiting.later.map { it.id }) })
   }
-  if (sort != null && waiting.newSources > 0) {
+  if (waiting.newSources > 0) {
     val found = waiting.foundToday.takeIf { it > 0 }?.let { "found today: ${grouped(it)}" }
-    add(LeftoverRow(style, "$SORT ${grouped(waiting.newSources)} new", found) { state.sort(sort) })
+    add(LeftoverRow(style, "$SORT ${grouped(waiting.newSources)} new", found) { state.sort() })
   }
 }
 
