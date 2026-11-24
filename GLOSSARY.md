@@ -67,7 +67,7 @@ The full-screen list of the queue, by blocks, that the app opens on at a start w
 _Avoid_: Tab list (the sheet it replaced), queue screen
 
 **Count pill**:
-On a phone, the "▤ 2 / 9" pill at the bottom of a grid, or over a post's picture, that says where the current item is in the queue and opens the queue page. In a block it counts the block instead: "▤ Landscape · 3 / 8" on a kept post, "▤ Landscape · 8 kept" on its source (#501). Undo grows out of it after a close.
+On a phone, the "▤ 2 / 9" pill at the bottom of a grid, or over a post's picture, that says where the current item is in the queue and opens the queue page. In a block it counts the block instead: "▤ Landscape · 3 / 8" on a kept post, "▤ Landscape · 8 kept" on its source (#501). Undo grows out of it after a close, after Clear viewed, and after long-pressing a kept post takes it out of the queue.
 _Avoid_: Tab bar, tab pill (the retired ‹ n / N ›)
 
 **Start**:

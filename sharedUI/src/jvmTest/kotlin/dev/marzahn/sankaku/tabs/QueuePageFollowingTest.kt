@@ -35,7 +35,6 @@ import dev.marzahn.sankaku.queue.FeedMarksStore
 import dev.marzahn.sankaku.queue.QueueKind
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.queue.TodayStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -101,9 +100,9 @@ class QueuePageFollowingTest {
     setContent {
       SankakuTheme {
         Box(Modifier.requiredSize(412.dp, 915.dp)) {
-          QueuePage(
+          PhoneQueuePage(
             onDismiss = { dismissed++ }, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-            clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {},
+            interacted = { true }, onInteract = {},
             today = today, onSort = onSort, following = following, catchUp = catchUp,
           )
         }

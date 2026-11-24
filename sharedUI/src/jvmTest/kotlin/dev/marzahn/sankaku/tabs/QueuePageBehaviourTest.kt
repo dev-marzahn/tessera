@@ -52,13 +52,12 @@ class QueuePageBehaviourTest {
   private fun ComposeUiTest.show() {
     setContent {
       SankakuTheme {
-        QueuePage(
+        PhoneQueuePage(
           onDismiss = { dismissed++ },
           controller = tabs,
           posts = TabPosts.None,
           privacy = privacy,
           seen = seen,
-          clearViewed = ClearViewed(tabs, seen, messages),
           interacted = { used },
           onInteract = { used = true },
           folding = false,
@@ -203,7 +202,7 @@ class QueuePageBehaviourTest {
     seen.record("g", "md5g")
     show()
 
-    onNodeWithContentDescription("Clear viewed, 1 kept posts").assertExists()
+    onNodeWithContentDescription("Clear viewed, 1 kept post").assertExists()
   }
 
   @Test

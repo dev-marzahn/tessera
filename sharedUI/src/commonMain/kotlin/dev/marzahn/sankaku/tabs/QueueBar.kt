@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -38,7 +39,6 @@ import dev.marzahn.sankaku.ui.components.TipAnchor
 import dev.marzahn.sankaku.ui.TipAction
 import dev.marzahn.sankaku.ui.keptWaitsText
 import dev.marzahn.sankaku.ui.openedInFrontText
-import dev.marzahn.sankaku.ui.components.UNDO_CLOSE_LABEL
 import dev.marzahn.sankaku.ui.components.UndoChip
 import dev.marzahn.sankaku.ui.components.hidesOnScroll
 import kotlin.math.roundToInt
@@ -66,6 +66,10 @@ fun QueueBar(
   val active by controller.active.collectAsStateWithLifecycle()
   val closed by controller.closed.collectAsStateWithLifecycle()
   val pending by undo.pending.collectAsStateWithLifecycle()
+  val undoWords = pending?.let { it.closing.words(it.closed) }
+  val wordsLeaving = remember { arrayOfNulls<Closing.Words>(1) }
+  val chipWords = undoWords ?: wordsLeaving[0]
+  SideEffect { if (undoWords != null) wordsLeaving[0] = undoWords }
   val showButtons by settings.showQueueButtons.collectAsStateWithLifecycle()
   val buttons = showButtons && !openOnly
   val index = tabs.indexOfFirst { it.id == active }.coerceAtLeast(0)
@@ -78,7 +82,7 @@ fun QueueBar(
     tips.used(Tip.QueueSwipe)
     upNext.forward()
   }
-  val close = { undo.close(active) }
+  val close: () -> Unit = { undo.close(active) }
   val current = tabs.getOrNull(index)
   val feed = current?.takeIf { it.kind == QueueKind.Feed }?.title
   val closable = current == null || controller.canClose(current)
@@ -96,7 +100,7 @@ fun QueueBar(
     if (cardUp) CustomAccessibilityAction(PREVIOUS_ITEM) { upNext.dismiss(); true } else previous?.let { CustomAccessibilityAction(PREVIOUS_ITEM) { controller.previous() } },
     aheadAction(ahead, upNext),
     CustomAccessibilityAction(closeName) { close(); true }.takeIf { closable },
-    pending?.let { CustomAccessibilityAction(UNDO_CLOSE_LABEL) { undo.undo(); true } },
+    undoWords?.let { CustomAccessibilityAction(it.undo) { undo.undo(); true } },
   )
   val slide = Modifier.offset { IntOffset(0, hideOnScroll?.hiddenBy?.roundToInt() ?: 0) }
   val place = blockPlace(tabs, index)
@@ -117,7 +121,7 @@ fun QueueBar(
     tips,
     swipeDue = ahead == Ahead.Item && fullPill && swipesQueue,
     twoTabs = tabs.size >= 2,
-    reopenable = closed.isNotEmpty() && pending == null && !undo.undoOnLine && !openOnly,
+    reopenable = closed.isNotEmpty() && pending == null && !openOnly,
     barOut = { (hideOnScroll?.hiddenBy ?: 0f) == 0f },
     openedInFront = current?.takeIf { fullPill && it.top?.isLone != true && controller.openerOf(it) != null }?.title,
     keptAfter = keptAfter,
@@ -138,10 +142,11 @@ fun QueueBar(
       UndoChip(
         visibleState = rememberUndoShown(pending, undo),
         onUndo = undo::undo,
+        label = chipWords?.undo ?: UNDO_CLOSE_LABEL,
         interactionSource = undoPresses,
         modifier = slide,
       )
-      LiveAnnouncement(pending?.let { "${it.closed.closedText}. Undo available" } ?: "")
+      LiveAnnouncement(undoWords?.let { "${it.spoken}. Undo available" } ?: "")
       LiveAnnouncement(doneWith?.let { "Done with $it? Close available" } ?: "")
     },
     pill = {

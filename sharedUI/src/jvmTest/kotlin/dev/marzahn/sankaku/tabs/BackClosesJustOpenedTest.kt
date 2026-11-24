@@ -443,7 +443,7 @@ class BackClosesJustOpenedTest {
     navigator.goTo(tag)
     val grid = tabs.activeTab
     val p = tabs.tabs.value.single { it.top == post("p") }
-    tabs.reopen(assertNotNull(tabs.close(p.id)), inPlace = true)
+    tabs.reopen(assertNotNull(tabs.close(p.id)), Closing.OnQueuePage)
     assertSame(grid, tabs.activeTab)
 
     navigator.goBack()

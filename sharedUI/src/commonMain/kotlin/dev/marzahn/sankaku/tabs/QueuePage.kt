@@ -59,7 +59,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -100,13 +99,11 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -134,7 +131,6 @@ import com.google.fonts.icons.play_arrow
 import com.google.fonts.icons.replay
 import com.google.fonts.icons.search
 import com.google.fonts.icons.shield
-import com.google.fonts.icons.undo
 import com.google.fonts.icons.view_agenda
 import com.google.fonts.icons.visibility_off
 import dev.marzahn.sankaku.queue.TodayStore
@@ -165,7 +161,6 @@ import org.koin.compose.koinInject
 @Composable
 fun QueuePage(
   onDismiss: () -> Unit,
-  onSwipeClosed: (ClosedTab) -> Unit = {},
   onMenu: (() -> Unit)? = null,
   menuBadge: MenuBadge = MenuBadge.None,
   controller: TabsController = koinInject(),
@@ -173,6 +168,7 @@ fun QueuePage(
   privacy: PrivacySettings = koinInject(),
   seen: SeenStore? = koinInject<SeenStore>(),
   clearViewed: ClearViewed = koinInject(),
+  undo: ClosedTabUndo = koinInject(),
   interacted: () -> Boolean = koinInject<QueueStart>()::interacted,
   onInteract: () -> Unit = koinInject<QueueStart>()::interact,
   onListTop: (Dp) -> Unit = {},
@@ -297,8 +293,10 @@ fun QueuePage(
   val scope = rememberCoroutineScope()
   val activeTab = liveTabs.firstOrNull { it.id == active }
   val clearStatus = clearViewed.status()
+  val pending by undo.pending.collectAsStateWithLifecycle()
+  val clearedShown = pending?.takeIf { it.closing == Closing.Cleared && it.closed in closed }
   val sort = onSort?.takeIf { newSources > 0 }
-  val hasActions = sort != null || clearStatus.count > 0 || later.isNotEmpty()
+  val hasActions = sort != null || clearStatus.count > 0 || clearedShown != null || later.isNotEmpty()
   var continueRoom by remember { mutableStateOf(if (hasActions) CONTINUE_ROOM + ACTIONS_ROOM else CONTINUE_ROOM) }
 
   var moved by remember { mutableStateOf("") }
@@ -383,7 +381,14 @@ fun QueuePage(
           maxItemsInEachRow = if (LocalDensity.current.fontScale > LARGE_FONT) 1 else 2,
         ) {
           if (sort != null) SortButton(newSources, sort, Modifier.weight(1f))
-          ClearViewedButton(clearStatus, onClick = { clearViewed() }, Modifier.weight(1f))
+          if (clearedShown != null) {
+            UndoRow(clearedShown.closed, clearedShown.closing, firstShow = focused::add, onUndo = {
+              interact()
+              undo.undo()
+            })
+          } else {
+            ClearViewedButton(clearStatus, onClick = { clearViewed() }, Modifier.weight(1f))
+          }
           if (later.isNotEmpty()) GoThroughLaterButton(later.size, onClick = { goThroughLater(null) }, Modifier.weight(1f))
         }
       }
@@ -431,16 +436,12 @@ fun QueuePage(
           step = ::step,
           onClose = { id ->
             interact()
-            controller.close(id)?.let {
-              swiped = it
-              onSwipeClosed(it)
-            }
+            undo.close(id, Closing.OnQueuePage)?.let { swiped = it }
           },
           firstShow = focused::add,
           onUndo = {
             interact()
-            swiped = null
-            controller.reopen(it, inPlace = true)
+            undo.undo(it, Closing.OnQueuePage)
           },
           reopened = reopened,
           onReopen = {
@@ -473,6 +474,7 @@ fun QueuePage(
           onFind = { query = "" },
           onBulk = { ids ->
             controller.closeAll(ids)?.let {
+              undo.opened(it, Closing.OnQueuePage)
               swiped = it
               reveal = it.key
             }
@@ -1023,51 +1025,13 @@ private fun ClosedBlockRow(
 
 private fun LazyListScope.inlineUndoRow(closedTab: ClosedTab, firstShow: (Long) -> Boolean, onUndo: (ClosedTab) -> Unit) {
   item(key = rowKey(QueueRow.Inline(closedTab))) {
-    val colors = MaterialTheme.colorScheme
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (firstShow(closedTab.key)) focus.requestFocus() }
-    Row(
-      Modifier
-        .animateItem()
-        .padding(horizontal = 12.dp, vertical = 4.dp)
-        .fillMaxWidth()
-        .heightIn(min = 56.dp)
-        .clip(RoundedCornerShape(16.dp))
-        .background(colors.inverseSurface)
-        .padding(start = 16.dp, end = 8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Column(
-        Modifier.weight(1f).padding(vertical = 8.dp).semantics(mergeDescendants = true) {
-          contentDescription = if (closedTab.size > 1) "Closed ${closedTab.size} items" else closedTab.closedText
-          liveRegion = LiveRegionMode.Polite
-        },
-      ) {
-        Text(
-          closedTab.closedLabel,
-          style = MaterialTheme.typography.bodyMedium,
-          color = colors.inverseOnSurface,
-          maxLines = rowTextLines(),
-          overflow = TextOverflow.Ellipsis,
-        )
-        if (closedTab.keptStay > 0) {
-          Text(
-            "${closedTab.keptStay} kept stay",
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.inverseOnSurface.copy(alpha = 0.8f),
-          )
-        }
-      }
-      TextButton(
-        onClick = { onUndo(closedTab) },
-        colors = ButtonDefaults.textButtonColors(contentColor = colors.inversePrimary),
-        modifier = Modifier.focusRequester(focus),
-      ) {
-        Icon(undo, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Undo")
-      }
-    }
+    UndoRow(
+      closedTab,
+      Closing.OnQueuePage,
+      firstShow = firstShow,
+      onUndo = { onUndo(closedTab) },
+      modifier = Modifier.animateItem().padding(horizontal = 12.dp, vertical = 4.dp),
+    )
   }
 }
 

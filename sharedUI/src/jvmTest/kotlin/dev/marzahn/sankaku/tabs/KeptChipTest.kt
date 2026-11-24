@@ -8,7 +8,6 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -111,9 +110,9 @@ class KeptChipTest {
     val start = QueueStart(tabs, privacy)
     setContent {
       SankakuTheme {
-        QueuePage(
+        PhoneQueuePage(
           onDismiss = {}, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-          clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {},
+          interacted = { true }, onInteract = {},
           folding = true, chipMemory = start,
         )
       }

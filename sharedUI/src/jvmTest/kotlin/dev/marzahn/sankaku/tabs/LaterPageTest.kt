@@ -12,7 +12,6 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -56,9 +55,9 @@ class LaterPageTest {
     var dismissed = false
     setContent {
       SankakuTheme {
-        QueuePage(
+        PhoneQueuePage(
           onDismiss = { dismissed = true }, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-          clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {}, folding = true,
+          interacted = { true }, onInteract = {}, folding = true,
         )
       }
     }

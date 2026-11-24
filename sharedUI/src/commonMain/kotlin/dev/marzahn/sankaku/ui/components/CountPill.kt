@@ -318,6 +318,7 @@ fun BlockEndLine(text: String, modifier: Modifier = Modifier) {
 fun UndoChip(
   visibleState: MutableTransitionState<Boolean>,
   onUndo: () -> Unit,
+  label: String,
   interactionSource: MutableInteractionSource,
   modifier: Modifier = Modifier,
 ) {
@@ -327,18 +328,18 @@ fun UndoChip(
     enter = expandHorizontally(spatialSpec(), expandFrom = Alignment.End) + fadeIn(effectsSpec()),
     exit = shrinkHorizontally(spatialSpec(), shrinkTowards = Alignment.End) + fadeOut(effectsSpec()),
   ) {
-    UndoChipBody(onUndo, interactionSource)
+    UndoChipBody(onUndo, label, interactionSource)
   }
 }
 
 @Composable
-private fun UndoChipBody(onUndo: () -> Unit, interactionSource: MutableInteractionSource) {
+private fun UndoChipBody(onUndo: () -> Unit, label: String, interactionSource: MutableInteractionSource) {
   val colors = MaterialTheme.colorScheme
   Box(
     Modifier
       .size(BottomRowLayout.PieceTarget)
       .clickable(interactionSource, indication = null, role = Role.Button, onClick = onUndo)
-      .semantics { contentDescription = UNDO_CLOSE_LABEL },
+      .semantics { contentDescription = label },
     contentAlignment = Alignment.Center,
   ) {
     Surface(
@@ -359,5 +360,3 @@ private fun UndoChipBody(onUndo: () -> Unit, interactionSource: MutableInteracti
     }
   }
 }
-
-const val UNDO_CLOSE_LABEL = "Undo close"

@@ -36,7 +36,6 @@ import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.ui.Tips
 import dev.marzahn.sankaku.ui.components.BottomRowLayout
 import dev.marzahn.sankaku.ui.components.ScrollToTopButton
-import dev.marzahn.sankaku.ui.components.UNDO_CLOSE_LABEL
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import java.io.File
 import javax.imageio.ImageIO

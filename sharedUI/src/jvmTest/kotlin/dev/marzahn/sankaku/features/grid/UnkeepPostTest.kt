@@ -1,20 +1,16 @@
 package dev.marzahn.sankaku.features.grid
 
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.runComposeUiTest
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.TabsNavigator
 import dev.marzahn.sankaku.api.dto.PostDto
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.tabs.ClosedTabUndo
+import dev.marzahn.sankaku.tabs.Closing
+import dev.marzahn.sankaku.tabs.EndUndoAtNextAction
 import dev.marzahn.sankaku.tabs.TabsController
-import dev.marzahn.sankaku.tabs.UNKEPT
-import dev.marzahn.sankaku.ui.Messages
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,6 +29,7 @@ class UnkeepPostTest {
   private val seen = SeenStore(InMemoryTextFile(), clock)
   private val tabs = TabsController(clock = clock)
   private val navigator = TabsNavigator(tabs)
+  private val pill = ClosedTabUndo(tabs)
   private val grid = Route.Grid(listOf("fixture_tag"))
 
   private fun post(id: String) = PostDto(id = id, md5 = "md5-$id", rating = "s", status = "active")
@@ -49,40 +46,34 @@ class UnkeepPostTest {
     keep("c")
     val source = tabs.activeTab
 
-    val closed = assertNotNull(unkeepPost(post("b"), tabs))
+    assertTrue(unkeepPost(post("b"), tabs, pill))
 
     assertEquals(listOf("fixture_tag", "a", "c"), tops())
     assertEquals(source, tabs.activeTab)
-    tabs.reopen(closed, inPlace = true)
+    assertEquals(Closing.Unkept, pill.pending.value?.closing)
+    assertEquals(tabs.closed.value.last(), pill.pending.value?.closed)
+
+    pill.undo()
     assertEquals(listOf("fixture_tag", "a", "b", "c"), tops())
     assertEquals(source, tabs.sourceOf(tabs.tabs.value[2]))
     assertEquals(source, tabs.activeTab)
+    assertNull(pill.pending.value)
   }
 
+  @OptIn(ExperimentalTestApi::class)
   @Test
-  fun theTopLinesUndoPutsItBackAndKeepsTheReopenTipAwayWhileItsUp() = runTest {
+  fun thePillsUndoStaysUntilTheNextAction() = runComposeUiTest {
     navigator.goTo(grid)
     keep("a")
     keep("b")
-    val source = tabs.activeTab
-    val messages = Messages()
-    val undo = ClosedTabUndo(tabs, messages = messages)
-    val said = async(start = CoroutineStart.UNDISPATCHED) { messages.messages.first() }
+    setContent { EndUndoAtNextAction(pill, tabs) }
 
-    undo.offerOnLine(assertNotNull(unkeepPost(post("a"), tabs)), UNKEPT)
-    val line = said.await()
-    assertEquals("Removed from queue", line.text)
-    assertEquals("Undo", line.actionLabel)
-    val up = launch { assertNotNull(line.until).invoke() }
-    runCurrent()
-    assertTrue(undo.undoOnLine)
-    up.cancel()
-    runCurrent()
-    assertFalse(undo.undoOnLine)
+    runOnIdle { unkeepPost(post("a"), tabs, pill) }
+    mainClock.advanceTimeBy(60_000)
+    runOnIdle { assertNotNull(pill.pending.value) }
 
-    line.onAction()
-    assertEquals(listOf("fixture_tag", "a", "b"), tops())
-    assertEquals(source, tabs.activeTab)
+    runOnIdle { navigator.goTo(Route.Grid(listOf("other_tag"))) }
+    runOnIdle { assertNull(pill.pending.value) }
   }
 
   @Test
@@ -92,7 +83,7 @@ class UnkeepPostTest {
     now += 1.minutes
     seen.record("a", "md5-a")
 
-    assertNotNull(unkeepPost(post("a"), tabs))
+    assertTrue(unkeepPost(post("a"), tabs, pill))
     assertEquals(listOf("fixture_tag"), tops())
   }
 
@@ -104,7 +95,7 @@ class UnkeepPostTest {
     val copyOfA = { p: PostDto -> tabs.tabs.value.takeIf { p.id == "a-again" }?.first { (it.top as? Route.Post)?.id == "a" } }
 
     assertNotNull(keptItemOf(post("a-again"), tabs.tabs.value, copyOfA))
-    assertNotNull(unkeepPost(post("a-again"), tabs, copyOfA))
+    assertTrue(unkeepPost(post("a-again"), tabs, pill, copyOfA))
     assertEquals(listOf("fixture_tag", "b"), tops())
   }
 
@@ -117,9 +108,9 @@ class UnkeepPostTest {
     assertEquals(listOf("fixture_tag", "a", "over"), before)
 
     assertNull(keptItemOf(post("never-kept"), tabs.tabs.value))
-    assertNull(unkeepPost(post("never-kept"), tabs))
+    assertFalse(unkeepPost(post("never-kept"), tabs, pill))
     assertNull(keptItemOf(post("over"), tabs.tabs.value))
-    assertNull(unkeepPost(post("over"), tabs))
+    assertFalse(unkeepPost(post("over"), tabs, pill))
     assertEquals(before, tops())
   }
 }

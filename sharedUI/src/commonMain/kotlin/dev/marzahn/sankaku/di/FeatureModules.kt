@@ -55,7 +55,10 @@ import dev.marzahn.sankaku.features.post.TagBlacklisting
 import dev.marzahn.sankaku.tabs.TabsController
 import dev.marzahn.sankaku.tabs.NewTab
 import dev.marzahn.sankaku.tabs.ClearViewed
+import dev.marzahn.sankaku.tabs.ClearedUndo
+import dev.marzahn.sankaku.tabs.ClearedUndoOnTopLine
 import dev.marzahn.sankaku.tabs.ClosedTabUndo
+import dev.marzahn.sankaku.tabs.Closing
 import dev.marzahn.sankaku.tabs.SortDeck
 import dev.marzahn.sankaku.queue.TodayStore
 import dev.marzahn.sankaku.tabs.BlockFinds
@@ -123,6 +126,10 @@ val shellModule = module {
       unfollow = actions::unfollow,
       knownType = { key -> tags.known.value[key]?.let { TagType.fromId(it.type) } },
     )
+  }
+  single<ClearedUndo> {
+    val undo = get<ClosedTabUndo>()
+    if (platformIsTouch) ClearedUndo { undo.opened(it, Closing.Cleared) } else ClearedUndoOnTopLine(undo, get())
   }
   single { ClearViewed(get(), get(), get()) }
   single<TabPosts> { CachedTabPosts(get(), get()) }

@@ -24,8 +24,6 @@ import androidx.compose.ui.unit.Density
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
-import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -41,13 +39,12 @@ class QueueAccessibilityTest {
       CompositionLocalProvider(LocalDensity provides Density(2f, fontScale = fontScale)) {
         SankakuTheme {
           Box(if (width == Dp.Unspecified) Modifier else Modifier.width(width)) {
-            QueuePage(
+            PhoneQueuePage(
               onDismiss = {},
               controller = tabs,
               posts = TabPosts.None,
               privacy = privacy,
               seen = null,
-              clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
               interacted = { false }, onInteract = {},
               onMenu = {},
             )

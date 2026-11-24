@@ -24,8 +24,6 @@ import coil3.memory.MemoryCache
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
-import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -71,13 +69,12 @@ class QueuePageBlurRenderTest {
     setContent {
       CompositionLocalProvider(LocalDensity provides Density(2.625f)) {
         SankakuTheme {
-          QueuePage(
+          PhoneQueuePage(
             onDismiss = {},
             controller = tabs,
             posts = TabPosts.None,
             privacy = PrivacySettings(InMemoryTextFile()),
             seen = null,
-            clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
             interacted = { false }, onInteract = {},
           )
         }
@@ -113,13 +110,12 @@ class QueuePageBlurRenderTest {
         SankakuTheme {
           val current = start
           if (current.pageOpen) {
-            QueuePage(
+            PhoneQueuePage(
               onDismiss = current::closePage,
               controller = tabs,
               posts = TabPosts.None,
               privacy = privacy,
               seen = null,
-              clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
               interacted = current::interacted,
               onInteract = current::interact,
             )

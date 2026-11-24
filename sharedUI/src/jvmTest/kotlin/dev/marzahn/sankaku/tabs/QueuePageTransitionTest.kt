@@ -48,10 +48,8 @@ import androidx.compose.ui.platform.testTag
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.features.grid.imageKey
-import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.shell.LocalShellTransitions
 import dev.marzahn.sankaku.shell.LocalUnderQueuePage
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import org.jetbrains.skia.Bitmap
 import kotlin.test.AfterTest
@@ -95,13 +93,12 @@ class QueuePageTransitionTest {
           transition = transitions.under
           UnderQueuePage(transitions) { LonePicture(id) }
           QueuePageAndTopLine(remember { SnackbarHostState() }, transitions) { onListTop ->
-            QueuePage(
+            PhoneQueuePage(
               onDismiss = { pageOpen = false },
               controller = tabs,
               posts = TabPosts.None,
               privacy = privacy,
               seen = null,
-              clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
               interacted = { interacted },
               onInteract = {},
               onListTop = onListTop,

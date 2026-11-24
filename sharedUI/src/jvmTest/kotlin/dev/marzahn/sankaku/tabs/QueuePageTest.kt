@@ -9,6 +9,9 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -17,17 +20,17 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.api.Feed
 import dev.marzahn.sankaku.data.InMemoryTextFile
-import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.shell.MenuBadge
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -45,6 +48,7 @@ class QueuePageTest {
     open(Route.Grid(listOf("a")), background = true)
     open(Route.Grid(listOf("b")), background = true)
   }
+  private val pill = ClosedTabUndo(tabs)
 
   private fun titles() = tabs.tabs.value.map { it.title }
 
@@ -52,11 +56,11 @@ class QueuePageTest {
     onDismiss: () -> Unit = {},
     onMenu: (() -> Unit)? = null,
     menuBadge: MenuBadge = MenuBadge.None,
+    onSort: (() -> Unit)? = null,
   ) {
-    val privacy = PrivacySettings(InMemoryTextFile())
     setContent {
       SankakuTheme {
-        QueuePage(onDismiss = onDismiss, onMenu = onMenu, menuBadge = menuBadge, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen, clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { false }, onInteract = {}, folding = false)
+        PhoneQueuePage(controller = tabs, onDismiss = onDismiss, onMenu = onMenu, menuBadge = menuBadge, seen = seen, undo = pill, folding = false, onSort = onSort)
       }
     }
     waitForIdle()
@@ -339,6 +343,85 @@ class QueuePageTest {
     assertFalse(back.seenSinceKept(seen))
     onNodeWithText("Kept").assertExists()
     onNodeWithText("Kept · current").assertDoesNotExist()
+  }
+
+  @Test
+  fun thePillsUndoAfterASwipeBringsTheItemBackInPlace() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    show()
+
+    closeRow("Rosehip")
+    runOnIdle { pill.undo() }
+    waitForIdle()
+
+    assertEquals(listOf("Browse", "A", "B", "Rosehip"), titles())
+    assertEquals("Browse", tabs.tabs.value.first { it.id == tabs.active.value }.title)
+    assertNull(pill.pending.value)
+  }
+
+  @Test
+  fun theClearedRowTakesFocusOnlyTheFirstTimeItShows() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show()
+
+    onNodeWithContentDescription("Clear viewed, 1 kept post").performClick()
+    waitForIdle()
+    onNodeWithText("Undo").assertIsFocused()
+
+    onNodeWithContentDescription("Find in queue").performClick()
+    waitForIdle()
+    onNodeWithContentDescription("Close find").performClick()
+    waitForIdle()
+
+    onNodeWithText("Cleared 1 kept post").assertExists()
+    onNodeWithText("Undo").assertIsNotFocused()
+  }
+
+  @Test
+  fun clearViewedLeavesAnUndoRowInItsPlaceAndPutsTheWholeClearOnThePill() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    tabs.open(Route.Post("p2", "m2", listOf("a"), label = "Yarrow"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    seen.record("p2", "m2")
+    show()
+
+    onNodeWithContentDescription("Clear viewed, 2 kept posts").performClick()
+    waitForIdle()
+
+    assertEquals(listOf("Browse", "A", "B"), titles())
+    onNodeWithContentDescription("Clear viewed", substring = true).assertDoesNotExist()
+    onNodeWithText("Cleared 2 kept posts").assertExists()
+    assertEquals(tabs.closed.value.last(), pill.pending.value?.closed)
+
+    onNodeWithText("Undo").performClick()
+    waitForIdle()
+
+    assertEquals(listOf("Browse", "A", "B", "Rosehip", "Yarrow"), titles())
+    assertNull(pill.pending.value)
+    onNodeWithText("Cleared 2 kept posts").assertDoesNotExist()
+    onNodeWithContentDescription("Clear viewed, 2 kept posts").assertExists()
+  }
+
+  @Test
+  fun theClearedRowTakesAWholeLineBelowSort() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show(onSort = {})
+
+    onNodeWithContentDescription("Clear viewed, 1 kept post").performClick()
+    waitForIdle()
+
+    val actions = onNodeWithTag(QUEUE_ACTIONS_TAG).getBoundsInRoot()
+    val sort = onNodeWithText("Sort", substring = true).getBoundsInRoot()
+    val cleared = onNodeWithText("Cleared 1 kept post").getBoundsInRoot()
+    val undo = onNodeWithText("Undo").getBoundsInRoot()
+    assertTrue(cleared.top >= sort.bottom, "$cleared below $sort")
+    assertEquals((actions.left + 16.dp).value, cleared.left.value, 1f, "$cleared starts at the line's start, $actions")
+    assertEquals((actions.right - 8.dp).value, undo.right.value, 1f, "$undo ends the line, $actions")
   }
 
   @Test

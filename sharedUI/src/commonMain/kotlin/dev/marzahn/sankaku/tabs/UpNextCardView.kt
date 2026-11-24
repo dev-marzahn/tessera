@@ -205,7 +205,7 @@ private fun CardContent(card: UpNextCard, state: UpNextState, sources: EndLeftov
               OutlinedButton(onClick = kept.toQueue) { Text(TO_THE_QUEUE) }
             } else {
               if (kept.clearCount > 0) {
-                OutlinedButton(onClick = { kept.clear() }, modifier = Modifier.semantics { contentDescription = clearViewedLabel(kept.clearCount, touch = true) }) {
+                OutlinedButton(onClick = { kept.clear() }, modifier = Modifier.semantics { contentDescription = clearViewedLabel(kept.clearCount) }) {
                   Text("$CLEAR_VIEWED · ${kept.clearCount}")
                 }
               }
