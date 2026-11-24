@@ -64,11 +64,12 @@ class LaterPageTest {
     waitForIdle()
 
     val clear = onNodeWithContentDescription(clearViewedLabel(2)).getUnclippedBoundsInRoot()
-    val later = onNodeWithText("Go through later · 2").getUnclippedBoundsInRoot()
-    val go = onNodeWithText("Continue · Artist A").getUnclippedBoundsInRoot()
+    val later = onNodeWithContentDescription("Go through later · 2").getUnclippedBoundsInRoot()
+    val go = onNodeWithContentDescription("Continue · Artist A").getUnclippedBoundsInRoot()
     assertEquals((clear.top + clear.bottom).value / 2, (later.top + later.bottom).value / 2, 4f)
+    assertEquals((clear.top + clear.bottom).value / 2, (go.top + go.bottom).value / 2, 4f)
     assertTrue(later.left > clear.right, "Go through later $later beside Clear viewed $clear")
-    assertTrue(later.bottom <= go.top, "the row $later above Continue $go")
+    assertTrue(go.left > later.right, "Continue $go after Go through later $later")
     val list = onNodeWithTag(QUEUE_PAGE_LIST_TAG).getUnclippedBoundsInRoot()
     assertTrue(later.top > list.top + (list.bottom - list.top) / 2, "the row $later is in the page's lower half")
 
@@ -79,7 +80,7 @@ class LaterPageTest {
     onNodeWithText("Artist None", useUnmergedTree = true).assertDoesNotExist()
     assertEquals(2, onAllNodesWithContentDescription("1 later").fetchSemanticsNodes().size)
 
-    onNodeWithText("Go through later · 2").performClick()
+    onNodeWithContentDescription("Go through later · 2").performClick()
     waitForIdle()
     assertTrue(dismissed)
     assertEquals(p1.id, tabs.activeTab.id)

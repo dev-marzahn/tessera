@@ -129,6 +129,7 @@ import dev.marzahn.sankaku.features.post.rememberViewing
 import dev.marzahn.sankaku.features.post.SaveOutcome
 import dev.marzahn.sankaku.features.post.rememberRejections
 import dev.marzahn.sankaku.ui.components.CornerActionChip
+import dev.marzahn.sankaku.ui.components.LARGE_FONT_SCALE
 import dev.marzahn.sankaku.ui.components.LiveAnnouncement
 import dev.marzahn.sankaku.ui.components.MenuButton
 import dev.marzahn.sankaku.ui.components.MenuSaveState
@@ -1019,7 +1020,7 @@ private fun TopRow(
   statusTop: Dp,
   modifier: Modifier,
 ) {
-  val stacked = LocalDensity.current.fontScale >= STACK_TOP_ROW_AT
+  val stacked = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
   Box(
     modifier
       .fillMaxWidth()
@@ -1075,8 +1076,6 @@ private fun TopRow(
     }
   }
 }
-
-private const val STACK_TOP_ROW_AT = 1.3f
 
 @Composable
 private fun SheetHeader(

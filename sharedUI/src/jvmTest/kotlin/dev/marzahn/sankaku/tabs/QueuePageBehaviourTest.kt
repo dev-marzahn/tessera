@@ -129,7 +129,7 @@ class QueuePageBehaviourTest {
     block()
     show()
 
-    onNodeWithText("Continue", substring = true).performSemanticsAction(SemanticsActions.OnClick)
+    onNodeWithContentDescription("Continue", substring = true).performSemanticsAction(SemanticsActions.OnClick)
 
     assertTrue(used)
     assertEquals(1, dismissed)
@@ -171,7 +171,7 @@ class QueuePageBehaviourTest {
     tabs.activate(tabs.tabs.value[1].id)
     show()
 
-    onNodeWithText("Continue · A").performClick()
+    onNodeWithContentDescription("Continue · A").performClick()
 
     assertEquals(1, dismissed)
     assertEquals("A", tabs.activeTab.title)

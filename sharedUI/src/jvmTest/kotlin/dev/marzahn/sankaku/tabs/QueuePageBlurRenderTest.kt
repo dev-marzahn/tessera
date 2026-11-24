@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -142,7 +143,7 @@ class QueuePageBlurRenderTest {
     assertEquals(0, blurred())
     frame("2-after-one-touch.png")
 
-    onNodeWithText("Continue", substring = true).performClick()
+    onNodeWithContentDescription("Continue", substring = true).performClick()
     waitForIdle()
     start.left()
     time += QueueStart.AWAY + 1.seconds

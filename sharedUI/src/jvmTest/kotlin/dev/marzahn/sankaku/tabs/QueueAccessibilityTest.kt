@@ -105,7 +105,8 @@ class QueueAccessibilityTest {
     val title = tabs.activeTab.title
     show(fontScale = 2f)
 
-    listOf(title, "Newest · current", "Continue · $title").forEach { text ->
+    onNodeWithContentDescription("Continue · $title").assertExists()
+    listOf(title, "Newest · current").forEach { text ->
       val nodes = onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes()
       assertTrue(nodes.isNotEmpty(), "no node for $text")
       nodes.forEach { node ->
