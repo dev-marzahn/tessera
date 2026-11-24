@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.BufferOverflow
@@ -33,7 +34,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -141,14 +141,14 @@ class PostActions(
     }
     val playsHeart = !fromGrid
     if (playsHeart) _hearts.tryEmit(FavouriteHeart(post.id, !post.isFavorited))
-    scope.launch { favourite(post, viaDoubleTap, playsHeart) }
+    scope.launch(start = CoroutineStart.UNDISPATCHED) { favourite(post, viaDoubleTap, playsHeart) }
     if (!fromGrid && post.isFavorited) messages.show(unfavouritedMessage(post))
     return true
   }
 
   private fun unfavouritedMessage(post: PostDto): Message {
     fun favourited(overrides: Map<String, PostOverride>) = post.merge(overrides[post.id]).isFavorited
-    val favouritedAgain = store.overrides.dropWhile(::favourited).filter(::favourited)
+    val favouritedAgain = store.overrides.filter(::favourited)
     val movedOn = shown.drop(1).filter { it != post.id }
     val until: suspend () -> Unit = { merge(flow { emit(nextAction()) }, favouritedAgain.map {}, movedOn.map {}).first() }
     return Message("Unfavourited", actionLabel = UNDO, until = until) {
