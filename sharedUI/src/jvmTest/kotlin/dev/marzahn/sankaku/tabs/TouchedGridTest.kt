@@ -13,11 +13,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
-/**
- * #245: whether a grid was touched (scrolled, a post opened from it, restored at its place) is kept on its tab, not in
- * the grid's screen, so it outlasts the grid leaving composition (the queue page covering it) and a relaunch. A search
- * on a touched grid opens in front of its block (#161); an untouched one is still replaced in place.
- */
 class TouchedGridTest {
   private val file = InMemoryTextFile(null)
   private val store = FileTabStateStore(file)
@@ -52,7 +47,6 @@ class TouchedGridTest {
     tab.markTouched(browse)
     assertTrue(tab.isTouched(browse))
 
-    // The search runs in this tab when it's this source's (a new order): the grid on top isn't the one touched.
     tab.backStack.add(Route.Grid(listOf("order:popularity")))
     assertFalse(tab.topIsTouchedGrid)
     tab.backStack.removeLast()
@@ -96,7 +90,6 @@ class TouchedGridTest {
     val controller = TabsController(existingStore, clock = clock)
 
     assertEquals(before, controller.saved())
-    // A grid kept at its place counts as touched with no flag of its own; one with neither is untouched.
     assertEquals(listOf(false, true), controller.tabs.value.map { it.topIsTouchedGrid })
     existingStore.save(controller.saved())
     assertFalse(existing.read()!!.contains("gridTouched"))
@@ -148,28 +141,18 @@ class TouchedGridTest {
   }
 
   @Test
-  fun aTouchedGridThatFadesComesBackTouchedAfterARelaunch() {
-    var now = Instant.parse("2026-11-01T12:00:00Z")
-    val clock = object : Clock {
-      override fun now() = now
-    }
-    val fadingStore = FileTabStateStore(InMemoryTextFile(null))
-    val controller = TabsController(fadingStore, clock = clock)
-    controller.open(scenery, background = true)
-    controller.tabs.value.single { it.top == scenery }.markTouched(scenery)
-    now += 4.days
-    controller.sweep()
-    fadingStore.save(controller.saved())
+  fun aTouchedGridAnEarlierVersionFadedComesBackTouchedAtLaunch() {
+    val store = FileTabStateStore(InMemoryTextFile(null))
+    val faded = SavedFaded(at = 0, tabs = listOf(SavedTab("scenery", listOf(scenery), gridTouched = true)))
+    store.save(SavedTabs(activeIndex = 0, tabs = listOf(SavedTab("browse", listOf(browse))), faded = listOf(faded)))
 
-    val relaunched = TabsController(fadingStore, clock = clock)
-    val restored = relaunched.restore(relaunched.faded.value.single().id, show = true)!!
+    val relaunched = TabsController(store)
 
-    assertTrue(restored.topIsTouchedGrid)
+    assertTrue(relaunched.tabs.value.single { it.top == scenery }.topIsTouchedGrid)
   }
 
   @Test
   fun scrollingBackToTheTopLeavesItTouched() {
-    // The place goes back to null at the top; the flag doesn't follow it.
     val tab = tabs.activeTab
     tab.reportPlace(browse, GridPlace("p30", time = null))
     tab.markTouched(browse)

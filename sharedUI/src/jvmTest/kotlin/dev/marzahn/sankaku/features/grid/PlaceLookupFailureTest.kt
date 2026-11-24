@@ -22,6 +22,7 @@ import dev.marzahn.sankaku.ActiveTab
 import dev.marzahn.sankaku.CACHE_DIR
 import dev.marzahn.sankaku.DebugFlags
 import dev.marzahn.sankaku.FIRST_LAUNCH_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
@@ -84,23 +85,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #492: a restored grid whose place can't be looked up keeps that place. Offline (or 429, 401) the lookup stays pending,
- * the grid saves nothing over it, and the lookup runs again when the connection is back; a place that isn't found any
- * more says so, with Try again. The real [GridScreen] in its tab, on two synthetic keyset pages (no pictures).
- */
 @OptIn(ExperimentalTestApi::class)
 class PlaceLookupFailureTest {
   @Volatile private var online = false
 
-  // Whether the second page holds the saved post: false for a post that's gone.
   @Volatile private var savedPostListed = true
 
-  // Sankaku answers 429.
   @Volatile private var rateLimited = false
 
-  // Every place the tab held, checked on each frame the test runs: a place saved over the pending one and then put
-  // back would still show here.
   private val placesHeld = linkedSetOf<GridPlace?>()
   private var heldPlace: () -> GridPlace? = { null }
 
@@ -123,7 +115,7 @@ class PlaceLookupFailureTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -164,7 +156,6 @@ class PlaceLookupFailureTest {
     rateLimited: Boolean = false,
     test: ComposeUiTest.(TabState, MutableList<Message>) -> Unit,
   ) {
-    // Set before the grid composes: its lookup starts at once.
     this.online = online
     this.savedPostListed = savedPostListed
     this.rateLimited = rateLimited
@@ -175,13 +166,11 @@ class PlaceLookupFailureTest {
     tabs.open(route, background = false)
     tabs.tabs.value.filter { it.top != route }.forEach { tabs.close(it.id) }
     val tab = tabs.activeTab
-    // As restored from tabs.json: the grid was left scrolled to its 45th post, on the second page.
     tab.reportPlace(route, saved)
     heldPlace = { tab.placeFor(route) }
     val messages = mutableListOf<Message>()
     scope.launch { koin.get<Messages>().messages.collect { messages += it } }
     val navigator = TabsNavigator(tabs)
-    // Small enough that a page of 30 scrolls well past its first row.
     runDesktopComposeUiTest(width = 600, height = 500) {
       setContent {
         SankakuTheme {
@@ -204,7 +193,6 @@ class PlaceLookupFailureTest {
 
   private fun ComposeUiTest.shows(text: String) = onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
-  /** Lets the grid's frames and Paging's background diff run until [condition]. */
   private fun ComposeUiTest.runUntil(condition: () -> Boolean) =
     waitUntil(timeoutMillis = 10_000) {
       mainClock.advanceTimeByFrame()
@@ -217,12 +205,10 @@ class PlaceLookupFailureTest {
     runUntil { requests.get() > 0 && shows("You're offline") }
     waitForIdle()
     assertTrue(cells().isEmpty(), "no grid from the top under the pending place")
-    // A wheel or swipe while it's pending has nothing to scroll and saves nothing.
     onRoot().performMouseInput { scroll(600f) }
     onRoot().performTouchInput { swipeUp() }
     runUntil { true }
 
-    // The connection comes back: the lookup runs again by itself, with no tap.
     online = true
     GlobalContext.get().get<ConnectivityState>().requestRetry()
     runUntil { cells().isNotEmpty() && !shows("Loading where you were…") }
@@ -240,7 +226,6 @@ class PlaceLookupFailureTest {
     assertTrue(cells().isEmpty(), "no grid from the top under the pending place")
     val asked = requests.get()
 
-    // Only a lost connection is retried by itself: the network coming back doesn't ask again after a 429.
     rateLimited = false
     GlobalContext.get().get<ConnectivityState>().requestRetry()
     runUntil { true }
@@ -255,10 +240,6 @@ class PlaceLookupFailureTest {
     assertEquals(saved, tab.placeFor(route))
   }
 
-  /**
-   * The pager starts at the saved page, so the 45th post is its 15th item (index 14), and the grid has scrolled to it:
-   * the page's first post (index 0) is off the top. A staggered grid's other lanes may show the items just before it.
-   */
   private fun ComposeUiTest.assertAtSavedPlace() {
     val shown = shownIndices()
     assertTrue(14 in shown, "the grid shows the saved post: $shown")
@@ -279,7 +260,6 @@ class PlaceLookupFailureTest {
     assertEquals("Try again", message.actionLabel)
     assertEquals(saved, tab.placeFor(route), "given up, the place stays until the grid is scrolled")
 
-    // The post is listed again (the filter changed back): Try again finds it.
     savedPostListed = true
     message.onAction()
     runUntil { 0 !in shownIndices() && cells().isNotEmpty() && !shows("Loading where you were…") }

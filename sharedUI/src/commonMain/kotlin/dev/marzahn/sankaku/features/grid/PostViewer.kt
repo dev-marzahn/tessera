@@ -129,79 +129,35 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 
-/** The viewer's info panel; narrower than the post tab's details. */
 val INFO_PANEL_WIDTH: Dp = 300.dp
 
-/** The info panel's shadow over a grid, one level above the image panel. */
 private val INFO_PANEL_ELEVATION = 6.dp
 private val PANEL_GAP = 10.dp
 
-/** The corners where the two panels face each other: small, so they read as one group (as in M3 connected groups). */
 private val INNER_CORNER = 8.dp
 
-/**
- * Progress of the open transition at which the one panel has landed: it parts at the details seam and the controls
- * start to arrive. The progress spring overshoots 1 a little, so it does reach this.
- */
 private const val SPLIT_AT = 0.97f
 private const val CONTROLS_AT = SPLIT_AT
 
-/** Below this split the card is still (or again) one panel: the info half isn't drawn and closing may shrink it. */
 private const val MERGED = 0.05f
 
-/** A post tab's card sits this far in from the tab's edges: the image gets the room, the card still reads as one. */
 val TAB_INSET: Dp = 12.dp
 
-/** The Details toggle (key badge and a 48 dp icon button, 8 dp in) at the top end, which the title row keeps clear. */
 private val TOGGLE_CLEARANCE = 80.dp
 
-/** Where the viewer's card is shown. The card is the same composable in each, so the hand-offs between them match. */
 enum class ViewerMode {
-  /** Over its grid, opened from a cell: the scrim, the arrows and the position. */
   Overlay,
 
-  /**
-   * A lone post (#181): the card fills the tab with a small inset; no scrim, arrows or position. Back goes to the
-   * previous queue item.
-   */
   Tab,
   ;
 
-  /** The card's inset from the screen's edges. */
   val inset: PaddingValues get() = if (this == Overlay) PaddingValues(horizontal = 48.dp, vertical = 24.dp) else PaddingValues(TAB_INSET)
 
-  /** Arrows, ← → and the position label: only over a grid opened from it. */
   val steps: Boolean get() = this == Overlay
 
-  /**
-   * Whether a sideways swipe on the picture moves between queue items: only on a lone post. Over a grid it steps to
-   * the grid's next post, so the pill there doesn't offer the swipe tip (#538).
-   */
   val swipesQueue: Boolean get() = this == Tab
 }
 
-/**
- * The post viewer over the grid, in the same window. Opening is a container transform: the cell's background grows
- * into one panel the size of both, with the image already in its final place, and lands. Then the panel parts where
- * the details are: the gap opens on a bouncy spring, the facing corners round, and the info half turns the info
- * panel's colour and lifts to its content's height. The controls arrive as it parts, staggered (arrows, then key
- * badges, then the toggle and the position), and the info panel's sections rise in one by one. Closing runs it
- * backwards: the controls leave, the halves merge into one panel, and the panel shrinks into the cell.
- *
- * ← and → slide the image to the neighbouring posts while the info panel stays and only resizes; F toggles favourite;
- * I collapses or expands the info panel (remembered for the session); Esc, the top bar's Back or a click on the
- * backdrop closes, and so does Space over a grid on anything but a video (#424), unless [isRepeat] says it's the
- * auto-repeat of the press that opened it. The card has no Back of its own. Over a grid, E keeps the post shown for later
- * ([onKeep], #504), as E on the grid's cursor does.
- *
- * [opening] counts the viewer's openings. A click on the grid while the viewer shrinks away reopens it in the same
- * composition, and the closing state of the previous opening must not carry over. [mode] says where the card is: a
- * lone post shows the same card ([ViewerMode.Tab]) with no grid behind it.
- *
- * [index] is the post's place in the grid's list; [positionOf] gives a list index's place in the order ← → step in
- * (the grid's reading order, #110), which the position label, the arrows and the slide's direction follow. [onStep]
- * asks the grid for the next or previous post in that order.
- */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SharedTransitionScope.PostViewer(
@@ -226,33 +182,21 @@ fun SharedTransitionScope.PostViewer(
   playerPreferences: PlayerPreferences = koinInject(),
 ) {
   val scope = rememberCoroutineScope()
-  // T moves the keys to the info panel's tag list (see PostDetails); Esc there gives them back.
   val tagListFocus = remember { FocusRequester() }
-  // A video post's keys: Space, M, and V to scrub, which takes A/D and Esc until it ends (see VideoKeys).
   val videoKeys = remember(playerPreferences) { VideoKeys(playerPreferences) }
-  // The tag list (in the info panel) has the keys: V scrubbing from there hands them back to the post.
   var infoHasKeys by remember { mutableStateOf(false) }
   val keyFocus = LocalKeyFocus.current
   val transition = visibilityScope.transition
   val settled = transition.currentState == EnterExitState.Visible && transition.targetState == EnterExitState.Visible
-  // Set as soon as closing is asked for; the shared-element exit starts once the info panel has merged back. Per
-  // opening: reopened while it shrinks away, the viewer must come back with its controls and keys.
   var leaving by remember(opening) { mutableStateOf(false) }
   val currentOpening by rememberUpdatedState(opening)
   val closing = leaving || transition.targetState != EnterExitState.Visible
-  // The shared elements are attached only while opening or closing. Settled, stepping moves the hidden grid cell
-  // to the current post (see GridScreen) without anything flying between the grid and the card. Closing, they attach
-  // as soon as it's asked for, so they have bounds when the exit starts; attached with the exit, the card snaps.
-  // A step during the opening's last stretch lets go of them first, so the first image never stays behind in the
-  // transition overlay: the card lands in place (it's nearly there) and the image slides away as when settled.
   var stepped by remember(opening) { mutableStateOf(false) }
   val attachShared = (!settled && !stepped) || leaving
   fun step(forward: Boolean) {
     stepped = true
     onStep(forward)
   }
-  // Past the last loaded post, the trailing page (#524): Next from the last post goes there, Previous comes back, and
-  // once the next page has loaded it steps on to its first post.
   var atEnd by remember(opening) { mutableStateOf(false) }
   val position = positionOf(index)
   fun next() {
@@ -267,15 +211,10 @@ fun SharedTransitionScope.PostViewer(
       step(true)
     }
   }
-  // Seen (#174): stepping on, or closing, after the current post was fully shown.
   val viewing = rememberViewing(postAt(index))
-  // Kept from here, the showing it's kept from doesn't make it seen since kept (#537).
   val keep = onKeep?.let(viewing::keepingFrom)
-  // While the card opens or closes, its image is drawn in the transition overlay, above the rest of the card. The
-  // controls go into the overlay too, a level higher, or the image covered them until the springs settled.
   val aboveImage = Modifier.renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)
 
-  // Mirrors the shared bounds' spring, so the split and the controls can start partway through the opening.
   val openSpec = spatialSpec<Float>(slow = true)
   val closeSpec = spatialSpec<Float>()
   val progress by transition.animateFloat({ if (targetState == EnterExitState.Visible) openSpec else closeSpec }) {
@@ -292,23 +231,12 @@ fun SharedTransitionScope.PostViewer(
   val bounds = spatialBoundsTransform(slow = !closing)
   val slide = spatialSpec<IntOffset>()
 
-  // 0 = one panel the size of both, 1 = the info panel split off its right side. Shown already open (the grid behind
-  // a post tab), the panel starts split, so closing merges it back as after an opening.
   val split = remember { Animatable(if (settled && !preferences.infoCollapsed) 1f else 0f) }
-  // Parting bounces: the gap and the facing corners follow the overshoot (see cardLayout), the widths don't.
   val splitIn = fastSpatialSpec<Float>()
-  // Merging back doesn't bounce: the expressive fast spring overshot past 0, so the image panel grew wider than the
-  // viewer and the info panel vanished and flashed back while it settled (the jitter when collapsing the details).
-  // Closing, the merge is only the prelude to the shrink, so it is quicker: as long as it lasts, the closing card
-  // covers the grid and takes clicks meant for the next post.
   val splitOut = fastSpatialSpec<Float>().withoutBounce()
   val splitClose = fastSpatialSpec<Float>().withoutBounce(stiffnessScale = 4f)
-  // Expanding mirrors collapsing, on the same quick spring: the toggle is already under the pointer.
   val splitExpand = splitOut
   val wantSplit = progress > SPLIT_AT && !preferences.infoCollapsed && !leaving
-  // Whether the running split is the I toggle (settled, not leaving) rather than the opening or closing. Toggled, the
-  // info panel only slides in or out sideways at its own height; opening and closing, it grows from and merges into
-  // the one panel, so its height follows the split too.
   var toggling by remember(opening) { mutableStateOf(false) }
   LaunchedEffect(wantSplit) {
     toggling = settled && !leaving
@@ -322,37 +250,23 @@ fun SharedTransitionScope.PostViewer(
       },
     )
   }
-  // The layout never follows the spring past its ends: past 1 the info panel would be wider than it is laid out.
   val splitAt = splitFraction(split.value)
   val controlsShown = progress > CONTROLS_AT && !leaving
-  // The arrows work as soon as they show; waiting for the springs to settle left them dead for a moment.
   val canStep = controlsShown
-  // A new transition per opening: reopened on another post while it shrank away, the image must not slide over from
-  // the previous post as if stepping.
-  // Keyed by list index, so a page that loads and slots in before the post (moving its position) slides nothing.
   val slider = key(opening) { updateTransition(index, label = "slide") }
 
   fun close() {
-    // A lone post goes back at once, to the previous queue item (#181).
     if (mode == ViewerMode.Tab) return onClose()
     if (leaving) return
     leaving = true
     val closing = currentOpening
-    // The controls leave, the info panel merges back and a running slide lands first; then the panel shrinks into
-    // its cell. Without waiting for the slide, posts still sliding out would shrink along with the current one.
     scope.launch {
-      // The shared elements attach with `leaving`; they need a laid-out frame before the exit, or the card snaps.
       repeat(2) { withFrameNanos {} }
       snapshotFlow { split.value < MERGED && !slider.isRunning && slider.currentState == slider.targetState }.first { it }
-      // Reopened meanwhile (a click on the grid underneath): that opening isn't closing.
       if (currentOpening == closing) onClose()
     }
   }
-  // Space closes the viewer over a grid as Esc does, the grid's Space having opened it (#424), except on a video,
-  // where it plays and pauses. Not Space's auto-repeat: held on the grid, it would close what it just opened.
   val spaceCloses = mode == ViewerMode.Overlay && postAt(index)?.let(::isVideo) == false
-  // Back is the top bar's: over a grid it closes the viewer, with the same motion as Esc. On a lone post it goes to
-  // the previous queue item (#181).
   if (mode == ViewerMode.Overlay) {
     BackOverride(enabled = !closing, onBack = ::close, alsoKey = Shortcuts.CloseViewer.takeIf { spaceCloses })
   }
@@ -360,14 +274,11 @@ fun SharedTransitionScope.PostViewer(
   Box(
     Modifier
       .fillMaxSize()
-      // Closing, the viewer no longer handles keys: they belong to what is underneath again.
       .postShortcuts(post = { postAt(index) }, actions = actions, onBack = ::close, enabled = { !closing })
       .onKeyEvent { event ->
         if (closing || event.type != KeyEventType.KeyDown) return@onKeyEvent false
-        // Letter keys with Cmd or Ctrl are app shortcuts (Cmd-D, Ctrl-A), not the viewer's; so is Shift-A/D.
         if (event.isCommand || event.tabStep != null) return@onKeyEvent false
         when {
-          // V from the tag list (which lets it through) scrubs instead: the keys come back to the post first.
           videoKeys.onKey(event.key) -> true.also {
             if (videoKeys.scrubbing && infoHasKeys) keyFocus.returnToContent()
           }
@@ -376,14 +287,10 @@ fun SharedTransitionScope.PostViewer(
           Shortcuts.Previous.matches(event.key) -> (mode.steps && canStep && (position > 0 || atEnd)).also { if (it) previous() }
           Shortcuts.Next.matches(event.key) -> (mode.steps && canStep && !atEnd).also { if (it) next() }
           event.key == Shortcuts.Details.key -> true.also { preferences.infoCollapsed = !preferences.infoCollapsed }
-          // E keeps the post shown, as on the grid's cursor (#504). The tag list, with the keys, takes E first. Plain E
-          // only: Alt-E is no key here, and Shift-E is kept for "Keep and favourite" (#163).
           event.key == Shortcuts.OpenInTab.key && event.isPlain && keep != null ->
             (!isRepeat(event.key)).also { if (it) postAt(index)?.let(keep) }
           event.key == Shortcuts.TagList.key -> true.also {
-            // The tag list takes W/A/S/D to move along its tags, which scrubbing also uses: only one of them has the keys.
             videoKeys.stopScrubbing()
-            // A collapsed panel opens first; the tag list takes focus once it's composed.
             preferences.infoCollapsed = false
             scope.launch {
               repeat(2) { withFrameNanos {} }
@@ -394,12 +301,7 @@ fun SharedTransitionScope.PostViewer(
         }
       },
   ) {
-    // Taken again on each opening: reopened from the grid while it shrank away, the viewer stays composed, and the
-    // click on the grid cell moved focus there.
     key(opening) { KeyFocusHolder() }
-    // While closing, neither the scrim nor the panels catch clicks, so the grid underneath works at once. A post tab
-    // has no scrim: the window's surface shows around the card. The scrim dims only the grid, not the gap between it
-    // and the top bar, where it read as cut off by the search bar.
     if (mode != ViewerMode.Tab) {
       Box(
         Modifier
@@ -407,8 +309,6 @@ fun SharedTransitionScope.PostViewer(
           .padding(top = GRID_TOP_GAP)
           .graphicsLayer { alpha = progress.coerceIn(0f, 1f) }
           .background(MaterialTheme.colorScheme.scrim.copy(alpha = OVERLAY_SCRIM_ALPHA))
-          // Decorative: as an accessibility element spanning the viewer it came first in hit-testing and took every
-          // press meant for the panels. Esc and Back close.
           .semantics { hideFromAccessibility() }
           .then(if (closing) Modifier else Modifier.swallowClicks(onClick = ::close)),
       )
@@ -423,8 +323,6 @@ fun SharedTransitionScope.PostViewer(
         InfoPanel(
           post = post,
           split = splitAt,
-          // Parting, the info half starts as part of the one panel, in its colour; slid in with I, it is white
-          // throughout and fades in while it's narrower than its corners.
           color = if (toggling) MaterialTheme.colorScheme.surfaceContainerLowest else lerp(panelColor, MaterialTheme.colorScheme.surfaceContainerLowest, splitAt),
           alpha = if (toggling) infoPanelAlpha(splitAt) else 1f,
           innerCorner = layout.infoInnerCorner,
@@ -432,17 +330,12 @@ fun SharedTransitionScope.PostViewer(
           heightFollowsSplit = !toggling,
           controlsShown = controlsShown,
           tagListFocus = tagListFocus,
-          // Over a grid the info panel is one level above the image panel; in a post tab both lie flat.
           elevation = if (mode == ViewerMode.Overlay) INFO_PANEL_ELEVATION else 0.dp,
           searchTags = searchTags,
           modifier = Modifier.offset(x = layout.infoX).width(layout.infoWidth).onFocusChanged { infoHasKeys = it.hasFocus },
         )
       }
 
-      // The image panel: the cell's background grown into place, the one shared element of the card. Parting, it stays
-      // laid out the size of both and its shape ends short of the info half, so its shared bounds never move while the
-      // opening still runs; only its content keeps to the image panel's width. It takes no clicks itself: what it
-      // covers of the info half stays clickable.
       Box(
         Modifier
           .width(layout.panelWidth)
@@ -458,7 +351,6 @@ fun SharedTransitionScope.PostViewer(
                 exit = ExitTransition.None,
                 boundsTransform = bounds,
                 resizeMode = RemeasureToBounds,
-                // The overlay clip carries the animated corners, so they round while the panel grows.
                 clipInOverlayDuringTransition = OverlayClip(shape),
               )
             },
@@ -471,8 +363,6 @@ fun SharedTransitionScope.PostViewer(
             .width(layout.contentWidth)
             .fillMaxHeight()
             .then(if (closing) Modifier else Modifier.swallowClicks {})
-            // Accessibility hit-testing takes the first child in traversal order that contains the point, so the
-            // image, which spans the panel, goes after the controls drawn on top of it.
             .semantics { isTraversalGroup = true },
         ) {
           slider.AnimatedContent(
@@ -494,13 +384,11 @@ fun SharedTransitionScope.PostViewer(
                   Modifier
                 },
                 showSample = settled,
-                // Under the trailing page a video holds still, and silent.
                 playing = settled && !atEnd,
                 onShown = { viewing.loaded(shownPost.id) },
               )
             }
           }
-          // Past the last loaded post: the trailing page over the image panel, in its colour (#524).
           if (atEnd) {
             ViewerEndPage(
               end,
@@ -513,7 +401,6 @@ fun SharedTransitionScope.PostViewer(
               shape = CircleShape,
               color = overImage(),
               contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-              // Top left, so a video's controls have the whole bottom edge.
               modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(horizontal = 20.dp, vertical = 20.dp)
@@ -537,17 +424,13 @@ fun SharedTransitionScope.PostViewer(
               if (canStep) next()
             }
           }
-          // F's or the ♡'s heart, over the picture's centre where the eyes are, panel open or collapsed (#419); only
-          // the current post's, so a toggle still running when stepping on doesn't pop on the next picture.
           val currentId by rememberUpdatedState(post?.id)
+          LaunchedEffect(actions, currentId) { currentId?.let(actions::showing) }
           val hearts = remember(actions) { actions.hearts.forShown { currentId } }
           FavouriteBursts(hearts, Modifier.align(Alignment.Center), size = PictureBurstSize)
         }
       }
 
-      // One toggle for both states, drawn over the card at its top end: over the info panel's title row when that is
-      // open, over the image panel when it's collapsed. It never moves, so the pointer that collapsed the panel is
-      // still on it to expand it again, and the panel slides in and out underneath.
       DetailsToggle(
         collapsed = preferences.infoCollapsed,
         shown = controlsShown,
@@ -558,15 +441,6 @@ fun SharedTransitionScope.PostViewer(
   }
 }
 
-/**
- * The info panel, one level above the image panel. It's laid out at its full width and clipped, so the split reveals
- * it instead of squeezing it. Opening and closing ([heightFollowsSplit]), its height goes from the region's (still
- * part of the one panel) to its content's; collapsed or expanded with I, it keeps its height and only slides.
- * Slid in with I, it fades in over the first part of the split ([alpha]): at a few pixels wide it was a full-height
- * light line beside the image panel's rounded corners, which flashed at the start and end of every expand and collapse.
- *
- * Its title row stays put while the details scroll under it; the card draws the Details toggle over its end.
- */
 @Composable
 private fun InfoPanel(
   post: PostDto,
@@ -594,7 +468,6 @@ private fun InfoPanel(
     },
   ) {
     Box(Modifier.layout { measurable, constraints ->
-      // Always measured at the full panel width, whatever width the split has reached.
       val full = INFO_PANEL_WIDTH.roundToPx()
       val placeable = measurable.measure(constraints.copy(minWidth = full, maxWidth = full))
       layout(constraints.maxWidth, placeable.height) { placeable.place(0, 0) }
@@ -613,7 +486,6 @@ private fun InfoPanel(
           searchTags = searchTags,
           tagListFocus = tagListFocus,
           modifier = Modifier.weight(1f, fill = false).animateContentSize(spatialSpec()),
-          // The sections rise in one by one as the controls arrive.
           section = { i -> Modifier.entrance(controlsShown, delayMillis = 90L + i * 30L, offsetY = 14.dp) },
         )
       }
@@ -621,17 +493,9 @@ private fun InfoPanel(
   }
 }
 
-/**
- * The info panel's height in px: from the region's (merged into the one panel, [split] 0) to its content's (split
- * off, 1) while opening or closing; its content's throughout an I toggle, which only slides it sideways.
- */
 internal fun infoPanelHeight(regionHeight: Int, contentHeight: Int, split: Float, followsSplit: Boolean): Int =
   if (followsSplit) (regionHeight + (contentHeight - regionHeight) * split).roundToInt() else contentHeight
 
-/**
- * Where the card's panels are, in a region [width] wide. [panelWidth] is the image panel's layout width and
- * [panelEndInset] how far short of its end its shape stops; [contentWidth] is what its image and controls get.
- */
 internal data class CardLayout(
   val panelWidth: Dp,
   val panelEndInset: Dp,
@@ -643,16 +507,6 @@ internal data class CardLayout(
   val infoInnerCorner: Dp,
 )
 
-/**
- * The card at [split], which may overshoot either end.
- *
- * [parting] (opening and closing): the image panel is laid out the size of both and its shape ends short of the info
- * half. Below [MERGED] it is the one panel. Then it parts at the details seam: the gap and the facing corners follow
- * the spring, overshoot included, while the info half's end stays at the card's end. The image keeps to the image
- * panel's final width throughout, so it lands in place while the card is still one panel and never moves as it parts.
- *
- * Otherwise (the I toggle) the info panel slides in or out sideways and the image panel and its image resize.
- */
 internal fun cardLayout(width: Dp, split: Float, parting: Boolean, collapsed: Boolean, corner: Dp): CardLayout {
   val beside = INFO_PANEL_WIDTH + PANEL_GAP
   if (!parting) {
@@ -669,7 +523,6 @@ internal fun cardLayout(width: Dp, split: Float, parting: Boolean, collapsed: Bo
   return CardLayout(width, width - infoX + gap, seam, content, true, infoX, width - infoX, seam)
 }
 
-/** A rounded rectangle that ends [endInset] short of its bounds' end: the image panel while the info half parts. */
 private class PanelShape(private val start: Dp, private val end: Dp, private val endInset: Dp) : Shape {
   override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
     val width = (size.width - with(density) { endInset.toPx() }).coerceAtLeast(0f)
@@ -678,41 +531,24 @@ private class PanelShape(private val start: Dp, private val end: Dp, private val
   }
 }
 
-/** The split as the layout uses it: a spring overshooting either end holds at that end. */
 internal fun splitFraction(split: Float): Float = split.coerceIn(0f, 1f)
 
-/** The same spring (stiffer by [stiffnessScale]), critically damped: it never passes its target. */
 internal fun <T> FiniteAnimationSpec<T>.withoutBounce(stiffnessScale: Float = 1f): FiniteAnimationSpec<T> =
   if (this is SpringSpec) spring(Spring.DampingRatioNoBouncy, stiffness * stiffnessScale, visibilityThreshold) else this
 
-/** The info panel's opacity at [split]: it fades in while it's narrower than its rounded corners. */
 internal fun infoPanelAlpha(split: Float): Float = (split / INFO_FADE_SPLIT).coerceIn(0f, 1f)
 
-/** About 30 dp of the info panel's 300. */
 private const val INFO_FADE_SPLIT = 0.1f
 
-/**
- * The backdrop of a control over the image: the info panel's white, a little see-through. The image fills the image
- * panel edge to edge (the panel's corners round it), and the controls (the arrows, the position, a collapsed panel's
- * Details toggle) lie over it.
- */
 @Composable
 private fun overImage(): Color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.85f)
 
-/** The position in the result list. The keyset API has no total, so it counts what's loaded; "+" means more pages. */
 internal fun positionLabel(index: Int, loadedCount: Int, hasMore: Boolean): String =
   "${index + 1} of $loadedCount${if (hasMore) "+" else ""}"
 
-/** [positionLabel] read aloud: "Post 3 of 29 or more". */
 internal fun positionDescription(index: Int, loadedCount: Int, hasMore: Boolean): String =
   "Post ${index + 1} of $loadedCount${if (hasMore) " or more" else ""}"
 
-/**
- * Hides or shows the info panel: its key, then an expressive toggle whose glyph says which. It's always white: a
- * rounded square on the panel's title row when on (details shown), a circle over the image when off, so it never
- * shows the panel's text through it while the panel slides under it, and morphs as it does. The image doesn't keep
- * clear of it. The 48 dp button sits 8 dp in from the top, level with the title row.
- */
 @Composable
 private fun DetailsToggle(collapsed: Boolean, shown: Boolean, modifier: Modifier, onClick: () -> Unit) {
   Row(
@@ -726,7 +562,6 @@ private fun DetailsToggle(collapsed: Boolean, shown: Boolean, modifier: Modifier
       onCheckedChange = { onClick() },
       checkedContainer = MaterialTheme.colorScheme.surfaceContainerLowest,
       uncheckedContainer = MaterialTheme.colorScheme.surfaceContainerLowest,
-      // A click would take focus from the viewer's key holder, and with it the viewer's keys (Esc, ← →, F, I).
       modifier = Modifier.focusProperties { canFocus = false },
     ) {
       Icon(
@@ -737,7 +572,6 @@ private fun DetailsToggle(collapsed: Boolean, shown: Boolean, modifier: Modifier
   }
 }
 
-/** The arrows lead the controls' entrance, pushing in from their side; their key badges follow. */
 @Composable
 private fun BoxScope.StepButton(
   icon: ImageVector,
@@ -765,14 +599,7 @@ private fun BoxScope.StepButton(
   }
 }
 
-/**
- * Takes taps without a ripple: the scrim (which closes) and the panels (so a tap on them doesn't close). Plain
- * pointer handling, not `clickable`, so these surfaces add no accessibility node: as clickable nodes they came first
- * in hit-testing and took presses meant for the buttons on top of them. Esc and Back close for keyboard and
- * screen-reader users.
- */
 private fun Modifier.swallowClicks(onClick: () -> Unit): Modifier = composed {
-  // The tap loop starts once; the handler may change with every recomposition.
   val handler by rememberUpdatedState(onClick)
   pointerInput(Unit) { detectTapGestures { handler() } }
 }

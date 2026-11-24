@@ -44,18 +44,9 @@ import java.net.URI
 import java.net.URISyntaxException
 
 private val folders = DesktopFolders(File(System.getProperty("user.home")))
-/**
- * `-Dsankaku.debug.dataDir=<dir>` moves it, so a second instance (another agent's, with its own control port) can run
- * beside the first: the single-instance lock lives here.
- */
 private val dataDirOverride = System.getProperty("sankaku.debug.dataDir")?.let(::File)
 val APP_DATA_DIR = dataDirOverride ?: folders.appData
 
-/**
- * Moves the app data from before the rename to Tessera into [APP_DATA_DIR]. Called first thing in `main`, before the
- * single-instance lock or any store opens a file there. With `sankaku.debug.dataDir` it moves only from
- * `-Dsankaku.debug.oldDataDir=<dir>`, so a test run never takes the real app data.
- */
 fun migrateAppData() {
   val old = if (dataDirOverride == null) {
     folders.oldAppData
@@ -65,18 +56,11 @@ fun migrateAppData() {
   AppDataMigration.run(old, APP_DATA_DIR)
 }
 
-/** Where crash capture (#208) keeps the last crash's report, in [APP_DATA_DIR]. */
 fun desktopCrashReports(): CrashReports = CrashReports(DiskTextFile(File(APP_DATA_DIR, "crash.txt")))
 
-/**
- * The keychain to keep tokens in, probed once with [create]; null keeps them in memory, and Settings warns about it.
- * Null too, without probing, for a run with its own data folder ([ownDataDir], `sankaku.debug.dataDir`, an agent's):
- * the keychain holds the owner's tokens, and macOS asks the owner to allow every read and write by an unpackaged `java`.
- */
 internal fun tokenKeyring(ownDataDir: Boolean, create: () -> Keyring): Keyring? =
   if (ownDataDir) null else runCatching(create).getOrNull()
 
-/** [crashReports] is the one `main` made first thing, whose handler records crashes. */
 fun desktopPlatformModule(crashReports: CrashReports): Module = module {
   val keyring = tokenKeyring(ownDataDir = dataDirOverride != null) { Keyring.create() }
   single<TokenStore> { keyring?.let(::KeyringTokenStore) ?: InMemoryTokenStore() }
@@ -87,9 +71,7 @@ fun desktopPlatformModule(crashReports: CrashReports): Module = module {
       expireAccessToken = System.getProperty("sankaku.debug.expireAccessToken").toBoolean(),
       expireSession = System.getProperty("sankaku.debug.expireSession").toBoolean(),
       safeOnly = System.getProperty("sankaku.debug.safeOnly").toBoolean(),
-      // Only outside the packaged app (jpackage sets `jpackage.app-path`), so a release can't crash on purpose.
       crash = if (System.getProperty("jpackage.app-path") == null) DebugCrash.parse(System.getProperty("sankaku.debug.crash")) else null,
-      // Unpackaged runs only, as crash.
       openBook = if (System.getProperty("jpackage.app-path") == null) System.getProperty("sankaku.debug.openBook")?.trim()?.takeIf { it.isNotEmpty() } else null,
     )
   }
@@ -100,15 +82,15 @@ fun desktopPlatformModule(crashReports: CrashReports): Module = module {
   single<TextFile>(REOPEN_HINT_FILE) { DiskTextFile(File(APP_DATA_DIR, "reopen-hint.json")) }
   single<TextFile>(PRIVACY_FILE) { DiskTextFile(File(APP_DATA_DIR, "privacy.json")) }
   single<TextFile>(FIRST_LAUNCH_FILE) { DiskTextFile(File(APP_DATA_DIR, "first-launch.json")) }
-  // Desktop has no queue buttons to show (its tab strip has them all), so there is nothing to keep.
   single<TextFile>(ACCESSIBILITY_FILE) { InMemoryTextFile() }
   single<TextFile>(QUEUE_FILE) { DiskTextFile(File(APP_DATA_DIR, "queue.json")) }
   single<TextFile>(GRID_FILE) { DiskTextFile(File(APP_DATA_DIR, "grid.json")) }
+  single<TextFile>(CACHE_FILE) { DiskTextFile(File(APP_DATA_DIR, "cache.json")) }
   single<TextFile>(UPDATES_FILE) { DiskTextFile(File(APP_DATA_DIR, "updates.json")) }
-  // Desktop's one tip, the keep loop's (#504), shows once per install.
   single<TextFile>(TIPS_FILE) { DiskTextFile(File(APP_DATA_DIR, "tips.json")) }
   single<TextFile>(SEEN_FILE) { DiskTextFile(File(APP_DATA_DIR, "seen.json")) }
   single<TextFile>(FEED_MARKS_FILE) { DiskTextFile(File(APP_DATA_DIR, "feed-marks.json")) }
+  single<TextFile>(TODAY_FILE) { DiskTextFile(File(APP_DATA_DIR, "today.json")) }
   single<TextFile>(READING_FILE) { DiskTextFile(File(APP_DATA_DIR, "readings.json")) }
   single<TextFile>(OUTBOX_FILE) { DiskTextFile(File(APP_DATA_DIR, "outbox.json")) }
   single<TabStateStore> {
@@ -120,23 +102,24 @@ fun desktopPlatformModule(crashReports: CrashReports): Module = module {
   }
   single<SaveFolder> { DirectorySaveFolder(folders.downloads) }
   single<PlatformContext> { PlatformContext.INSTANCE }
-  // The network coming back while the app is idle (#542): Android's callback has no desktop counterpart.
   single(createdAtStart = true) { InterfaceWatcher(get(), get()).also { it.start() } }
 }
 
 actual val platformHasTabs: Boolean = true
 
+@Composable
+actual fun platformUses24HourClock(): Boolean = androidx.compose.runtime.remember {
+  (java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) as? java.text.SimpleDateFormat)?.toPattern()?.contains('H') ?: true
+}
+
 actual fun platformOpenUrl(url: String): OpenUrlResult = launchUrl(url) { Desktop.getDesktop().browse(it) }
 
-/** [platformOpenUrl] with the launcher passed in, so a test can make it throw. */
 internal fun launchUrl(url: String, browse: (URI) -> Unit): OpenUrlResult = try {
   browse(URI(url))
   OpenUrlResult.Opened
 } catch (_: UnsupportedOperationException) {
-  // No BROWSE (some Linux desktops); HeadlessException is one too.
   OpenUrlResult.Failed
 } catch (_: IOException) {
-  // No default browser, or it failed to launch.
   OpenUrlResult.Failed
 } catch (_: SecurityException) {
   OpenUrlResult.Failed
@@ -146,7 +129,15 @@ internal fun launchUrl(url: String, browse: (URI) -> Unit): OpenUrlResult = try 
 
 actual fun platformShareText(text: String) = Unit
 
+actual fun platformShareFile(fileName: String, mimeType: String, text: String) = Unit
+
+actual fun platformClearExports() = Unit
+
+actual fun platformAppDataText(name: String): String? = runCatching { File(APP_DATA_DIR, name).readText() }.getOrNull()
+
 actual fun processMemoryBytes(): Long? = MacMemory.physFootprint()
+
+actual val processMemoryTargetBytes: Long = 1024L * 1024 * 1024
 
 @OptIn(ExperimentalComposeUiApi::class)
 actual fun plainTextClip(text: String): ClipEntry = ClipEntry(StringSelection(text))

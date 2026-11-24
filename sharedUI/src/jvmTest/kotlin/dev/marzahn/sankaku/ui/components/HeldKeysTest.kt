@@ -25,10 +25,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #424 review: a key released while the window was in the background (Cmd-Tab with Space down) isn't held any more
- * when the window comes back, so its next press is a new press, not a repeat.
- */
 @OptIn(ExperimentalTestApi::class)
 class HeldKeysTest {
   @OptIn(InternalComposeUiApi::class)
@@ -55,7 +51,6 @@ class HeldKeysTest {
     down(Key.Spacebar)
     assertTrue(keys.repeating(Key.Spacebar), "a second press with no release is a repeat")
 
-    // Space is let go in another app: the release never reaches the window.
     runOnIdle { windowFocused = false }
     runOnIdle { windowFocused = true }
     down(Key.Spacebar)

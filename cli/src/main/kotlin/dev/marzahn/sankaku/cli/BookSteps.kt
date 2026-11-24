@@ -27,23 +27,15 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
-/**
- * The M3 Books gate (#379; b8 #386, b9 #384): one `b` step per [BooksApi] call, on the app's own code, each recorded in
- * `docs/api-recorded.json` by its marker; then discovery steps 19 to 21 through [probe]. Writes are undone in the same step.
- * Notes and markers hold counts and yes/no only: no id, name or URL.
- */
 internal class BookSteps(private val smoke: SmokeSteps) {
   private val books = BooksApi(smoke.mainClient)
   private val android = "Android" in smoke.fingerprint.userAgent
 
-  /** b2's pick from the signed-in list, which carries no pages. */
   private var listed: BookDto? = null
 
-  /** The same book with its pages, set only once b3 has them; the steps that write build on it. */
   private var book: BookDto? = null
   private var seriesId: String? = null
 
-  /** Before sign-in: what a signed-out user gets (#377: `rating:s` returns only G books). */
   suspend fun signedOut() {
     booksStep("b1 books signed out (rating:s)", "b1-books-signed-out") {
       val list = books.list(listOf("order:popularity", "rating:s"))
@@ -65,7 +57,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     }
   }
 
-  /** After sign-in. */
   suspend fun run() {
     val signedIn = smoke.session.isSignedIn.value
     val noSession = "not signed in"
@@ -111,7 +102,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     val readable = book?.takeIf { it.reading == null && it.posts.isNotEmpty() && signedIn }
     booksStep("b6 save reading, then clear it", "b6-reading", requires = readable, "needs a book from b3 the account hasn't opened") { b ->
       val target = minOf(2, b.posts.size - 1)
-      // The write is inside, so a save that fails after the server applied it is cleared too.
       val saved = undoing({ books.clearReading(b.id) }) {
         books.saveReading(b.id, target)
         books.pages(b.id).reading
@@ -121,7 +111,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
       if (saved?.sequence != target) fail("saved sequence ${saved?.sequence}, not $target")
       "saved: sequence=yes, current_page=sequence+1: ${yesNo(saved.currentPage == target + 1)}; cleared=yes" to ""
     }
-    // #384: the app's own ReadingProgress saves the place, and the book as the website reads it says the same page.
     booksStep("b9 reading progress as the app saves it (ReadingProgress)", "b9-reading-progress", requires = readable, "needs a book from b3 the account hasn't opened") { b ->
       appProgress(b)
     }
@@ -138,7 +127,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
       "is_favorited during=yes, after=no; fav_count in the response=${yesNo(favourited?.favCount != null)}, " +
         "one more=${yesNo(favourited?.favCount == b.favCount + 1)}" to ""
     }
-    // A post's book (#386), the web app's way (#475): either form of id.
     val page = book?.posts?.getOrNull(1)
     booksStep("b8 a page's book (BooksApi.booksOf)", "b8-books-of", requires = page, "needs a book's page from b3") { p ->
       val found = books.booksOf(p.id)
@@ -149,24 +137,14 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     discovery()
   }
 
-  /**
-   * b9: [ReadingProgress.save] (signed in, so sent with `PUT /pools/{id}/reading`) for a middle page, then the last,
-   * each read back from `/pools/{id}` (what the website's book page reads), and the place read back as the app reads
-   * it ([ReadingProgress.savedOf]). Cleared in the step, as b6 is.
-   */
   private suspend fun appProgress(b: BookDto): Pair<String, String> = coroutineScope {
     val job = SupervisorJob(coroutineContext[Job])
-    // Its own connectivity, which never asks for a retry: the step sends each save once.
     val progress = ReadingProgress(books, smoke.session, ConnectivityState(), InMemoryTextFile(), CoroutineScope(coroutineContext + job))
-    // The PUTs answered so far: each save is sent in the background, as the app does, so the step waits for its
-    // answer, and the undo waits for every save's, so none can land after the clear.
     fun puts() = smoke.log.entries.value.filter { it.method == "PUT" && it.pathTemplate == "/pools/{id}/reading" }
-    // By entry, not by count: the log keeps its last 200 only.
     val earlier = puts().toSet()
     fun answered() = puts().filterNot { it in earlier }
     var saves = 0
     suspend fun awaitAnswers() {
-      // Not withTimeout: its cancellation would skip the undo.
       repeat(PUT_WAITS) {
         if (answered().size >= saves) return
         delay(PUT_WAIT_MS)
@@ -203,17 +181,11 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     }
   }
 
-  /** What b4 counted: books checked, of them in order by md5 and by `sequence`, and with fewer pages than `post_count`. */
   private class FirstPagesCheck(val books: Int, val inOrder: Int, val bySequence: Int, val short: Int)
 
-  /**
-   * b4: several books' [BooksApi.firstPages] against their pages' first 3 by md5, books with pages gone included.
-   * The pages are read raw, as [BooksApi.pages] doesn't decode `sequence`, to check the array is in `sequence` order.
-   */
   private suspend fun firstPagesInOrder(): FirstPagesCheck {
     val bearer = smoke.session.currentBearerTokens()?.accessToken
     val list = books.list(listOf("order:date", "rating:s"), limit = 40).pools.data.filter { it.status == "active" }
-    // Larger books more often have fewer pages than their post_count, the nearest to deleted pages the account sees.
     val candidates = (list.filter { it.postCount >= 30 }.take(3) + list.filter { it.postCount in 2..29 }.take(3)).distinctBy { it.id }
     var inOrder = 0
     var bySequence = 0
@@ -235,7 +207,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     val bearer = smoke.session.currentBearerTokens()?.accessToken
     val reason = "not signed in"
 
-    // Paging: `page` against the `pools.meta.next` cursor, on order:date (popularity moves between calls).
     smoke.discover("d19 books paging (page or next)", "d19-books-paging", requires = bearer, reason, showHint = false) { token ->
       suspend fun page(extra: Map<String, String>) = smoke.authClient.probe(
         HttpMethod.Get, API_BASE, "/poolseriesv2", HeaderSet.POSTS, bearer = token,
@@ -253,7 +224,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
         "next alone answers page: ${byNext.json.str("page")}"
     }
 
-    // Header sets: what V2 strips from the reads (the app sends POSTS).
     val bookId = book?.id
     smoke.discover("d19 first pages with V2", "d19-first-pages-v2", requires = bookId, "needs a book from b3", showHint = false) { id ->
       val raw = smoke.authClient.probe(
@@ -278,10 +248,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
         "sample_url=${yesNo(covers.all { it.str("sampleUrl") != null })}"
     }
 
-    // #475: Sankaku leaves pages out of a book for an Android User-Agent, depending on the account (one owner's book: 6
-    // pages as desktop, 5 as Android; the test account saw no difference). The same books, by name, as this run's
-    // fingerprint and as Android Chrome, paired by their cover's md5 (the ids differ): how many come back shorter as
-    // Android, and how many of the list's books Android doesn't get at all. Counts only.
     smoke.discover("d23 a book's pages as Android Chrome", "d23-android-pages", requires = bearer, reason, showHint = false) { token ->
       suspend fun books(client: io.ktor.client.HttpClient): List<JsonObject> {
         val raw = client.probe(
@@ -317,7 +283,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
         "books compared=$compared, shorter as Android=$shorter, of the list's ${here.size} not in Android's=${here.count { it.cover() !in asAndroid }}"
     }
 
-    // The book sheet's series (#383): which of a series book's own fields name its series. Key names and yes/no only.
     smoke.discover("d20 a book's series in /pools/{id}", "d20-book-series", requires = seriesId, "needs a series from b2", showHint = false) { id ->
       val member = books.series(id).books.firstOrNull() ?: fail("the series has no books")
       val raw = smoke.authClient.probe(
@@ -327,7 +292,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
       val fields = (raw.json as? JsonObject).orEmpty()
       val named = fields.keys.filter { "series" in it.lowercase() || "parent" in it.lowercase() }.sorted()
       val holding = named.filter { key -> fields[key].toString().contains("\"$id\"") || fields[key].toString() == id }
-      // The web app's GraphQL book (`poolV2`) has no series field either: a validation error, not data.
       val graphql = smoke.authClient.probe(
         HttpMethod.Post, API_BASE, "/graphql", HeaderSet.POSTS, bearer = bearer, query = mapOf("lang" to "en"),
         body = buildJsonObject {
@@ -335,7 +299,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
           putJsonObject("variables") { put("id", member.id) }
         },
       )
-      // A row's ♡ starts from the list's own `is_favorited`, so every listed book must carry it.
       val list = smoke.authClient.probe(
         HttpMethod.Get, API_BASE, "/poolseriesv2", HeaderSet.POSTS, bearer = bearer,
         query = mapOf(
@@ -352,11 +315,8 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     bookToSeries(bearer)
     continueReading(bearer)
 
-    // A post's book (#386): the post's own flag, and the books-of-a-post query, which takes only numeric ids.
     val page = book?.posts?.getOrNull(1)
     val platform = if (android) "android" else "desktop"
-    // How many of the newest G posts are a book's page varies with what was uploaded (none of 97 on 2026-11-06, 1 of
-    // 20 later that day), so it's the detail, not the marker.
     var plainInBooks = ""
     smoke.discover(
       "d19 a post's book ($platform ids)", "d19-post-book-$platform", requires = page, "needs a book's page from b3",
@@ -369,7 +329,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
       val inBook = keyset("id:${p.id}", 1).any { it.str("in_visible_pool") == "true" }
       val plain = keyset("rating:s", 20)
       val flagged = plain.filter { it.str("in_visible_pool") == "true" }
-      // With numeric ids, whether the flag means a book: the books of the first flagged post and the first unflagged.
       suspend fun booksOf(post: JsonObject?) = post?.str("id")?.takeIf { android }?.let { books.booksOf(it).size }
       plainInBooks = "in_visible_pool on the newest rating:s posts: ${flagged.size} of ${plain.size}" +
         (if (android) ", books of a flagged one=${booksOf(flagged.firstOrNull())}, of an unflagged one=${booksOf(plain.firstOrNull { it !in flagged })}" else "")
@@ -382,9 +341,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
         "pools/keyset?post_id: the book among them=${yesNo(book?.id in found)}, code=${raw.json.str("code")}"
     }
 
-    // The blacklist (#377 decision 19): a temporary blur rule on a common tag, then the same posts again; then a hide
-    // rule on the same tag as the control that a rule takes effect at once. Each undone in the step; the rule's id is
-    // never printed.
     val tryBlur = bearer?.takeIf { smoke.env["SANKAKU_TRY_BLACKLIST"] != "false" }
     smoke.discover("d19 blur rule: any flag on the post?", "d19-blur-flag", requires = tryBlur, "not signed in or SANKAKU_TRY_BLACKLIST=false") { token ->
       suspend fun posts() = smoke.authClient.probe(
@@ -401,12 +357,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     }
   }
 
-  /**
-   * d21 (#400): whether anything leads from a series' book back to its series. Key names, field names and yes/no
-   * only. Every candidate the issue names: the book's `reading.series_id` (on a book the account has opened, and after
-   * a place saved with the series' id, undone in the step), `parent_id`, `parent_pool` and `has_children`, GraphQL
-   * fields on the book and on the root, and the list's own query parameters.
-   */
   private suspend fun bookToSeries(bearer: String?) {
     var exploratory = ""
     smoke.discover(
@@ -428,16 +378,11 @@ internal class BookSteps(private val smoke: SmokeSteps) {
 
       fun seriesIdNote(value: String?, seriesId: String) = if (value == null) "null" else "the series' id: ${yesNo(value == seriesId)}"
 
-      // Books of the list's series the account has opened (on the website or in the app): their reading's series_id.
-      // Whether there are any depends on the account, so this is the detail.
       val listed = books.list(listOf("order:popularity", "rating:s")).series.data.map { it.id }.plus(id).distinct()
       val opened = listed.flatMap { s -> books.series(s).books.filter { it.reading != null }.map { s to it.id } }
       val openedSeriesIds = opened.map { (s, b) -> seriesIdNote((rawBook(b).json as? JsonObject)?.get("reading").str("series_id"), s) }
       val openedNote = "opened books in the list's ${listed.size} series=${opened.size}, their reading.series_id=${openedSeriesIds.distinct()}"
 
-      // On a book of the series without a place: one saved as the app saves it (sequence 1), then the same PUT with the
-      // series' id (sequence 0), as a reader of the series might send it. Cleared as the app clears a place (pool_ids
-      // only), so no other place is touched. Skipped, not failed, when the account has a place in every book of it.
       val target = series.books.firstOrNull { it.reading == null }?.id
       val saves = if (target == null) "saves: skipped (every book of the series has a place)" else undoing({ books.clearReading(target) }) {
         books.saveReading(target, 1)
@@ -456,7 +401,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
           "then reading.series_id=${seriesIdNote(after.str("series_id"), id)}"
       }.also { if (books.pages(target).reading != null) fail("a place is still saved: clear it by hand") }
 
-      // GraphQL: which fields the book (`poolV2`) and the root take, and the server's "Did you mean" hints for each.
       suspend fun graphql(query: String, variables: JsonObject) = smoke.authClient.probe(
         HttpMethod.Post, API_BASE, "/graphql", HeaderSet.POSTS, bearer = bearer, query = mapOf("lang" to "en"),
         body = buildJsonObject {
@@ -465,7 +409,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
         },
       )
       fun RawResponse.errors() = ((json as? JsonObject)?.get("errors") as? JsonArray).orEmpty().mapNotNull { it.str("message") }
-      // Schema names only, never the rest of a message.
       fun RawResponse.hints() = errors().flatMap { m ->
         Regex("\"([A-Za-z0-9_]+)\"").findAll(m.substringAfter("Did you mean", "")).map { it.groupValues[1] }.toList()
       }
@@ -476,7 +419,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
         poolHints += r.hints()
         r.status == 200 && r.errors().isEmpty()
       }
-      // What `poolV2.parent` holds for each of the series' first books.
       val parents = series.books.take(3).map { b ->
         val r = graphql("query S(\$id: StringOrInt!) { poolV2(id: \$id) { parent { __typename id } } }", buildJsonObject { put("id", b.id) })
         val p = r.json.obj("data").obj("poolV2")?.get("parent")
@@ -486,20 +428,17 @@ internal class BookSteps(private val smoke: SmokeSteps) {
           else -> "${p.str("__typename")}, the series' id=${yesNo(p.str("id") == id)}, the book's own=${yesNo(p.str("id") == b.id)}"
         }
       }
-      // A root field that exists but takes no book says "Unknown argument", not "Cannot query field".
       val rootHints = sortedSetOf<String>()
       val rootAnswers = ROOT_SERIES_FIELDS.associateWith { f ->
         graphql("query S(\$id: StringOrInt!) { $f(poolId: \$id) { id } }", vars).also { rootHints += it.hints() }
       }
       val rootExisting = rootAnswers.filterValues { r -> r.errors().none { "Cannot query field" in it } }
       val rootFields = rootAnswers.filterValues { r -> r.status == 200 && r.errors().isEmpty() }.keys.toList()
-      // Each existing field's required argument, as `name: Type` from `argument "id" of type "Int!" is required`.
       val rootArgs = rootExisting.mapValues { (_, r) ->
         r.errors().mapNotNull { Regex("argument \"([A-Za-z_]+)\" of type \"([A-Za-z!\\[\\]]+)\" is required").find(it) }
           .map { "${it.groupValues[1]}: ${it.groupValues[2]}" }
       }
 
-      // The list's own parameters: does any narrow its series to the one holding the book?
       val listParams = LIST_POOL_PARAMS.filter { p ->
         val r = smoke.authClient.probe(
           HttpMethod.Get, API_BASE, "/poolseriesv2", HeaderSet.POSTS, bearer = bearer,
@@ -517,7 +456,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
 
   private fun JsonElement?.obj(key: String): JsonObject? = (this as? JsonObject)?.get(key) as? JsonObject
 
-  /** Runs [block] while a [visibility] rule on [BLUR_TAG] exists on the account, and removes the rule after it. */
   private suspend fun <R> withRule(token: String, visibility: String, block: suspend () -> R): R {
     val added = smoke.authClient.probe(
       HttpMethod.Post, API_BASE, "/users/blacklist", HeaderSet.V2, bearer = token, query = mapOf("lang" to "en"),
@@ -539,7 +477,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
 
   private class PostsDiff(val samePosts: Boolean, val changed: List<String>, val newKeys: List<String>)
 
-  /** By md5: whether the same posts came back, which fields differ apart from the signed URLs, and which keys are new. */
   private fun comparePosts(before: RawResponse, during: RawResponse): PostsDiff {
     val a = before.posts().associateBy { it.str("md5") }
     val b = during.posts().associateBy { it.str("md5") }
@@ -554,7 +491,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     return PostsDiff(a.keys == b.keys, changed.toList(), newKeys.toList())
   }
 
-  /** A `b` step: runs [block] on the app's code and checks its marker against `docs/api-recorded.json`. */
   private suspend fun <T : Any> booksStep(
     name: String,
     id: String,
@@ -574,10 +510,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
 
   private fun RawResponse.pools(): JsonObject? = (json as? JsonObject)?.get("pools") as? JsonObject
 
-  /**
-   * d26 (#503): is there a list of the books the account is reading, as the site's "Continue reading"? Each candidate's
-   * status, and whether it lists books and they all carry a `reading`. Counts go to the detail only: they change.
-   */
   private suspend fun continueReading(bearer: String?) {
     var counts = ""
     smoke.discover(
@@ -599,8 +531,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
       (last ?: fail("no candidates")) to answers.joinToString("; ")
     }
 
-    // `order:reading` lists the books with a place: its order, finished books, series, the rating lock and paging. The
-    // order is checked by saving the second book's place again, unchanged (the same sequence), and listing again.
     var shape = ""
     smoke.discover(
       "d26 order:reading", "d26-order-reading", requires = bearer, "not signed in", showHint = false, detail = { shape },
@@ -630,7 +560,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     }
   }
 
-  /** The books a list answer holds: its `data`, `pools.data`, or a bare array. */
   private fun RawResponse.listedBooks(): List<JsonObject> {
     val root = json
     val array = when (root) {
@@ -650,25 +579,20 @@ internal class BookSteps(private val smoke: SmokeSteps) {
     (((json as? JsonObject)?.get("series") as? JsonObject)?.get("data") as? JsonArray)?.size ?: 0
 
   private companion object {
-    /** Common in `rating:s`, as in the other steps. */
     const val BLUR_TAG = "blue_hair"
 
-    /** d21: names a book's series field might have on GraphQL's `poolV2` (#400). */
     val POOL_SERIES_FIELDS = listOf(
       "series { id }", "seriesV2 { id }", "seriesList { id }", "seriesPools { id }", "poolSeries { id }",
       "parentSeries { id }", "seriesId", "series_id", "seriesIds", "parent { id }", "parentPool { id }", "parentId",
       "reading { seriesId }", "reading { series_id }", "reading { series { id } }",
     )
 
-    /** d21: names a root query from a book to its series might have. */
     val ROOT_SERIES_FIELDS = listOf("series", "seriesV2", "seriesByPool", "seriesOfPool", "poolSeries", "seriesList", "seriesListV2", "seriesV2List")
 
-    /** d21: query parameters `/poolseriesv2` might narrow its series by. */
     val LIST_POOL_PARAMS = listOf("pool_id", "poolId", "pool_ids[]", "pools[]", "pool")
 
     private val LIST_QUERY = mapOf("page" to "1", "limit" to "20", "includes[]" to "pools", "filledPools" to "true")
 
-    /** d26: where the site's "Continue reading" might come from (#503), by a short label. */
     val READING_LISTS = listOf(
       "pools/readings" to ("/pools/readings" to mapOf("page" to "1", "limit" to "20")),
       "pools/reading" to ("/pools/reading" to mapOf("page" to "1", "limit" to "20")),
@@ -680,7 +604,6 @@ internal class BookSteps(private val smoke: SmokeSteps) {
       "poolseriesv2 reading:true" to ("/poolseriesv2" to LIST_QUERY + mapOf("tags" to "reading:true")),
     )
 
-    /** b9 waits up to a minute for each PUT sent in the background (a 429 pauses the host). */
     const val PUT_WAITS = 120
     const val PUT_WAIT_MS = 500L
   }

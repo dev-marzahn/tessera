@@ -14,7 +14,6 @@ class FollowedIndexTest {
 
   @Test
   fun aReloadedListFollowsThePostToItsNewPlace() {
-    // Signing in reloaded the list: "b" was at 1 and is now at 2, and "x" took its place.
     assertEquals(2, followed(listOf("a", "x", "b"), 1, "b"))
   }
 

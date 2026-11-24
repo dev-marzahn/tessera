@@ -22,7 +22,6 @@ public val visibility_off: ImageVector
         viewportHeight = 960f,
       )
         .apply {
-          // The export's viewBox starts at y = -960; the group moves it into 0..960.
           group(translationY = 960f) {
             addPath(
               pathData = addPathNodes(

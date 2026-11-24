@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `share` (weight 400, grade 0, optical size 24). */
 public val share: ImageVector
   get() {
     if (_share != null) {

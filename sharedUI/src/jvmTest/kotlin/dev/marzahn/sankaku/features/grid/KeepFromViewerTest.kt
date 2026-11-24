@@ -16,11 +16,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #504: keeping the post the viewer shows. On desktop E keeps it, as E on the grid's cursor does, at the end of the
- * grid's block, and the answer is in words ("Kept in tab N", "Already in tab N"), the cell's chip being under the
- * viewer. On a phone ⋮ has Keep for later over a grid, and nothing on a lone post.
- */
 @OptIn(ExperimentalTestApi::class)
 class KeepFromViewerTest {
   private val fixture = GridScreenFixture()
@@ -39,7 +34,6 @@ class KeepFromViewerTest {
       press(Key.Spacebar)
       assertEquals(2, viewerPost())
 
-      // Plain E only: Shift-E is kept for "Keep and favourite" (#163), Alt-E is no key here.
       press(Key.E, shift = true)
       press(Key.E, alt = true)
       assertEquals(listOf("fixture_tag"), queue())
@@ -48,7 +42,6 @@ class KeepFromViewerTest {
       assertTrue(viewerOpen(), "E closed the viewer")
       assertEquals(listOf("fixture_tag", "fixture-2"), queue())
       assertEquals("Kept in tab 2", messages.last())
-      // Kept in the background: the grid stays shown.
       assertEquals(grid, tabs.activeTab.top)
 
       press(Key.D)
@@ -56,7 +49,6 @@ class KeepFromViewerTest {
       assertEquals(listOf("fixture_tag", "fixture-2", "fixture-3"), queue())
       assertEquals("Kept in tab 3", messages.last())
 
-      // Back on a post kept already: nothing opens, and it says where.
       press(Key.A)
       press(Key.E)
       assertEquals(listOf("fixture_tag", "fixture-2", "fixture-3"), queue())
@@ -72,7 +64,6 @@ class KeepFromViewerTest {
       press(Key.Spacebar)
       press(Key.T)
       press(Key.E)
-      // The tag list's E (Include) took it: the search changed, and nothing was kept.
       assertTrue(queue().any { "fixture_1" in it.split(" ") }, "E didn't include the tag: ${queue()}")
       assertTrue(queue().none { it.startsWith("fixture-") }, "E kept the post: ${queue()}")
     }
@@ -88,8 +79,21 @@ class KeepFromViewerTest {
     onNodeWithText(KEEP_FOR_LATER).performClick()
 
     assertEquals(1, kept)
-    // Chosen, the menu closes.
     onAllNodesWithText(KEEP_FOR_LATER).assertCountEquals(0)
+  }
+
+  @Test
+  fun aKeptPostsMenuRemovesItInPlaceOfKeep() = runDesktopComposeUiTest {
+    var kept = 0
+    var removed = 0
+    setContent { SankakuTheme { PostMenu(post, shown = true, onKeep = { kept++ }, onRemove = { removed++ }) } }
+    onNodeWithContentDescription("More").performClick()
+    onAllNodesWithText(KEEP_FOR_LATER).assertCountEquals(0)
+    onNodeWithText(REMOVE_FROM_QUEUE).performClick()
+
+    assertEquals(0, kept)
+    assertEquals(1, removed)
+    onAllNodesWithText(REMOVE_FROM_QUEUE).assertCountEquals(0)
   }
 
   @Test

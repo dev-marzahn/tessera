@@ -14,18 +14,11 @@ import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * The sheet's stop outlives the viewer's composition (#560): a tag tapped in the sheet opens a grid in front (#349),
- * the post's item leaves composition with its viewer, and Back brings it back with the sheet where it was left. The
- * shell keeps a tab's state in a [rememberSaveableStateHolder], and a grid keys its viewer on an object that's new
- * when the tab comes back (`ViewerOnScreen`), as [Viewer] does here.
- */
 @OptIn(ExperimentalTestApi::class)
 class SheetStopRestoredTest {
   private val stops = SheetStops(half = 800f, full = 1600f)
   private var sheet: ViewerSheetState? = null
 
-  /** A viewer on [postId], keyed as a grid's is: on an object remembered above it, new each time the item is composed again. */
   @Composable
   private fun Viewer(postId: String) {
     val onScreen = remember { Any() }
@@ -81,10 +74,6 @@ class SheetStopRestoredTest {
     }
   }
 
-  /**
-   * The item comes back but its viewer doesn't (its post gone after a reload, so the grid closes it): the stop saved
-   * for that post never reaches a viewer on another post opened later in the same grid.
-   */
   @Test
   fun aStopWhoseViewerDidntComeBackDoesntReachAnotherPost() = runComposeUiTest {
     var itemShown by mutableStateOf(true)

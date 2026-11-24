@@ -7,7 +7,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** A drag on the track scrubs live: keyframe seeks while it moves, one exact seek where it lets go (#189). */
 class VideoDragTest {
   private class FakePlayback : VideoPlayback {
     override val hasMedia = true
@@ -52,6 +51,22 @@ class VideoDragTest {
     assertFalse(player.dragging)
     assertNull(keys.draggedTo)
     assertTrue(player.isPlaying, "it plays on, as it was playing")
+  }
+
+  @Test
+  fun aPreviewedDragLeavesTheVideoPlayingUntilItLetsGo() {
+    keys.previewsDrag = true
+    keys.drag(0.5f)
+    keys.drag(0.6f)
+    assertTrue(player.isPlaying, "the video plays on while dragged")
+    assertEquals(emptyList(), player.seeks)
+    assertEquals(0.6f, keys.draggedTo)
+
+    keys.release()
+
+    assertEquals(listOf(0.6f to false), player.seeks)
+    assertNull(keys.draggedTo)
+    assertTrue(player.isPlaying)
   }
 
   @Test

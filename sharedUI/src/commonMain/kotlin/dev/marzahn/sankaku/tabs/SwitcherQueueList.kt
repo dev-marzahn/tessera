@@ -78,12 +78,6 @@ import dev.marzahn.sankaku.ui.components.TonalButton
 import dev.marzahn.sankaku.ui.components.isCommand
 import dev.marzahn.sankaku.ui.openOnClick
 
-/**
- * The switcher's queue list (#502, desktop): the phone queue page's rows ([queueRows]) as a list, each block's kept items
- * indented under its head, a seen kept item dimmed, and on each head with kept items how many of them are left
- * ([blockProgress]). The selection is on an item's row or a closed source's row ([selectableIds]); find (`/`) filters
- * the rows by title and tag. Recently closed follows, for the mouse: Z reopens from the keys.
- */
 @Composable
 internal fun SwitcherQueueList(
   rows: List<QueueRow>,
@@ -104,7 +98,6 @@ internal fun SwitcherQueueList(
   val twins = remember(tabs) { tabs.map { it.id }.zip(twinSuffixes(tabs.map { it.title })).toMap() }
   val progress = rows.associate { row ->
     val id = when (row) {
-      // A head's: find lists a kept item without its head, unindented, and it has none.
       is QueueRow.Item -> row.tab.id.takeIf { !row.indented && !row.tab.kind.isKept }
       is QueueRow.ClosedBlock -> blockIds(tabs, row.head).firstOrNull()
       else -> null
@@ -166,7 +159,6 @@ private fun rowKey(row: QueueRow): Any = when (row) {
   is QueueRow.Inline -> "inline ${row.closed.key}"
 }
 
-/** The ids the queue list's selection moves over, in order: each item's, and each closed source's row's (its head's). */
 internal fun selectableIds(rows: List<QueueRow>): List<TabId> = rows.mapNotNull { row ->
   when (row) {
     is QueueRow.Item -> row.tab.id
@@ -175,7 +167,6 @@ internal fun selectableIds(rows: List<QueueRow>): List<TabId> = rows.mapNotNull 
   }
 }
 
-/** One item's row: number, picture, title, its second line ([queueSubtitle]), and on a block's head what's left of it. */
 @Composable
 private fun ItemRow(
   row: QueueRow.Item,
@@ -191,7 +182,6 @@ private fun ItemRow(
   onClose: () -> Unit,
 ) {
   val tab = row.tab
-  // "Current" is the row's chip, and its state to a screen reader: not in the second line too.
   val subtitle = queueSubtitle(tab, current = false, seen, rating, row.from)
   val number = if (tab.kind == QueueKind.Feed) "" else "${row.position + 1}"
   RowFrame(
@@ -211,7 +201,6 @@ private fun ItemRow(
   ) {
     Number(number)
     if (row.indented) Spacer(Modifier.width(Indent))
-    // With G only on, an R15 or R18 item (or one whose rating isn't known) shows its kind's icon, as its card does.
     Thumbnail(tab, hide = gOnly && row.adult, gOnly = gOnly)
     Spacer(Modifier.width(10.dp))
     Column(Modifier.weight(1f)) {
@@ -223,7 +212,6 @@ private fun ItemRow(
   }
 }
 
-/** "from artist_x (closed)" over a closed source's kept posts, with what's left of them; going there shows the first. */
 @Composable
 private fun ClosedRow(row: QueueRow.ClosedBlock, selected: Boolean, progress: BlockProgress?, onGo: () -> Unit) {
   RowFrame(
@@ -250,7 +238,6 @@ private fun ClosedRow(row: QueueRow.ClosedBlock, selected: Boolean, progress: Bl
   }
 }
 
-/** A row's frame: the selection's amber ring, hover's tint, a click to go, a middle click or the hovered ✕ to close. */
 @Composable
 private fun RowFrame(
   selected: Boolean,
@@ -318,7 +305,6 @@ private fun Number(text: String) {
   )
 }
 
-/** A row's picture, as its switcher card has it ([switcherPictures]), small; the kind's icon when there's none. */
 @Composable
 private fun Thumbnail(tab: TabState, hide: Boolean, gOnly: Boolean) {
   val pictures = if (hide) emptyList() else switcherPictures(tab, gOnly)
@@ -347,7 +333,6 @@ private fun CurrentMark() {
   Spacer(Modifier.width(8.dp))
 }
 
-/** What's left of a block: a bar of what's been seen and "2 of 3 left" (or "all seen"). */
 @Composable
 private fun Progress(progress: BlockProgress) {
   val done = progress.kept - progress.left
@@ -365,7 +350,6 @@ private fun Progress(progress: BlockProgress) {
   )
 }
 
-/** "2 of 3 left", or "all seen". */
 internal fun leftOf(progress: BlockProgress): String =
   if (progress.left == 0) "all seen" else "${progress.left} of ${progress.kept} left"
 
@@ -408,10 +392,6 @@ private fun Note(text: String) {
   )
 }
 
-/**
- * The queue list's header: "Queue", "21 items · 14 kept left", Clear viewed while there's something to clear, and ⋮
- * ([menuOpen], also R) with the phone page's bulk closes. Find (`/`) puts a field in the title's place.
- */
 @Composable
 internal fun QueueListHeader(
   count: Int,
@@ -464,7 +444,6 @@ internal fun QueueListHeader(
 
 private fun itemsText(count: Int) = if (count == 1) "1 item" else "$count items"
 
-/** One of ⋮'s bulk closes: its menu [label] and the items it would close now. */
 internal class SwitcherBulkClose(val label: String, val ids: List<TabId>)
 
 @Composable
@@ -487,7 +466,6 @@ private fun FindField(query: String, onQuery: (String) -> Unit, modifier: Modifi
   )
 }
 
-/** The queue list's keys, as the sidebar and the cards list theirs. */
 @Composable
 internal fun QueueListKeyHints(modifier: Modifier = Modifier) {
   FlowRow(
@@ -507,7 +485,6 @@ internal fun QueueListKeyHints(modifier: Modifier = Modifier) {
   }
 }
 
-/** What a key does in the queue list ([queueListKey]). */
 internal sealed interface QueueListKey {
   data class Move(val down: Boolean) : QueueListKey
   data object Go : QueueListKey
@@ -521,14 +498,6 @@ internal sealed interface QueueListKey {
   data object Dismiss : QueueListKey
 }
 
-/**
- * The queue list's keys, before anything in it sees them (#502). As the cards': W/S (and ↑/↓) move on each press and
- * repeat, X closes once per press, Z reopens on each press and repeat, Space and E go and Esc and C close on a fresh
- * press's release. Its own: Shift+X closes the selected row's block once per press, `/` opens find, R opens ⋮, and Q
- * shows the cards, each on a fresh press. While [finding], the field has the keys but Esc (which leaves find), ↑/↓
- * (which move) and Enter (which goes). Returns what to do (null for nothing) and whether the key is taken; Cmd/Ctrl and
- * Alt chords go on to the window's shortcuts.
- */
 internal fun queueListKey(event: KeyEvent, presses: SwitcherPresses, finding: Boolean): Pair<QueueListKey?, Boolean> {
   val press = presses.take(event)
   if (event.isCommand || event.isAltPressed) return null to false
@@ -568,7 +537,6 @@ internal fun queueListKey(event: KeyEvent, presses: SwitcherPresses, finding: Bo
   return action to true
 }
 
-/** The id [down] (or up) from [selected] among [ids], or null at an end: the selection stops there. */
 internal fun queueListStep(ids: List<TabId>, selected: TabId, down: Boolean): TabId? {
   val at = ids.indexOf(selected)
   if (at < 0) return ids.firstOrNull()

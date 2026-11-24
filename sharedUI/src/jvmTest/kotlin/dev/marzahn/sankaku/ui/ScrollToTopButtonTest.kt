@@ -26,7 +26,6 @@ class ScrollToTopButtonTest {
     onNodeWithText("Top", useUnmergedTree = true).assertDoesNotExist()
     val top = onNodeWithContentDescription("Top")
     top.assertHasClickAction()
-    // The count pill's and Undo's 48 dp target (#261).
     assertEquals(DpSize(48.dp, 48.dp), top.getUnclippedBoundsInRoot().size)
     top.performClick()
     assertTrue(clicked)

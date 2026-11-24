@@ -12,7 +12,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/** #208: the installed handler records a real uncaught exception, then hands it to the handler that was there. */
 class CrashHandlerTest {
   private val original = Thread.getDefaultUncaughtExceptionHandler()
 
@@ -34,7 +33,6 @@ class CrashHandlerTest {
     thread { throw error }.join()
 
     assertSame(error, seenByPrevious)
-    // Written before the previous handler ran: Android's kills the process.
     val text = assertNotNull(fileWhenPassed)
     assertTrue(text.lines()[1] == "java.lang.IllegalStateException", text)
     assertFalse("sankakuapi" in text, text)

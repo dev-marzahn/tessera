@@ -13,15 +13,10 @@ import kotlin.test.assertNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
-/**
- * #502: leaving a block whose kept posts were all seen puts it on offer for Shift+X, and the offer ends with its
- * message: when another message replaces it, or when the offered block is shown again.
- */
 @OptIn(ExperimentalTestApi::class)
 class LeavingBlockMessagesTest {
   private val tabs = TabsController()
 
-  // Seen an hour on, so every post recorded counts as seen since it was kept.
   private val seen = SeenStore(InMemoryTextFile(), object : Clock {
     override fun now() = Clock.System.now() + 1.hours
   })
@@ -51,6 +46,20 @@ class LeavingBlockMessagesTest {
     tabs.activate(id("Cat"))
     waitForIdle()
     assertEquals(id("Landscape"), offer.pending)
+  }
+
+  @Test
+  fun clearViewedTakingTheShownPostOutOfItsBlockOffersNothing() = runComposeUiTest {
+    setContent { LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, messages), messages) }
+    tabs.activate(id("l2"))
+    waitForIdle()
+
+    ClearViewed(tabs, seen, messages)()
+    waitForIdle()
+
+    assertEquals(id("Cat"), tabs.active.value)
+    assertNull(offer.pending)
+    assertEquals(emptySet(), offer.offered)
   }
 
   @Test

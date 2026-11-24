@@ -18,18 +18,11 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-/**
- * A mouse drag scrolls [state] vertically, as a finger does on a touch screen. Nothing happens until the pointer
- * has moved past the touch slop, so a click still reaches what's under it; past it, the drag is taken (the click
- * underneath doesn't fire on release) and the release flings. Touch already scrolls a scrollable, so only mouse
- * drags are handled, on desktop and on an Android device with a mouse alike.
- */
 fun Modifier.dragToScroll(state: ScrollableState): Modifier = composed {
   val scope = rememberCoroutineScope()
   val fling by rememberUpdatedState(ScrollableDefaults.flingBehavior())
   pointerInput(state) {
     awaitEachGesture {
-      // The initial pass reaches this before the children, so past the slop the drag is taken before a cell sees it.
       val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
       if (down.type != PointerType.Mouse || !currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
       val tracker = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
@@ -47,7 +40,6 @@ fun Modifier.dragToScroll(state: ScrollableState): Modifier = composed {
         tracker.addPosition(change.uptimeMillis, change.position)
         if (!dragging && abs(change.position.y - down.position.y) > viewConfiguration.touchSlop) {
           dragging = true
-          // A fling still running from the last drag stops, as under a finger.
           scope.launch { state.stopScroll() }
         }
         if (dragging) {

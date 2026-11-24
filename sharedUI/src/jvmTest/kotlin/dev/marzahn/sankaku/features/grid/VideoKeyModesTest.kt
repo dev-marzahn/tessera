@@ -32,6 +32,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
 import dev.marzahn.sankaku.READING_FILE
@@ -82,14 +83,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
-/**
- * On a video in the viewer, V (scrubbing: A/D seek) and T (the tag list: W/S walk the tags, A/D step posts) have the
- * keys one at a time: T ends scrubbing, and V from the tag list takes the keys back and scrubs. The real [GridScreen]
- * in its tab, with synthetic fixture posts (no network) and a fake video player.
- */
 @OptIn(ExperimentalTestApi::class)
 class VideoKeyModesTest {
-  /** Fixture posts 1 to 6: an mp4 at 4, the rest PNGs; each titled by its own tag, "Fixture n". */
   private val types = mapOf(4 to "video/mp4")
 
   private fun url(path: String) = "https://v.sankakucomplex.com/data/$path?e=${(Clock.System.now() + 1.hours).epochSeconds}"
@@ -106,7 +101,6 @@ class VideoKeyModesTest {
     return """{"meta":{"next":null,"prev":null},"data":[$posts]}"""
   }
 
-  /** A 10 s video that records its seeks; no media, so nothing is drawn. */
   private class FakePlayback : VideoPlayback {
     override var isPlaying by mutableStateOf(false)
     override val hasMedia = false
@@ -147,7 +141,7 @@ class VideoKeyModesTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -166,7 +160,6 @@ class VideoKeyModesTest {
       single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
     }
     startKoin { modules(sharedModule, platform, shellModule, authModule, gridModule, postModule, booksModule, fixtures) }
-    // The cells' AsyncImage uses the singleton: set here and reset after, so no later test finds one made already.
     SingletonImageLoader.setUnsafe(GlobalContext.get().get<ImageLoader>())
   }
 
@@ -176,7 +169,6 @@ class VideoKeyModesTest {
     stopKoin()
   }
 
-  /** The grid, with the viewer open on the video (post 4). */
   private fun ComposeUiTest.showVideo() {
     val tabs = GlobalContext.get().get<TabsController>()
     tabs.open(grid, background = false)
@@ -204,7 +196,6 @@ class VideoKeyModesTest {
     waitUntil(timeoutMillis = 5_000) { player.isPlaying }
   }
 
-  /** Sends [key] as the desktop window does: a press, then its release. */
   @OptIn(InternalComposeUiApi::class)
   private fun ComposeUiTest.press(key: Key) {
     val scene = (this as SkikoComposeUiTest).scene
@@ -213,7 +204,6 @@ class VideoKeyModesTest {
     waitForIdle()
   }
 
-  /** The number n of the cell the keyboard cursor is on ("Fixture n"), or null with no cursor. */
   private fun ComposeUiTest.cursorPost(): Int? =
     onAllNodesWithContentDescription("Fixture", substring = true)
       .fetchSemanticsNodes()
@@ -221,7 +211,6 @@ class VideoKeyModesTest {
       ?.config?.get(SemanticsProperties.ContentDescription)?.first()
       ?.let { Regex("Fixture (\\d+)").find(it)?.groupValues?.get(1)?.toInt() }
 
-  /** The post the open viewer shows: its title, "Fixture n", in the info panel. */
   private fun ComposeUiTest.viewerPost(): Int =
     (1..6).single { n -> onAllNodesWithText("Fixture $n").fetchSemanticsNodes().isNotEmpty() }
 
@@ -233,7 +222,6 @@ class VideoKeyModesTest {
     press(Key.D)
     press(Key.A)
 
-    // From 5 s of 10: on 5 s to the end, held there, then back 5 s.
     assertEquals(listOf(1f, 1f, 0.5f), player.seeks)
     assertEquals(4, viewerPost(), "A/D stepped posts while scrubbing")
   }
@@ -255,7 +243,6 @@ class VideoKeyModesTest {
     press(Key.T)
     press(Key.V)
     press(Key.A)
-    // Esc ends scrubbing; were the keys still with the tag list, it would have taken Esc and A would seek again.
     press(Key.Escape)
     press(Key.A)
 

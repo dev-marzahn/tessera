@@ -27,13 +27,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Favourites, votes and follows made with no connection wait in the [Outbox] and are sent once it's back (#505). */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSenderTest {
   private val post: PostDto = SankakuJson.decodeFromString(Fixtures.post(favourited = false))
   private val tag = TagDto(name = "Blue Hair", tagName = "blue_hair", id = "t1")
 
-  /** What Sankaku does with each request: no connection, or an answer. */
   private enum class Net { Down, Up, Refuses, Fails }
 
   private class Rig(
@@ -62,11 +60,9 @@ class OutboxSenderTest {
 
     fun changes(path: String) = h.requests.filter { it.url.encodedPath == path && it.method != HttpMethod.Get }
 
-    /** Waits for the round a trigger started: its requests run on the engine's threads, past [runCurrent]. */
     suspend fun roundDone() = sender.idle()
   }
 
-  /** The connection may be back: the round that starts, finished. */
   private suspend fun TestScope.retry(rig: Rig) {
     rig.h.connectivity.requestRetry()
     runCurrent()
@@ -141,7 +137,6 @@ class OutboxSenderTest {
 
   @Test
   fun aChangeAToggleSettledSinceIsNotSent() = runTest {
-    // A round took its list, then the user unfavourited online before the round reached the post.
     val rig = rig()
     rig.repository.toggleFavourite(post)
     val stale = rig.outbox.changes.value.single() as PendingChange.Favourite
@@ -157,8 +152,6 @@ class OutboxSenderTest {
 
   @Test
   fun aToggleThatFailsToConnectWaitsBeforeTheNextToggleRuns() = runTest {
-    // Toggle A gets no answer; toggle B, made meanwhile, gets through. A's change must wait before B runs, so B settles
-    // it, rather than A's landing after B and being sent later.
     val gate = CompletableDeferred<Unit>()
     var calls = 0
     val gated = Harness(InMemoryTokenStore(storedTokens())) {

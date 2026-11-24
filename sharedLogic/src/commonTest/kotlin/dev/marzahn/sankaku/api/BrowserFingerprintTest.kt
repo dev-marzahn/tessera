@@ -22,10 +22,6 @@ class BrowserFingerprintTest {
     )
   }
 
-  /**
-   * Chrome on Android with "Desktop site" on, which the phone claims (#475): no "Android" in the User-Agent, which
-   * Sankaku answers with fewer pages of a book.
-   */
   @Test
   fun androidDesktopSiteIsTheReducedLinuxChrome() {
     val desktopSite = BrowserFingerprint(BrowserPlatform.AndroidDesktopSite, 157)
@@ -43,7 +39,6 @@ class BrowserFingerprintTest {
     )
   }
 
-  /** A numeric id only the Android fingerprint finds, so the phone asks about one as Android Chrome (#475). */
   @Test
   fun onlyTheDesktopSiteFallsBackToAndroidForNumericIds() {
     assertEquals(BrowserPlatform.Android, BrowserPlatform.AndroidDesktopSite.forNumericIds)
@@ -68,7 +63,6 @@ class BrowserFingerprintTest {
     )
   }
 
-  /** What these Chrome versions sent, so a bump of [CHROME_MAJOR_VERSION] needs no hand-written brand list. */
   @Test
   fun brandListFollowsChromesSeededOrderAndGrease() {
     assertEquals("\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"", BrowserFingerprint.brandList(120))

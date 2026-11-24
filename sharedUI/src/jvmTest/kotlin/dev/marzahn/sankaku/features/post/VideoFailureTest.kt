@@ -15,10 +15,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * Desktop videos that sat at "00:00 / 00:00" (#192): AVPlayer can't open WebM, and a failed open left the controls
- * frozen. WebM now says so up front, and any other failure shows an error with Retry.
- */
 @OptIn(ExperimentalTestApi::class)
 class VideoFailureTest {
   private val webm = PostDto(
@@ -27,10 +23,6 @@ class VideoFailureTest {
   )
   private val mp4 = webm.copy(fileType = "video/mp4", sampleUrl = "https://v.example.test/data/sample/ab/sample-abc.mp4?token=t")
 
-  /**
-   * Fails every open until [failNext] is cleared, as the macOS player does with a file it can't read. An open resets
-   * the position, as both players do, and one that works gives the video a length.
-   */
   private class FailingPlayback : VideoPlayback {
     var failNext = true
     val opens = mutableListOf<String>()
@@ -66,12 +58,10 @@ class VideoFailureTest {
     val player = FailingPlayback()
     var post by mutableStateOf(mp4)
     setContent { PostVideo(post, player = player, preferences = PlayerPreferences(InMemoryTextFile())) }
-    // It had played half way when it failed.
     player.position = 0.5f
 
     onNodeWithContentDescription("Retry playing the video").performClick()
     waitForIdle()
-    // The Retry failed too; then the details' fetch signs the URL again, and that one works.
     player.failNext = false
     post = mp4.copy(sampleUrl = mp4.sampleUrl!!.replace("token=t", "token=t2"))
     waitForIdle()
@@ -97,7 +87,6 @@ class VideoFailureTest {
     setContent { PostVideo(post, player = player, preferences = PlayerPreferences(InMemoryTextFile())) }
     onNodeWithText("Couldn't play the video").assertExists()
 
-    // The details' fetch signs the URL again; this time the open works.
     player.failNext = false
     post = mp4.copy(sampleUrl = mp4.sampleUrl!!.replace("token=t", "token=t2"))
     waitForIdle()

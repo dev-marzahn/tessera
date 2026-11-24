@@ -6,7 +6,6 @@ import dev.marzahn.sankaku.tabs.tabTitle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Filter tokens first in the search line and the request, whatever order the route has (a tab saved before it). */
 class SearchOrderTest {
   private val saved = Route.Grid(listOf("blue_hair", "order:popularity", "smile"))
 

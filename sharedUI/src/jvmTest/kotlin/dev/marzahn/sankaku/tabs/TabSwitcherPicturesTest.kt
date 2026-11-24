@@ -6,11 +6,6 @@ import dev.marzahn.sankaku.images.PostImage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * The tab switcher's pictures under G only (#465 review): a grid's search may let only G posts through while its mosaic,
- * saved before G only was on, still holds R15 and R18 thumbnails or unrated ones. Each picture is checked, not only the
- * tab's route.
- */
 class TabSwitcherPicturesTest {
   private val grid = Route.Grid(listOf("scenery"))
 
@@ -26,7 +21,6 @@ class TabSwitcherPicturesTest {
 
   @Test
   fun gOnlyNeverFallsBackToWhatTheScreenHeld() {
-    // A grid with no mosaic yet: its screen's previews carry no rating.
     val tab = TabState(TabId("t"), listOf(grid))
     tab.describe("key", grid) { TabContents(listOf(PostImage("1", "held", Variant.Preview, null)), emptyList(), 1) }
     assertEquals(emptyList(), switcherPictures(tab, gOnly = true))

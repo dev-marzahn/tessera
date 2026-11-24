@@ -18,7 +18,6 @@ class SearchTagsTest {
   fun excludedAndUpperCaseFiltersCount() {
     assertTrue(SearchTags.isFilter("-rating:q"))
     assertTrue(SearchTags.isFilter("ORDER:score"))
-    // The favourites filter (#90), either way, and any user's favourites.
     assertTrue(SearchTags.isFilter("fav:me"))
     assertTrue(SearchTags.isFilter("-fav:me"))
     assertEquals(listOf("-fav:me", "blue_hair"), SearchTags.filtersFirst(listOf("blue_hair", "-fav:me")))

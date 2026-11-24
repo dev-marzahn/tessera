@@ -9,7 +9,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** A grid tab's place (#162): saved in `tabs.json` with the tab, and restored with it. */
 class TabPlaceTest {
   private val file = InMemoryTextFile(null)
   private val store = FileTabStateStore(file)
@@ -48,7 +47,6 @@ class TabPlaceTest {
   fun goingToTheTopClearsThePlace() {
     val tab = openA()
     tab.reportPlace(a, deep)
-    // A refresh, or scrolling back to the first post.
     tab.reportPlace(a, null)
     store.save(tabs.saved())
 
@@ -60,7 +58,6 @@ class TabPlaceTest {
   fun thePlaceBelongsToTheGridItWasReportedFor() {
     val tab = openA()
     tab.reportPlace(a, deep)
-    // A search opened in place on the grid: the new top grid starts at the top.
     tab.backStack.add(Route.Grid(listOf("artist_b")))
 
     assertNull(tab.place)

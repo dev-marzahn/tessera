@@ -18,6 +18,7 @@ import dev.marzahn.sankaku.ACCESSIBILITY_FILE
 import dev.marzahn.sankaku.CACHE_DIR
 import dev.marzahn.sankaku.DebugFlags
 import dev.marzahn.sankaku.FIRST_LAUNCH_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.Navigator
@@ -75,19 +76,10 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
-/**
- * #503: the Continue reading shelf over fixture books, no network. It's Sankaku's `order:reading` list less the
- * finished books, in its order, over a plain Books list only and signed in only; a book on it opens at its saved page.
- */
 @OptIn(ExperimentalTestApi::class)
 class ContinueReadingTest {
   private val reader = BookReader { _, _ -> }
 
-  /**
-   * The `tags` of every `/poolseriesv2` request. The fake server adds from its own thread while a test counts them: a
-   * synchronized list's iterator threw ConcurrentModificationException there (#536's merge-queue build); this one
-   * iterates a snapshot.
-   */
   private val listed = CopyOnWriteArrayList<String>()
 
   private fun startFixtureKoin(signedIn: Boolean) {
@@ -100,7 +92,7 @@ class ContinueReadingTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
     }
@@ -155,7 +147,6 @@ class ContinueReadingTest {
     waitForIdle()
   }
 
-  /** The shelf's books' titles, in order. */
   private fun ComposeUiTest.shelf(): List<String> =
     onAllNodesWithTag(SHELF_BOOK_TAG).fetchSemanticsNodes().map { node ->
       node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.map { it.text }.first { it.startsWith("Reading ") }
@@ -165,11 +156,9 @@ class ContinueReadingTest {
   fun theShelfListsTheStartedUnfinishedBooksInSankakusOrder() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showList()
     waitUntil(timeoutMillis = 5_000) { shelf().isNotEmpty() }
-    // "Reading two" is finished: left out.
     assertEquals(listOf("Reading one", "Reading three"), shelf())
     assertTrue(onAllNodesWithText(CONTINUE_READING).fetchSemanticsNodes().isNotEmpty())
     assertTrue(onAllNodesWithText("Page 2 / 3", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-    // Asked for as Sankaku's Continue reading, with G only off: no rating.
     assertTrue("order:reading" in listed, "$listed")
   }
 
@@ -182,16 +171,10 @@ class ContinueReadingTest {
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
     assertEquals("r1", reader.shown.value?.id)
-    // The book in view (the next one on the shelf is laid out beside it): page 2 at the top.
     val shown = onAllNodesWithContentDescription("Page 2 of 3").fetchSemanticsNodes().map { it.boundsInRoot }.minBy { abs(it.left) }
     assertEquals(0f, shown.top, 0.5f)
   }
 
-  /**
-   * Each page turn in the reader saves the place, and each save that lands asks for the shelf again. Under the reader
-   * the shelf is out of sight: nothing is asked until the reader closes, then once (#532 review, REVIEW.md "Load on
-   * Sankaku").
-   */
   @Test
   fun placesSavedWhileTheReaderIsOpenAskForTheShelfOnceItCloses() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
     showList()
@@ -223,7 +206,6 @@ class ContinueReadingTest {
     waitUntil(timeoutMillis = 5_000) { shelf().isNotEmpty() }
     fun shelfTop() = onAllNodesWithTag(SHELF_TAG).fetchSemanticsNodes().single().boundsInRoot.top
     val shown = shelfTop()
-    // Down: the shelf goes first, the rows keeping their place.
     onRoot().performMouseInput {
       moveTo(center)
       scroll(30f)
@@ -231,7 +213,6 @@ class ContinueReadingTest {
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
     assertTrue(shelfTop() < shown - 50f, "the shelf scrolled away: ${shelfTop()} from $shown")
-    // Up with the rows at their top: no scroll reaches them, and the wheel brings the shelf back.
     onRoot().performMouseInput {
       moveTo(center)
       scroll(-2f)
@@ -243,7 +224,6 @@ class ContinueReadingTest {
 
   @Test
   fun aSignOutWhileTheShelfIsntShownForgetsItsBooks() = runDesktopComposeUiTest(width = WIDTH, height = HEIGHT) {
-    // #503 review: the last account's books never show for the next, even if the shelf was out of sight meanwhile.
     showList()
     waitUntil(timeoutMillis = 5_000) { shelf().isNotEmpty() }
     val koin = KoinPlatform.getKoin()
@@ -268,7 +248,6 @@ class ContinueReadingTest {
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
     assertEquals(emptyList(), shelf())
-    // Not even asked for (REVIEW.md: nothing loads that isn't shown).
     assertTrue(listed.none { "order:reading" in it }, "$listed")
   }
 
@@ -298,7 +277,6 @@ class ContinueReadingTest {
         "reading": { "current_page": $page, "sequence": ${page - 1}, "percent": $percent } }
     """.trimIndent()
 
-    // Sankaku's order: the most recently saved first. "Reading two" is finished.
     val READING_JSON = """{ "series": { "data": [] }, "pools": { "meta": {}, "data": [
       ${readingItem(1, "one", 2, 67)}, ${readingItem(2, "two", 3, 100)}, ${readingItem(3, "three", 1, 33)}
     ] } }"""

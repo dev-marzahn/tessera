@@ -41,16 +41,10 @@ import dev.marzahn.sankaku.shell.signedInName
 import dev.marzahn.sankaku.ui.components.TonalButton
 import org.koin.compose.koinInject
 
-/**
- * The tokens of a search that found nothing, as the empty grid lists them (#135): the [unknown] tags (included tags
- * the site answered without, see [TagsRepository.unknown]) first, then the [others] in the search's order, filters
- * first. A locked rating isn't listed, since removing it changes nothing.
- */
 internal data class EmptySearchTokens(val unknown: List<String>, val others: List<String>) {
   val all: List<String> get() = unknown + others
 
   companion object {
-    /** [searched] is the route's search ([Route.searchTags]); [unknownKeys] are keys without `-`, lower case. */
     fun of(searched: List<String>, unknownKeys: Set<String>, ratingLocked: Boolean): EmptySearchTokens {
       val listed = if (ratingLocked) withoutRating(searched) else searched
       val (unknown, others) = listed.partition { tag ->
@@ -61,7 +55,6 @@ internal data class EmptySearchTokens(val unknown: List<String>, val others: Lis
   }
 }
 
-/** The line that names the unknown tags: `“zzqq” isn't a known tag`; null when there are none. */
 internal fun unknownTagsLine(unknown: List<String>): String? {
   if (unknown.isEmpty()) return null
   val names = unknown.map { "“$it”" }
@@ -69,13 +62,6 @@ internal fun unknownTagsLine(unknown: List<String>): String? {
   return if (names.size == 1) "$listed isn't a known tag" else "$listed aren't known tags"
 }
 
-/**
- * An empty grid's message (#135, option A): every token of [route]'s search as a removable chip, unknown tags first
- * and flagged, and Edit search. Removing a token opens the search without it with `goTo`, so Back returns here; Edit
- * search opens the search panel with this search as the draft. It looks up the search's tags (as the top bar does,
- * so no request is repeated) to tell an unknown tag from one not learnt yet. Over the tag limit (#520) the same, with
- * [title] saying the limit.
- */
 @Composable
 internal fun EmptySearch(
   route: Route.Grid,
@@ -94,7 +80,6 @@ internal fun EmptySearch(
   val searched = route.searchTags
   val me = session.signedInName()
   val locked = ratingLocked(signedIn, gOnly)
-  // Locked, the line says why only G posts show, and its action lifts the lock (#523).
   val reason = gOnlyReason(signedIn, gOnly, canTurnOff = !privacy.gOnlyForced)?.takeIf { locked }
   val onReasonAction = { if (signedIn) privacy.setGOnly(false) else signIn.open() }
   val feed = EmptyFeed.of(searched, me, locked)
@@ -122,10 +107,6 @@ internal fun EmptySearch(
   )
 }
 
-/**
- * The bare Following or Favourites grid with no posts (#523): what fills it and how, with Browse Popular to find
- * something to follow or favourite, and why only G posts show when that's locked. No chips: there's nothing to remove.
- */
 @Composable
 internal fun EmptyFeedContent(
   feed: EmptyFeed,
@@ -134,7 +115,6 @@ internal fun EmptyFeedContent(
   onBrowse: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  // Locked, R15/R18 posts may be there unseen: the title doesn't claim there are none (#533 review).
   val locked = reason != null
   val (icon, title, body) = when (feed) {
     EmptyFeed.Following -> Triple(
@@ -182,7 +162,6 @@ internal fun EmptySearchContent(
   onEdit: () -> Unit,
   modifier: Modifier = Modifier,
   title: String = "No posts for this search",
-  /** Why only G posts show, when the rating is locked; its action is [onReasonAction] (#523). */
   reason: GOnlyReason? = null,
   onReasonAction: () -> Unit = {},
 ) {

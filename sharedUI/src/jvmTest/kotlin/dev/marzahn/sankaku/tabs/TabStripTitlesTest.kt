@@ -26,7 +26,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** #422: twins in the strip are numbered, and the "+N" counts never cover a tab's title. */
 @OptIn(ExperimentalTestApi::class)
 class TabStripTitlesTest {
   private val tabs = TabsController()
@@ -42,7 +41,6 @@ class TabStripTitlesTest {
 
   private fun SemanticsNode.text() = config[SemanticsProperties.Text].joinToString("") { it.text }
 
-  /** Each tab's title, then its twin number when it has one: they share the tab's node as their parent. */
   private fun ComposeUiTest.shownTitles(): List<String> {
     val twins = onAllNodesWithTag(TAB_TWIN_TAG, useUnmergedTree = true).fetchSemanticsNodes().associateBy { it.parent?.id }
     return onAllNodesWithTag(TAB_TITLE_TAG, useUnmergedTree = true).fetchSemanticsNodes().map { title ->
@@ -59,9 +57,7 @@ class TabStripTitlesTest {
     val title = onAllNodesWithTag(TAB_TITLE_TAG, useUnmergedTree = true)[2]
     val twin = onNodeWithTag(TAB_TWIN_TAG, useUnmergedTree = true)
     assertEquals(" · 2", twin.fetchSemanticsNode().text())
-    // The title is cut short, and the number shows whole after it.
     assertTrue(title.layout().hasVisualOverflow, "the title fits, so this proves nothing")
-    // Its text's width, not the paragraph's: a short text's paragraph keeps the width it was offered.
     twin.layout().let { assertTrue(it.getLineRight(0) <= it.size.width, "the number is cut: ${it.getLineRight(0)} in ${it.size}") }
     val titleBounds = title.bounds()
     val twinBounds = twin.bounds()
@@ -85,7 +81,6 @@ class TabStripTitlesTest {
     waitForIdle()
 
     assertEquals(listOf("Browse", "Xingtong", "Xingtong · 2"), shownTitles())
-    // Only what the strip shows changes: each tab's own title stays.
     assertEquals(listOf("Browse", "Xingtong", "Xingtong"), tabs.tabs.value.map { it.title })
   }
 
@@ -104,18 +99,15 @@ class TabStripTitlesTest {
     (1..12).forEach { tabs.open(post("p$it", "aoi d. halo (kyūkyoku) $it"), background = true) }
     strip(width = 900)
 
-    // Scrolled to the start, the middle and the end: the active tab is scrolled into view.
     listOf(0, 6, 12).forEach { index ->
       tabs.activate(tabs.tabs.value[index].id)
       waitForIdle()
       val counts = listOf(HIDDEN_BEFORE_TAG, HIDDEN_AFTER_TAG).map { onNodeWithTag(it).bounds() }
-      // What shows of each title, clipped to the strip; a title scrolled out of view shows nothing.
       val titles = onAllNodesWithTag(TAB_TITLE_TAG, useUnmergedTree = true)
         .run { (0 until fetchSemanticsNodes().size).map { get(it).bounds() } }
       val shown = titles.filter { it.width > 0f }
       assertTrue(shown.size in 2 until titles.size, "the strip overflows, with tabs in view")
       counts.forEach { count -> shown.forEach { title -> assertTrue(!title.overlaps(count), "a count at $count covers $title") } }
-      // And not over any part of a tab: each count sits outside the scrolling tabs.
       val viewport = onNodeWithTag(TABS_VIEWPORT_TAG).bounds()
       counts.forEach { count -> assertTrue(!count.overlaps(viewport), "a count at $count is over the tabs at $viewport") }
     }

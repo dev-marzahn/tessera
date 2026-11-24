@@ -25,18 +25,11 @@ import com.google.fonts.icons.error
 import com.google.fonts.icons.image
 import com.google.fonts.icons.refresh
 
-/**
- * In place of a post's image that didn't load, in a grid cell ([compact]) or the viewer, on the cell's own colour so
- * it never reads as "still loading". [noImage]: the post has no image to load, so "No preview" and no retry.
- * Otherwise "Couldn't load" with "↻ Retry" in error colours, as ⋮'s failed save shows it (`.scratch/android-feedback/`,
- * C). Its tap is its own: in a cell, the rest still opens the post.
- */
 @Composable
 fun ImageFailed(noImage: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier, compact: Boolean = false) {
   val colors = MaterialTheme.colorScheme
   Surface(color = colors.surfaceContainerHighest, contentColor = colors.onSurfaceVariant, modifier = modifier) {
     BoxWithConstraints(contentAlignment = Alignment.Center) {
-      // A short cell (a wide image) keeps only what matters: Retry, or the caption when there's nothing to retry.
       val short = maxHeight < SHORT_CELL
       Column(
         Modifier.padding(8.dp),
@@ -60,13 +53,8 @@ fun ImageFailed(noImage: Boolean, onRetry: () -> Unit, modifier: Modifier = Modi
   }
 }
 
-/** Below this, a cell has room for Retry alone: the icon, caption and pill need about 110 dp. */
 private val SHORT_CELL = 120.dp
 
-/**
- * A video that didn't play, over its preview in the viewer: "Couldn't play the video" with "↻ Retry", as an image's
- * failure shows it (#192), on a pill so it reads over any picture.
- */
 @Composable
 fun VideoFailed(onRetry: () -> Unit, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme
@@ -93,7 +81,6 @@ fun VideoFailed(onRetry: () -> Unit, modifier: Modifier = Modifier) {
   }
 }
 
-/** "↻ Retry" in error colours, alone over an image that loaded only in part (the viewer's preview, not its sample). */
 @Composable
 fun ImageRetryChip(onRetry: () -> Unit, modifier: Modifier = Modifier, description: String = "Retry loading the image") {
   val colors = MaterialTheme.colorScheme

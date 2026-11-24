@@ -59,11 +59,6 @@ internal const val CrashNoticeHelp =
     "device and where in the code it stopped: no searches, posts or account details. Nothing is sent unless you do."
 internal const val CrashReportCopied = "The report is copied."
 
-/**
- * Report (#208): puts [Diagnostics.crashText] on the clipboard, then opens [Diagnostics.bugReportUrl] (#207), which
- * never holds the trace. Either way the file is deleted, since the text is on the clipboard; if no app can open the
- * form, the notice stays to say so until Dismiss.
- */
 internal suspend fun reportCrash(
   crash: String,
   diagnostics: Diagnostics,
@@ -76,13 +71,6 @@ internal suspend fun reportCrash(
   return open(diagnostics.bugReportUrl()).also { if (it == OpenUrlResult.Opened) reports.clear() }
 }
 
-/**
- * "Tessera closed unexpectedly" (#208), at the launch after a crash, in place of the app until Report or Dismiss:
- * after the first-launch screen (#210) has been accepted, before the shell. A crash at start would otherwise happen
- * again before the user could report it. It shows what Report copies, so the user sees what they share.
- *
- * Its own page rather than a dialog over the shell, so it says [NoAppForLink] inline: the snackbar lives in the shell.
- */
 @Composable
 internal fun CrashNotice(
   crash: String,
@@ -95,7 +83,6 @@ internal fun CrashNotice(
   var noApp by remember { mutableStateOf(false) }
   val text = remember(crash) { diagnostics.crashText(crash) }
   Surface(Modifier.fillMaxSize().testTag(CrashNoticeTag), color = MaterialTheme.colorScheme.background) {
-    // Centred when it fits; scrolls on a short window or with large text.
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
       Box(
         contentAlignment = Alignment.Center,

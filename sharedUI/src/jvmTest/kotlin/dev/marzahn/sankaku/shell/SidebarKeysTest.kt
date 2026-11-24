@@ -31,11 +31,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
-/**
- * The sidebar's keys (#416): opened by key, focus starts on the current tab's entry (or the first), W/S move it through
- * every entry, the switch and the account included, Space opens, E opens in a new tab, and G or Esc closes. The real
- * rail and entries, with the switch and the account row the sidebar has; only the entries' actions are counted here.
- */
 @OptIn(ExperimentalTestApi::class)
 class SidebarKeysTest {
   private var open by mutableStateOf(true)
@@ -44,9 +39,7 @@ class SidebarKeysTest {
   private val openedInNewTab = mutableListOf<String>()
   private var signOuts = 0
 
-  /** [byKey]: opened with G, as the shell does; otherwise with the menu button. */
   private fun ComposeUiTest.showRail(current: String?, byKey: Boolean = true) {
-    // As the shell does: G opened it and its release hasn't come yet; the rail hears it.
     var held by mutableStateOf(byKey)
     setContent {
       SankakuTheme {
@@ -70,7 +63,6 @@ class SidebarKeysTest {
                 startHere = label == "Browse" && current == null,
               )
             }
-            // Held on by `safeOnly`: no stop for the keys.
             SwitchRow("Locked", help = null, checked = true, onCheckedChange = {}, enabled = false, icon = shield)
             SwitchRow(
               "G only",
@@ -100,7 +92,6 @@ class SidebarKeysTest {
 
   private fun ComposeUiTest.press(keys: List<Key>) {
     for (key in keys) {
-      // Sent to the dialog's root, which hands it to whatever has focus there.
       onNodeWithText("Browse").performKeyInput { pressKey(key) }
       waitForIdle()
     }
@@ -128,7 +119,6 @@ class SidebarKeysTest {
     onNodeWithText("For you").assertIsFocused()
     press(Key.DirectionDown)
     onNodeWithText("Popular").assertIsFocused()
-    // Past the locked switch, to G only, Settings and Sign out.
     press(Key.S)
     onNodeWithText("G only").assertIsFocused()
     press(Key.S)
@@ -149,7 +139,6 @@ class SidebarKeysTest {
     assertEquals(true, open)
     press(listOf(Key.S, Key.Spacebar))
     assertEquals(listOf("Popular"), opened)
-    // G only switches with Space, as with a click.
     press(listOf(Key.S, Key.Spacebar))
     assertEquals(true, gOnly)
   }
@@ -158,7 +147,6 @@ class SidebarKeysTest {
   fun signOutTakesTwoSpaces() = runComposeUiTest {
     showRail(current = "Popular")
     press(listOf(Key.S, Key.S, Key.S))
-    // The question's window would run out while the test waits for idle: the clock moves only when told from here.
     mainClock.autoAdvance = false
     press(Key.Spacebar)
     mainClock.advanceTimeBy(500)
@@ -167,7 +155,6 @@ class SidebarKeysTest {
     press(Key.Spacebar)
     mainClock.advanceTimeBy(500)
     assertEquals(1, signOuts)
-    // The question, answered, took its focus with it: the rail has it back, so the keys still work.
     press(Key.S)
     onNodeWithText("Browse").assertIsFocused()
   }
@@ -175,13 +162,11 @@ class SidebarKeysTest {
   @Test
   fun gClosesItOnceTheGThatOpenedItIsLetGo() = runComposeUiTest {
     showRail(current = "Popular")
-    // The G that opened it is still down: its repeats keep the rail open.
     onNodeWithText("Browse").performKeyInput { keyDown(Key.G) }
     waitForIdle()
     assertEquals(true, open)
     onNodeWithText("Browse").performKeyInput { keyUp(Key.G) }
     waitForIdle()
-    // Shift-G isn't G.
     onNodeWithText("Browse").performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(Key.G) } }
     waitForIdle()
     assertEquals(true, open)
@@ -196,7 +181,6 @@ class SidebarKeysTest {
     onNodeWithText("Popular").assertIsNotFocused()
     press(Key.S)
     onNodeWithText("Browse").assertIsFocused()
-    // No key was down when it opened, so G closes at once.
     press(Key.G)
     assertFalse(open)
   }

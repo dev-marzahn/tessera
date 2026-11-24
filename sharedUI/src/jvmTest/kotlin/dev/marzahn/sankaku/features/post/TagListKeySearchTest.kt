@@ -21,6 +21,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
 import dev.marzahn.sankaku.READING_FILE
@@ -65,12 +66,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #421: a search from the tag list's keys in this tab (E, Q, Space, Backspace) asks for the grid it opens to start with
- * its cursor on the first cell, as Enter in the search panel does ([GridCursorRequest], which `GridScreen` takes as
- * it composes). With Shift the search goes to a background tab, and asks for nothing. The real [PostDetails] over
- * fixture tags, no network.
- */
 @OptIn(ExperimentalTestApi::class)
 class TagListKeySearchTest {
   private val tabs = TabsController()
@@ -106,7 +101,7 @@ class TagListKeySearchTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -122,7 +117,6 @@ class TagListKeySearchTest {
   @AfterTest
   fun stop() = stopKoin()
 
-  /** The post's details over a grid of [search], with the tag list holding the keys (T, in the screens around it). */
   private fun ComposeUiTest.showTagList(search: List<String>) {
     lateinit var focus: FocusRequester
     setContent {
@@ -131,7 +125,6 @@ class TagListKeySearchTest {
         PostDetails(post, searchTags = search, tagListFocus = focus, navigator = navigator, tabs = tabs)
       }
     }
-    // As in IncludedTagTapTest: the recommendations' failed request changes the layout until it lands.
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Couldn't load recommendations").fetchSemanticsNodes().isNotEmpty() }
     runOnIdle { focus.requestFocus() }
     waitForIdle()

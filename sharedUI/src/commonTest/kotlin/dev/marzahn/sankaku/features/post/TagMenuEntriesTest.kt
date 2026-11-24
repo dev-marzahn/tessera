@@ -51,7 +51,6 @@ class TagMenuEntriesTest {
 
   @Test
   fun aboutThisTagFollowsSearchOnlyWhenOffered() {
-    // #486: the tag's page, where its books are.
     val entries = tagMenuEntries("smile", search, canFollow = false, following = false, canAbout = true)
     assertEquals(listOf("Search only this tag", "About this tag", "Copy name"), labels(entries).takeLast(3))
     assertEquals(TagMenuEntry.About, entries[entries.size - 2])

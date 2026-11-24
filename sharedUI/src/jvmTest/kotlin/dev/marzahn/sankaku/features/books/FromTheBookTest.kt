@@ -26,6 +26,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.Route
@@ -74,11 +75,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #386: the post sheet's "From the book" row, in the real [PostDetails] over a fake API that counts what the row asks
- * (`/post/{id}/pools`), with a [BookOpener] that records what it opens. Signed out, so the rating is locked and
- * the G book of the two is the one shown. Fixture posts only, no network: state and semantics.
- */
 @OptIn(ExperimentalTestApi::class)
 class FromTheBookTest {
   private val tabs = TabsController().apply { open(Route.Grid(listOf("scenery")), background = false) }
@@ -86,7 +82,6 @@ class FromTheBookTest {
   private val booksAsked: MutableList<String> = Collections.synchronizedList(mutableListOf())
   private val opened = mutableListOf<String>()
 
-  /** A book's page as an older Android build got it: a numeric id and `in_visible_pool`. */
   private val page = PostDto(id = "4012", md5 = "fixture-md5", rating = "s", status = "active", inVisiblePool = true)
 
   @BeforeTest
@@ -97,7 +92,7 @@ class FromTheBookTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -133,7 +128,6 @@ class FromTheBookTest {
     onAllNodesWithContentDescription(ROW).fetchSemanticsNodes().isNotEmpty()
   }
 
-  // The details' other requests (Recommended, the full post) answer on Ktor's own dispatcher too.
   private fun ComposeUiTest.settle() {
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Rating").fetchSemanticsNodes().isNotEmpty() }
     waitForIdle()
@@ -149,7 +143,6 @@ class FromTheBookTest {
     assertEquals(listOf("4012"), booksAsked.toList(), "one request, with the post's id")
     onNodeWithContentDescription(ROW).performClick()
     assertEquals(listOf("12 The book"), opened)
-    // A middle-click keeps it as a queue item (#385) instead, after the grid's block.
     onNodeWithContentDescription(ROW).performMouseInput {
       moveTo(center)
       press(MouseButton.Tertiary)
@@ -170,7 +163,6 @@ class FromTheBookTest {
 
   @Test
   fun aDesktopIdFindsItsBookToo() = runDesktopComposeUiTest {
-    // `/post/{id}/pools` takes the obfuscated id desktop and the phone's desktop site get (#475).
     setContent { SankakuTheme { PostDetails(page.copy(id = "aB3dE5gH7jK"), navigator = navigator, tabs = tabs) } }
     awaitRow()
     assertEquals(listOf("aB3dE5gH7jK"), booksAsked.toList())
@@ -191,7 +183,6 @@ class FromTheBookTest {
 
     open = true
     awaitRow()
-    // To another page and back: the first one's book is kept, so it shows at once and isn't asked again.
     shown = page.copy(id = "4013")
     waitUntil(timeoutMillis = 5_000) { booksAsked.size == 2 }
     shown = page

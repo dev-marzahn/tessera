@@ -7,7 +7,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** #177: the queue page's reorder moves blocks whole and kept posts within them; a feed moves as any block (#327). */
 class QueueReorderTest {
   private val tabs = TabsController()
 
@@ -22,7 +21,6 @@ class QueueReorderTest {
 
   private fun blockOf(title: String) = tabs.tabs.value.single { it.title == title }.block
 
-  // Browse, then a with p1 and p2 kept, then b with p3 kept.
   private fun twoBlocks() {
     tabs.open(Route.Grid(listOf("a")), background = false)
     keep("p1", "a")
@@ -82,7 +80,6 @@ class QueueReorderTest {
     assertEquals(listOf("Browse", "A", "p1", "p2", "B", "p3"), titles())
     assertNull(blockOf("p2"))
     assertEquals(id("A"), blockOf("p1"))
-    // On its own now, it moves as a block of one.
     assertEquals(2, tabs.moveInQueue(id("p2"), down = true))
     assertEquals(listOf("Browse", "A", "p1", "B", "p3", "p2"), titles())
   }
@@ -103,7 +100,6 @@ class QueueReorderTest {
     tabs.open(Route.Grid(listOf("a")), background = false)
     tabs.open(Route.Grid(listOf("feed:following")), background = false)
     tabs.open(Route.Grid(listOf("b")), background = false)
-    // A feed is a source that persists (#327): it stands where it was opened, and nothing keeps it last.
     assertEquals(listOf("Browse", "A", "Following", "B"), titles())
 
     assertEquals(1, tabs.moveInQueue(id("A"), down = true))
@@ -123,7 +119,6 @@ class QueueReorderTest {
 
     assertEquals(listOf("Browse", "A", "p1", "p2", "Browse", "B", "p3"), titles())
     assertEquals(4, tabs.tabs.value.indexOf(tabs.activeTab))
-    // Already on Browse: nothing is added.
     tabs.showBrowse()
     assertEquals(7, tabs.tabs.value.size)
   }

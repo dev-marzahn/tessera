@@ -27,10 +27,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
-/** #128: the network coming back retries what failed and clears the offline banner, through "Back online". */
 @OptIn(ExperimentalTestApi::class)
 class BackOnlineTest {
-  /** Offline as a request that couldn't reach Sankaku leaves it: the response hook sets it. */
   private fun ConnectivityState.loseConnection() = apply {
     val client = createAuthClient(MockEngine { throw IOException("unreachable") }, RequestLog(), RateLimiter(limits = emptyMap()), this)
     runBlocking { runCatching { client.get("https://sankakuapi.com/posts") } }
@@ -46,7 +44,6 @@ class BackOnlineTest {
     waitForIdle()
     assertEquals(0, retries)
 
-    // The fake default-network callback: Wi-Fi up, then validated.
     val wifi = Any()
     watcher.onDefaultNetwork(wifi, validated = false)
     waitForIdle()
@@ -72,7 +69,6 @@ class BackOnlineTest {
       }
     }
     waitForIdle()
-    // Focused while online: nothing to retry.
     assertEquals(0, retries)
 
     connectivity.loseConnection()
@@ -83,7 +79,6 @@ class BackOnlineTest {
     focused = true
     waitForIdle()
     assertEquals(1, retries)
-    // Only the response that follows clears it.
     assertTrue(connectivity.offline.value)
   }
 
@@ -94,7 +89,6 @@ class BackOnlineTest {
     var retries = 0
     setContent {
       val holder = rememberSaveableStateHolder()
-      // A tab's screen, its state saved by the tab's id while another tab is in front.
       if (shown) holder.SaveableStateProvider("tab") { RetryWhenBack(connectivity) { retries++ } }
     }
     waitForIdle()
@@ -109,7 +103,6 @@ class BackOnlineTest {
     waitForIdle()
     assertEquals(1, retries)
 
-    // Shown again with nothing new: no retry.
     shown = false
     waitForIdle()
     shown = true
@@ -122,7 +115,6 @@ class BackOnlineTest {
     mainClock.autoAdvance = false
     var offline by mutableStateOf(true)
     var state: ConnectivityBannerState? = null
-    // As `ConnectivityState` clears them: offline first, then unreachable.
     setContent { state = connectivityBannerState(offline, unreachable = true, rejected = false) }
     mainClock.advanceTimeByFrame()
     assertEquals(ConnectivityBannerState.Offline, state)
@@ -145,7 +137,6 @@ class BackOnlineTest {
     waitForIdle()
     assertEquals(ConnectivityBannerState.Offline, state)
 
-    // Nothing reloads after a 5xx, so no "Back online · reloading".
     offline = false
     waitForIdle()
     assertEquals(null, state)

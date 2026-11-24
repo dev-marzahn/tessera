@@ -17,16 +17,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * #472: signing in from the phone viewer's ♡ reloads the grid's list, and the new one can hold fewer posts. The
- * viewer's pager rebuilt its key map with its old page count, one past the shorter list's end, and its key peeked
- * there: IndexOutOfBounds. Past the end, the key is the page and a post is null.
- */
 @OptIn(ExperimentalTestApi::class)
 class ShorterReloadTest {
   private fun posts(count: Int) = List(count) { PostDto(id = "p$it", md5 = "m$it", rating = "s", status = "active") }
 
-  /** As PhoneViewer's pager: its page count comes in from the grid's composition, its keys from the list itself. */
   @Composable
   private fun Viewer(items: LazyPagingItems<PostDto>, loadedCount: Int, page: Int) {
     val pager = rememberPagerState(initialPage = page) { loadedCount }

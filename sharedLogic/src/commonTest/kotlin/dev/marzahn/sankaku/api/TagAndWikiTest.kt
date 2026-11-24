@@ -9,7 +9,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** #486: a tag's page from `/tag-and-wiki/name/{tag}`, its key encoded in the path, with V2. */
 class TagAndWikiTest {
   private val harness = Harness(InMemoryTokenStore(null)) { request ->
     when (request.url.encodedPath) {

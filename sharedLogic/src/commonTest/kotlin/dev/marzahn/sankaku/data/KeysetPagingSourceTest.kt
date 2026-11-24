@@ -37,7 +37,6 @@ class KeysetPagingSourceTest {
     assertEquals(listOf(PageCursor(null, 1), PageCursor("c2", 2)), seen)
   }
 
-  /** The search-time limit is intermittent (`docs/api.md`, step 4): a page that ran past it is asked once more (#520). */
   @Test
   fun aSearchTimeoutIsRetriedOnceThenShown() = runTest {
     for (timeouts in 1..2) {
@@ -71,10 +70,6 @@ class KeysetPagingSourceTest {
     assertNull(second.nextKey)
   }
 
-  /**
-   * For you (2026-10-31) repeats a few posts from one page to the next. The grid keys its cells by id, and a key twice
-   * crashed it when Top scrolled both copies into view (#72).
-   */
   @Test
   fun aPostAnEarlierPageHadIsDroppedSoEachShowsOnce() = runTest {
     val source = KeysetPagingSource({ it }) { cursor ->
@@ -111,7 +106,6 @@ class KeysetPagingSourceTest {
     assertEquals(PageCursor("n4", 4), second.nextKey)
   }
 
-  /** #507: posts hidden from signed-out users are left out, and a page of nothing else is skipped like an empty one. */
   @Test
   fun hiddenItemsAreLeftOutAndEachPageWithSomeIsReported() = runTest {
     var hidden = 0

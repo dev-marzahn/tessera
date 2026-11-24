@@ -35,7 +35,6 @@ class GridSettingsTest {
 
   @Test
   fun aPhonesSizesAreItsOwn() {
-    // #468: 80 to 200 dp in 10 dp steps; desktop's stay 160 to 560 in 20s (#445).
     assertEquals(PostSizes(min = 80, max = 200, step = 10, default = 110), PostSizes.Phone)
     assertEquals(PostSizes(min = 160, max = 560, step = 20, default = 220), PostSizes.Desktop)
     val settings = GridSettings(InMemoryTextFile(), PostSizes.Phone)
@@ -58,7 +57,6 @@ class GridSettingsTest {
   @Test
   fun aRangeMustBeWholeSteps() {
     assertFailsWith<IllegalArgumentException> { PostSizes(min = 80, max = 205, step = 10, default = 110) }
-    // The default is one of the slider's sizes.
     assertFailsWith<IllegalArgumentException> { PostSizes(min = 80, max = 200, step = 10, default = 115) }
     assertFailsWith<IllegalArgumentException> { PostSizes(min = 80, max = 200, step = 10, default = 220) }
   }

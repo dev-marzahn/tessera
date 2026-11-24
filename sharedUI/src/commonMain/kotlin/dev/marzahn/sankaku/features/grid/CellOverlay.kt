@@ -15,27 +15,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalTextStyle
 import dev.marzahn.sankaku.ui.components.AlreadyTab
 import dev.marzahn.sankaku.ui.components.FavouriteBadgeButton
 import dev.marzahn.sankaku.ui.components.InTabChip
-import dev.marzahn.sankaku.ui.components.InTabWash
 import dev.marzahn.sankaku.ui.components.KbdBadge
 import dev.marzahn.sankaku.ui.components.SeenBadge
 import dev.marzahn.sankaku.ui.components.Shortcuts
 
-/** A favourites grid: its tags hold `fav:<name>`, so a post unfavourited there stays, dimmed, until the next reload. */
 fun isFavouritesSearch(tags: List<String>): Boolean = tags.any { it.startsWith("fav:") }
 
-/**
- * What a grid cell draws over its image. [unfavourited] (a favourites grid's post whose override says not favourited)
- * dims the cell and offers Undo, which [onToggleFavourite] does. The heart in the corner is badge and button in one
- * ([FavouriteBadgeButton]): a favourited post's badge grows into the button while [hovered], and a post that isn't
- * favourited shows it only then. [openInTab] (some tab shows the post; the grid greys its image) lays a
- * light wash over it and an "In tab" chip in the bottom-left corner, which no other mark uses, so what's already
- * queued shows while scrolling; with [alreadyTab] the chip says "Already tab N" (or "Kept again"). A [seen] post
- * (#182) has a [SeenBadge] before the chip. The unfavourited scrim is darker and wins. [keyHints] (the keyboard cursor's cell) shows E and Space in the bottom-right corner.
- */
 @Composable
 fun CellOverlay(
   favourited: Boolean,
@@ -49,14 +44,8 @@ fun CellOverlay(
   keyHints: Boolean = false,
 ) {
   Box(modifier.fillMaxSize()) {
-    if (unfavourited) {
-      UnfavouritedScrim(onUndo = onToggleFavourite)
-    } else if (openInTab) {
-      InTabWash()
-    }
+    if (unfavourited) UnfavouritedScrim(onUndo = onToggleFavourite)
     if (seen || openInTab) {
-      // The bottom-left corner: the seen badge, then the chip beside it. In a phone's narrowest cell (80 dp, #468)
-      // the chip drops its icon to fit (`inTabChipShowsIcon`).
       Row(
         Modifier.align(Alignment.BottomStart).padding(6.dp),
         verticalAlignment = Alignment.Bottom,
@@ -78,7 +67,6 @@ fun CellOverlay(
         }
       }
     }
-    // Kept over the scrim, so the pop of the click that unfavourited it plays.
     FavouriteBadgeButton(
       favourited = favourited,
       expanded = hovered,
@@ -88,20 +76,85 @@ fun CellOverlay(
   }
 }
 
-/** Dims the cell in place, so the posts around it don't move, with "Unfavourited · Undo" over it. */
 @Composable
 private fun UnfavouritedScrim(onUndo: () -> Unit) {
   Box(
-    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)),
+    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)).padding(4.dp),
     contentAlignment = Alignment.Center,
   ) {
-    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface) {
-      Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Unfavourited ·", style = MaterialTheme.typography.labelLarge)
-        TextButton(onClick = onUndo) {
-          Text("Undo", color = MaterialTheme.colorScheme.inversePrimary)
-        }
-      }
+    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.inverseSurface) {
+      val style = MaterialTheme.typography.labelLarge
+      UndoPillLayout(
+        label = { Text("Unfavourited", style = style, maxLines = 1, softWrap = false) },
+        dot = { Text(" ·", style = style, maxLines = 1, softWrap = false, modifier = Modifier.clearAndSetSemantics {}) },
+        undo = {
+          TextButton(onClick = onUndo) {
+            val size = LocalTextStyle.current.fontSize
+            Text(
+              "Undo",
+              color = MaterialTheme.colorScheme.inversePrimary,
+              maxLines = 1,
+              autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = size),
+            )
+          }
+        },
+      )
     }
   }
+}
+
+internal enum class UndoPillShape { Row, Stacked, UndoOnly }
+
+private val PILL_START = 14.dp
+private val PILL_STACK_TOP = 8.dp
+
+@Composable
+private fun UndoPillLayout(label: @Composable () -> Unit, dot: @Composable () -> Unit, undo: @Composable () -> Unit) {
+  Layout(contents = listOf(label, dot, undo)) { (labels, dots, undos), constraints ->
+    val free = Constraints(maxHeight = constraints.maxHeight)
+    val l = labels.first().measure(free)
+    val d = dots.first().measure(free)
+    val u = undos.first().measure(free.copy(maxWidth = constraints.maxWidth))
+    val start = PILL_START.roundToPx()
+    val top = PILL_STACK_TOP.roundToPx()
+    val shape = undoPillShape(
+      maxWidth = constraints.maxWidth,
+      maxHeight = constraints.maxHeight,
+      rowWidth = start + l.width + d.width + u.width,
+      rowHeight = maxOf(l.height, u.height),
+      stackWidth = maxOf(2 * start + l.width, u.width),
+      stackHeight = top + l.height + u.height,
+    )
+    when (shape) {
+      UndoPillShape.Row -> {
+        val height = maxOf(l.height, u.height)
+        layout(start + l.width + d.width + u.width, height) {
+          l.place(start, (height - l.height) / 2)
+          d.place(start + l.width, (height - d.height) / 2)
+          u.place(start + l.width + d.width, (height - u.height) / 2)
+        }
+      }
+      UndoPillShape.Stacked -> {
+        val width = maxOf(2 * start + l.width, u.width)
+        layout(width, top + l.height + u.height) {
+          l.place((width - l.width) / 2, top)
+          u.place((width - u.width) / 2, top + l.height)
+        }
+      }
+      UndoPillShape.UndoOnly -> layout(u.width, u.height) { u.place(0, 0) }
+    }
+  }
+}
+
+internal fun undoPillShape(
+  maxWidth: Int,
+  maxHeight: Int,
+  rowWidth: Int,
+  rowHeight: Int,
+  stackWidth: Int,
+  stackHeight: Int,
+): UndoPillShape = when {
+  rowWidth <= maxWidth && rowHeight <= maxHeight -> UndoPillShape.Row
+  stackWidth <= maxWidth && stackHeight <= maxHeight -> UndoPillShape.Stacked
+  else -> UndoPillShape.UndoOnly
 }

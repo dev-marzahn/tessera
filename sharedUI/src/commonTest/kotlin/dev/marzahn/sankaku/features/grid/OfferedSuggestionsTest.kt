@@ -10,7 +10,6 @@ class OfferedSuggestionsTest {
     TagSuggestion("imagination_scenery", rating = "e"),
     TagSuggestion("scenery_censor", rating = "q"),
     TagSuggestion("unrated_scenery"),
-    // Asked for "-scen", autocomplete keeps the `-` (smoke step 10); an excluded G tag is still offered.
     TagSuggestion("-scenery", rating = "s"),
   )
 

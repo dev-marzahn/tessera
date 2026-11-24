@@ -61,11 +61,6 @@ class PostImageFetcherTest {
 
   private val fresh = previewUrl(now + 1.hours, "fresh")
 
-  /**
-   * [image] answers each image request with a [side] × [side] PNG, or with [body]'s bytes where it gives some; the
-   * keyset endpoint returns the post, a [fileType], with [refetched] as its preview URL (none for null) and
-   * [refetchedSample] as its sample's. The loader decodes AVIFs up to [maxAvifBitDepth] bits (Android's is 10).
-   */
   private inner class Rig(
     val side: Int = 2,
     val refetched: String? = fresh,
@@ -111,7 +106,6 @@ class PostImageFetcherTest {
       )
     }
 
-    /** What `decodedInMemory` would draw for the post: the shared memory entry, at whatever size it was decoded. */
     fun inMemory() = loader.memoryCache?.get(MemoryCache.Key("m1-Preview"))?.image
 
     fun imageRequests() = requests.filter { it.url.host != "sankakuapi.com" }
@@ -200,7 +194,6 @@ class PostImageFetcherTest {
 
   @Test
   fun aTinyDecodeNeverBecomesTheSharedMemoryCopy() {
-    // #119: the viewer's image room is 1 px tall while the phone's details sheet is full.
     val rig = Rig(side = 800) { HttpStatusCode.OK }
 
     assertIs<SuccessResult>(rig.load(fresh, size = 1))
@@ -210,7 +203,6 @@ class PostImageFetcherTest {
     val shared = assertNotNull(rig.inMemory())
     assertEquals(400, shared.width)
 
-    // A tiny request afterwards is served the shared copy and leaves it as it was.
     assertIs<SuccessResult>(rig.load(fresh, size = 1))
     assertEquals(400, assertNotNull(rig.inMemory()).width)
   }
@@ -237,7 +229,6 @@ class PostImageFetcherTest {
   private val twelveBit = javaClass.getResourceAsStream("/twelve-bit.avif")!!.readBytes()
   private val freshSample = "https://v.sankakucomplex.com/data/sample/x.webp?e=${(now + 1.hours).epochSeconds}&m=s"
 
-  /** The preview's URL answers with the 12-bit AVIF, any other image URL with the PNG, or [sampleStatus]. */
   private fun twelveBitPreviewRig(
     maxAvifBitDepth: Int = 10,
     refetchedSample: String? = freshSample,
@@ -257,7 +248,6 @@ class PostImageFetcherTest {
   @Test
   fun aCacheOnlyRequestLeavesAnUndecodablePreviewOnDiskAndMisses() {
     val rig = twelveBitPreviewRig(maxAvifBitDepth = 12)
-    // Cached as an app without the fix would have. Only macOS decodes AVIF here, so the result itself isn't checked.
     rig.load(fresh, size = 400)
     assertTrue(assertNotNull(rig.cachedPreview()).contentEquals(twelveBit))
     val android = twelveBitPreviewRig()
@@ -297,7 +287,6 @@ class PostImageFetcherTest {
 
   @Test
   fun aPreviewDeeperThanThePlatformDecodesIsReplacedByTheSample() {
-    // #576: Android draws a 12-bit AVIF as green stripes, so the cell shows the post's sample instead.
     val rig = twelveBitPreviewRig()
 
     val result = assertIs<SuccessResult>(rig.load(fresh, size = 400))
@@ -324,7 +313,7 @@ class PostImageFetcherTest {
   fun aPreviewThePlatformDecodesIsKept() {
     val rig = twelveBitPreviewRig(maxAvifBitDepth = 12)
 
-    rig.load(fresh, size = 400) // decoded only on macOS (ImageIO); CI's Linux has no AVIF decoder
+    rig.load(fresh, size = 400)
 
     assertEquals(listOf(fresh), rig.imageRequests().map { it.url.toString() })
   }

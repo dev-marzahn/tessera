@@ -14,11 +14,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The phone has no tabs, so its words are the queue's (#249); desktop keeps "tab" while it has the tab strip. */
 class PhoneWordsTest {
   @Test
   fun thePhoneSaysKeptAndItems() {
-    // No double-tap on grid cells (#324), so the tip teaches the long-press only.
     assertEquals("Long-press a post to keep it.", Tip.GridGestures.text)
     assertEquals("Kept", inTabLabel(touch = true))
     assertEquals("Already item 4", alreadyLabel(4, touch = true))

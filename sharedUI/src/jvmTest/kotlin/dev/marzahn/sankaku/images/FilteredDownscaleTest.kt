@@ -25,7 +25,6 @@ class FilteredDownscaleTest {
   private fun options(size: Size, scale: Scale = Scale.FIT, precision: Precision = Precision.INEXACT) =
     Options(PlatformContext.INSTANCE, size = size, scale = scale, precision = precision)
 
-  /** A [side] px square of alternating black and white pixels: the finest screentone there is. */
   private fun checkerboardPng(side: Int): ByteArray {
     val bitmap = Bitmap()
     bitmap.allocN32Pixels(side, side)
@@ -43,7 +42,6 @@ class FilteredDownscaleTest {
     val bitmap = assertIs<BitmapImage>(result.image).bitmap
     assertEquals(70, bitmap.width)
     assertTrue(result.isSampled)
-    // Nearest neighbour keeps every n-th pixel: patches of solid black or white. Averaging gives mid grey throughout.
     for (y in 0 until 70) for (x in 0 until 70) {
       val red = (bitmap.getColor(x, y) shr 16) and 0xFF
       assertTrue(red in 120..136, "pixel ($x, $y) is $red, not grey")

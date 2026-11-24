@@ -40,7 +40,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
-/** #314: Settings → Account → Followed tags lists the follows, unfollows at once, and follows back. */
 @OptIn(ExperimentalTestApi::class)
 class FollowedTagsPageTest {
   private val calls = CopyOnWriteArrayList<String>()
@@ -74,7 +73,6 @@ class FollowedTagsPageTest {
 
   @Test
   fun aFollowOrUnfollowElsewhereShowsInTheListAtOnce() = runDesktopComposeUiTest(width = 600, height = 900) {
-    // #539: "rock" was followed from a tag's menu and "landscape" unfollowed; Sankaku's list (the mock) has neither change.
     val tags = tagsApi()
     val follows = TagFollows(tags)
     runBlocking {
@@ -90,7 +88,6 @@ class FollowedTagsPageTest {
 
     onNode(hasText("Unfollow") and hasAnyAncestor(hasTestTag("followed-tag-rock"))).assertIsDisplayed()
     onNode(hasText("Follow") and hasAnyAncestor(hasTestTag("followed-tag-landscape"))).assertIsDisplayed()
-    // The new follow is first, as Sankaku lists a new follow.
     val rockTop = onNode(hasTestTag("followed-tag-rock")).fetchSemanticsNode().boundsInRoot.top
     val artistTop = onNode(hasTestTag("followed-tag-artist_x")).fetchSemanticsNode().boundsInRoot.top
     assertTrue(rockTop < artistTop)

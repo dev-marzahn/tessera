@@ -47,7 +47,6 @@ class UpdateCheckTest {
   private fun release(tag: String, url: String = "$PUBLIC_REPO_URL/releases/tag/$tag") =
     """{ "tag_name": "$tag", "html_url": "$url", "name": "Tessera $tag", "draft": false, "prerelease": false }"""
 
-  /** A check over a [MockEngine] answering with [handler]; [requests] holds what it sent. */
   private class Fixture(
     val file: InMemoryTextFile = InMemoryTextFile(),
     val clock: MovableClock = MovableClock(),
@@ -63,10 +62,6 @@ class UpdateCheckTest {
     )
   }
 
-  /**
-   * Waits, in real time, for what [start][UpdateCheck.start] does in the background: the mock engine answers on its own
-   * thread, so the test scheduler's idle doesn't wait for it.
-   */
   private suspend fun <T> eventually(read: () -> T, done: (T) -> Boolean): T = withContext(Dispatchers.Default) {
     withTimeout(5.seconds) {
       while (!done(read())) delay(10)
@@ -219,13 +214,11 @@ class UpdateCheckTest {
     assertEquals(1, f.requests.size)
   }
 
-  /** The switch and answers changing at once on several threads: what shows and what's kept agree at the end. */
   @Test
   fun theSwitchAndAnAnswerAtOnceLeaveTheDotTheSwitchAndTheFileAgreeing() = runTest {
     repeat(50) { round ->
       val clock = MovableClock()
       val f = Fixture(clock = clock) { json(release("v100.1.0")) }
-      // Known from the start, so the dot shows whenever the switch is on.
       f.check.checkIfDue()
       withContext(Dispatchers.Default) {
         val jobs = List(8) { worker ->
@@ -256,10 +249,6 @@ class UpdateCheckTest {
     assertEquals(1, f.requests.size)
   }
 
-  /**
-   * Over the engine the signed-in main client uses, as the app wires it: GitHub gets no bearer token, no cookie, no
-   * Sankaku endpoint header and none of the browser fingerprint (#204), only its own User-Agent and media type.
-   */
   @Test
   fun theRequestCarriesNoSankakuHeadersTokensOrFingerprint() = runTest {
     val h = Harness(store = InMemoryTokenStore(storedTokens())) { request ->
@@ -273,13 +262,12 @@ class UpdateCheckTest {
     UpdateCheck(InMemoryTextFile(), createGitHubClient(h.engine), MovableClock()).checkIfDue()
     val github = h.requests.last()
     assertEquals("api.github.com", github.url.host)
-    assertEquals("/repos/dev-marzahn/tessera-app/releases/latest", github.url.encodedPath)
+    assertEquals("/repos/dev-marzahn/tessera/releases/latest", github.url.encodedPath)
     assertTrue(github.url.parameters.isEmpty())
     val names = github.headers.names().map { it.lowercase() }.toSet()
     assertFalse(HttpHeaders.Authorization.lowercase() in names)
     assertFalse(HttpHeaders.Cookie.lowercase() in names)
     assertTrue(names.none { it.startsWith("sec-ch-") }, "client hints: $names")
-    // GitHub's own Accept is allowed; Sankaku's value for it, or any other Sankaku endpoint header, isn't.
     HeaderSet.entries.flatMap { it.headers.entries }.forEach { (name, value) ->
       assertFalse(github.headers.getAll(name).orEmpty().contains(value), name)
       if (!name.equals(HttpHeaders.Accept, ignoreCase = true)) assertFalse(name.lowercase() in names, name)

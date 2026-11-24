@@ -24,10 +24,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/**
- * `tabs.json` v1 → v2 (#174): the owner's session of about 170 tabs must come through whole. The fixture is synthetic:
- * made-up tags and ids, never a real file.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TabsMigrationTest {
   private val now = Instant.parse("2026-11-01T12:00:00Z")
@@ -37,10 +33,6 @@ class TabsMigrationTest {
 
   private fun route(route: Route) = Json.encodeToString(Route.serializer(), route)
 
-  /**
-   * A v1 file as the app wrote it before #174, with [count] tabs: grids on searches (some with a place, every place
-   * shape), feeds, and posts opened into a grid's block, some kept over their grid (two routes).
-   */
   private fun v1File(count: Int, active: Int): String {
     val tabs = (0 until count).map { i ->
       val id = "t$i"
@@ -68,8 +60,6 @@ class TabsMigrationTest {
     val controller = TabsController(store, clock = clock)
     val migrated = controller.saved()
 
-    // Order, active tab, routes, blocks and places, exactly as in the v1 file, except that a post kept over a copy of
-    // its grid is a lone post from #181. The feeds stay where they stood (#327: nothing reorders at load).
     val queued = before.tabs
     assertEquals(170, controller.tabs.value.size)
     assertEquals(queued.indexOfFirst { it.id == before.tabs[before.activeIndex].id }, migrated.activeIndex)
@@ -83,14 +73,12 @@ class TabsMigrationTest {
     assertEquals(queued.map { it.place }, migrated.tabs.map { it.place })
     assertTrue(migrated.tabs.count { it.block != null } > 60)
     assertTrue(migrated.tabs.count { it.place?.cursor != null } > 30)
-    // The queue's facts: kind from the top route, touched now, one earlier session, posts kept now.
     assertEquals(queued.map { it.routes.last().kindName }, migrated.tabs.map { it.kind })
     assertEquals(setOf(QueueKind.Source, QueueKind.KeptPost, QueueKind.Feed), migrated.tabs.mapNotNull { it.kind }.toSet())
     assertTrue(migrated.tabs.all { it.touched == now.epochSeconds })
     assertTrue(migrated.tabs.all { it.addedIn == SessionId.EARLIER.value })
     assertEquals(migrated.tabs.map { if (it.kind == QueueKind.KeptPost) now.epochSeconds else null }, migrated.tabs.map { it.keptAt })
     assertEquals(SavedTabs.VERSION, migrated.version)
-    // Nothing is written until the first save, and then the v1 text goes to the backup first.
     assertEquals(v1, file.read())
     assertNull(backup.read())
 
@@ -98,7 +86,6 @@ class TabsMigrationTest {
 
     assertEquals(v1, backup.read())
     assertNotEquals(v1, file.read())
-    // It loads again as v2, unchanged, and the backup isn't written again.
     val reloaded = FileTabStateStore(file, backup, clock = clock).load()
     assertEquals(migrated, reloaded)
     val again = TabsController(FakeStore(reloaded), clock = clock).saved()
@@ -118,7 +105,6 @@ class TabsMigrationTest {
 
     assertEquals("2", root["version"].toString())
     assertTrue("session" in root)
-    // A grid with no block keeps no block or kept-at; a feed has no place. The feed (t3) stays where it stood (#327).
     assertEquals(setOf("id", "routes", "place", "kind", "touched", "addedIn"), tabs[0].keys)
     assertEquals(setOf("id", "routes", "kind", "touched", "addedIn"), tabs[3].keys)
     assertEquals(setOf("id", "routes", "block", "kind", "touched", "addedIn", "keptAt"), tabs[2].keys)
@@ -149,7 +135,6 @@ class TabsMigrationTest {
     }
 
     val controller = TabsController(FileTabStateStore(file, broken = broken, clock = clock), clock = clock)
-    // The first change's save fails too, rather than write over it.
     assertFailsWith<java.io.IOException> { FileTabStateStore(file, broken = broken).also { it.load() }.save(controller.saved()) }
 
     assertEquals(1, controller.tabs.value.size)
@@ -179,7 +164,6 @@ class TabsMigrationTest {
     controller.open(Route.Grid(listOf("first")), background = true)
     Snapshot.sendApplyNotifications()
     advanceTimeBy(TabsController.SAVE_DELAY + 100.milliseconds)
-    // The copy failed, so the v1 file wasn't written over.
     assertEquals(v1, file.read())
     assertNull(backup.text)
 
@@ -240,7 +224,6 @@ class TabsMigrationTest {
     controller.open(Route.Grid(listOf("new_search")), background = true)
     controller.open(Route.Grid(listOf("newer_search")), background = true)
 
-    // With nothing added in this session yet, "later" is the end of the queue, then after what this session added.
     assertEquals(listOf("New Search", "Newer Search"), controller.tabs.value.takeLast(2).map { it.title })
     assertEquals(controller.sessions.current, controller.tabs.value.last().addedIn)
     assertEquals(SessionId.EARLIER, controller.tabs.value[0].addedIn)

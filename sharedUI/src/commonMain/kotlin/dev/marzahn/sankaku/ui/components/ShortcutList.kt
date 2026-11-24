@@ -1,23 +1,13 @@
 package dev.marzahn.sankaku.ui.components
 
-/**
- * One line of the keyboard shortcuts sheet (#521): what [action] does, and its keys. Each of [keys] is one way to do it,
- * its badges pressed in turn or together; the ways are joined by [joiner] ("or", or "then" for a key that works once
- * the one before it has opened something).
- */
 data class ShortcutRow(val action: String, val keys: List<List<String>>, val joiner: String = "or")
 
-/** A heading of the sheet ("Tabs") and its rows. */
 data class ShortcutGroup(val title: String, val rows: List<ShortcutRow>)
 
 private fun row(action: String, vararg ways: List<String>) = ShortcutRow(action, ways.toList())
 
 private fun keys(vararg shortcuts: Shortcut) = shortcuts.map { it.label }
 
-/**
- * Every key the desktop has, by where it works, built from [Shortcuts]' labels, so a key that changes there changes
- * here. A screen that takes a key ([Shortcuts.OpenHere] on the grid, the viewer, the reader) has its own group.
- */
 val ShortcutGroups: List<ShortcutGroup> = with(Shortcuts) {
   listOf(
     ShortcutGroup(
@@ -79,7 +69,6 @@ val ShortcutGroups: List<ShortcutGroup> = with(Shortcuts) {
         row("Play · pause", keys(PlayPause)),
         row("Mute", keys(Mute)),
         row("Seek and volume keys", keys(Scrub)),
-        // Once V is on: A/D seek and W/S set the volume.
         ShortcutRow("Then seek · volume", listOf(listOf("A", "D"), listOf("W", "S")), joiner = "·"),
       ),
     ),
@@ -117,14 +106,9 @@ val ShortcutGroups: List<ShortcutGroup> = with(Shortcuts) {
   )
 }
 
-/**
- * The groups with only the rows that match [query]: by what they do or where they work ("tab", "video"), or by a key
- * ("x", "⌘w"), ignoring case. A group whose title matches keeps all its rows; a group left with none goes.
- */
 fun List<ShortcutGroup>.matching(query: String): List<ShortcutGroup> {
   val wanted = query.trim()
   if (wanted.isEmpty()) return this
-  // One character is a key ("x"), not the inside of a word: "next" doesn't close a tab.
   val byWords = wanted.length > 1
   return mapNotNull { group ->
     if (byWords && group.title.contains(wanted, ignoreCase = true)) return@mapNotNull group

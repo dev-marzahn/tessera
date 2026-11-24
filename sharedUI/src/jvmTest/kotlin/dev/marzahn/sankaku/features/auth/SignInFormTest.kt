@@ -21,10 +21,8 @@ import dev.marzahn.sankaku.OpenUrlResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The sign-in form's three states from UX review #126, finding 11. */
 @OptIn(ExperimentalTestApi::class)
 class SignInFormTest {
-  // The semantics tree carries the raw text either way, so whether it is masked is checked on screen, not here.
   @Test
   fun theEyeTogglesItsLabelAndStartsHidden() = runComposeUiTest {
     setContent { Column { SignInFields(TextFieldState(), TextFieldState("hunter22"), enabled = true) } }
@@ -57,7 +55,6 @@ class SignInFormTest {
     onNodeWithTag(SignInButtonTag).assertIsEnabled()
   }
 
-  // Decision 15 in #196: sign-up is Sankaku's own page in the browser; the app registers nothing itself.
   @Test
   fun createAnAccountOpensTheSignUpPageOnly() = runComposeUiTest {
     val opened = mutableListOf<String>()
@@ -70,7 +67,6 @@ class SignInFormTest {
     onAllNodesWithText(NoAppForLink).assertCountEquals(0)
   }
 
-  // #358: the dialog covers the snackbar, so the link says it under itself.
   @Test
   fun createAnAccountSaysWhenNoAppCanOpenIt() = runComposeUiTest {
     setContent { CreateAccountLink(open = { OpenUrlResult.Failed }) }

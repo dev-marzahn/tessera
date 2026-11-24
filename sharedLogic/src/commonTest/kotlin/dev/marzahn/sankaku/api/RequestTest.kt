@@ -152,7 +152,7 @@ class RequestTest {
   fun authClientCallsCarryNoAuthorization() = runTest {
     val h = apiHarness()
     h.session.restore()
-    h.users.me() // the main client now holds a bearer token
+    h.users.me()
     h.authApi.passwordLogin("tester", "secret")
     h.authApi.exchange("login-token")
     h.authApi.refresh("old-refresh")
@@ -207,7 +207,6 @@ class RequestTest {
   @Test
   fun theRateLimitedErrorShowsThePause() = runTest {
     var retryAfter = "2.4"
-    // The limiter's own pause on the test scheduler's clock, so the 429s' pauses pass in virtual time.
     val h = Harness(limiter = RateLimiter(testScheduler.timeSource, limits = emptyMap())) {
       respond("{}", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, retryAfter))
     }
@@ -240,7 +239,6 @@ class RequestTest {
     assertFailsWith<ApiError.Rejected> { h.posts.keyset(emptyList()) }
   }
 
-  /** Sankaku refuses a search past the tag limit with a 429 (step d27, `docs/api.md` → Search limits; #520). */
   @Test
   fun aTagLimit429IsTheTagLimitWithTheLimitFromParam() = runTest {
     val cases = listOf(
@@ -256,7 +254,6 @@ class RequestTest {
     }
   }
 
-  /** A header Ktor can't parse got an answer, so it's no connection error: never "You're offline" (#473). */
   @Test
   fun aParseFailureIsNotANetworkError() = runTest {
     val h = Harness { throw ParseException("Invalid blob value: it should be token68") }

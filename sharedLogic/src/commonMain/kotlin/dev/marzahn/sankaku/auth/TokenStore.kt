@@ -3,7 +3,6 @@ package dev.marzahn.sankaku.auth
 import dev.marzahn.sankaku.api.dto.UserSummary
 import kotlin.time.Instant
 
-/** The password is never part of this. */
 data class StoredTokens(
   val accessToken: String,
   val refreshToken: String,

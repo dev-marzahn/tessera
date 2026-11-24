@@ -11,10 +11,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * The phone claims Chrome's desktop site (#475), whose ids are obfuscated. A numeric id, saved by a build from before,
- * is only found with the Android User-Agent, so a request about one goes out as Android Chrome; nothing else does.
- */
 class NumericIdFingerprintTest {
   private val desktopSite = BrowserFingerprint(BrowserPlatform.AndroidDesktopSite)
   private val android = BrowserFingerprint(BrowserPlatform.Android)
@@ -46,9 +42,7 @@ class NumericIdFingerprintTest {
     books.pages("4012")
     books.saveReading("4012", 1)
     books.booksOf("12345678")
-    // A series' id goes in GraphQL's body, not the URL (a series queue item, or an old book's series).
     books.series("31337")
-    // So does a reading place's book id when it's forgotten (`pool_ids`).
     books.clearReading("4012")
     val legacy = h.requests.toList()
     h.requests.clear()

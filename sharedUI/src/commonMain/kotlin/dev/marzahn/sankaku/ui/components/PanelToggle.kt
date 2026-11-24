@@ -10,12 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
-/**
- * An M3 expressive icon toggle that shows or hides a side panel, so it reads as one control changing state: its
- * shape morphs (round while off, a rounded square while on) and its container takes [checkedContainer] or
- * [uncheckedContainer], cross-fading between them. Pick each colour to stand out from what is under the button in
- * that state.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PanelToggleButton(

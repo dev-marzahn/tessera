@@ -18,7 +18,6 @@ class ViewerSheetTest {
   @Test
   fun flingUpGoesToNextStopAbove() {
     assertEquals(400f, settleLift(20f, -2000f, stops, fling))
-    // From a stop, the next one: a flick at half lifts it full.
     assertEquals(1000f, settleLift(400f, -2000f, stops, fling))
     assertEquals(1000f, settleLift(1000f, -2000f, stops, fling))
   }
@@ -36,7 +35,6 @@ class ViewerSheetTest {
     assertEquals(0.5f to 0f, sheetFractions(200f, stops))
     assertEquals(1f to 0.5f, sheetFractions(700f, stops))
     assertEquals(1f to 1f, sheetFractions(1000f, stops))
-    // Stops not measured yet.
     assertEquals(0f to 0f, sheetFractions(0f, SheetStops(0f, 0f)))
   }
 

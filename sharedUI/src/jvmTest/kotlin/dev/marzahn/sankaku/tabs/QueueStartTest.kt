@@ -13,10 +13,6 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
-/**
- * #177: a start (a launch, or a return after more than 5 minutes away) lands where Start on says. #264: the queue
- * page's blur lasts until the queue's first use in the process, which no start undoes.
- */
 class QueueStartTest {
   private val time = TestTimeSource()
   private val tabs = TabsController().apply { open(Route.Grid(listOf("a")), background = false) }
@@ -65,12 +61,10 @@ class QueueStartTest {
     time += 5.minutes + 1.seconds
     start.returned()
 
-    // #264: the blur lasts until the queue's first use in this process, not in this start.
     assertTrue(start.pageOpen)
     assertTrue(start.interacted)
   }
 
-  // #264: a launch is blurred until the queue is first used.
   @Test
   fun aLaunchIsNotAUse() {
     start.launched()
@@ -88,7 +82,6 @@ class QueueStartTest {
     start.left()
     time += 5.minutes + 1.seconds
     start.returned()
-    // The new Browse grid the return showed.
     start.shown(tabs.activeTab.id)
 
     assertFalse(start.interacted)
@@ -115,12 +108,10 @@ class QueueStartTest {
     assertFalse(start.interacted)
   }
 
-  // #231: the queue page opens only when the queue holds more than the current item.
   private fun launchedOn(controller: TabsController) = QueueStart(controller, privacy, time).apply { launched() }
 
   private fun route(route: Route) = Json.encodeToString(Route.serializer(), route)
 
-  /** A `tabs.json` v1, as written before #174, holding [routes] (one list per tab) with the first tab active. */
   private fun v1(vararg routes: List<Route>): TabsController {
     val tabs = routes.mapIndexed { i, r -> """{"id":"t$i","routes":[${r.joinToString(",", transform = ::route)}]}""" }
     val file = InMemoryTextFile("""{"activeIndex":0,"tabs":[${tabs.joinToString(",")}]}""")
@@ -140,7 +131,6 @@ class QueueStartTest {
   @Test
   fun aMigratedV1FileWithOnlyTheBrowseGridOpensOnIt() {
     assertFalse(launchedOn(v1(listOf(Route.Grid(emptyList())))).pageOpen)
-    // A feed item doesn't count (#229), and a grid's back stack is still one source.
     assertFalse(launchedOn(v1(listOf(Route.Grid(emptyList())), listOf(Route.Grid(listOf("feed:following"))))).pageOpen)
     assertFalse(launchedOn(v1(listOf(Route.Grid(emptyList()), Route.Grid(listOf("a"))))).pageOpen)
   }
@@ -149,7 +139,6 @@ class QueueStartTest {
   fun aMigratedV1FileWithAKeptPostOrTwoSourcesOpensTheQueuePage() {
     val post = Route.Post("p1", "m1", listOf("a"))
     assertTrue(launchedOn(v1(listOf(Route.Grid(listOf("a"))), listOf(post))).pageOpen)
-    // A post kept over its grid becomes the grid and a kept post (#181).
     assertTrue(launchedOn(v1(listOf(Route.Grid(listOf("a")), post))).pageOpen)
     assertTrue(launchedOn(v1(listOf(Route.Grid(emptyList())), listOf(Route.Grid(listOf("a"))))).pageOpen)
   }

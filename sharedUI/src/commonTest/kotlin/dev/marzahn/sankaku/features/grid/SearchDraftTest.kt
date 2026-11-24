@@ -58,7 +58,6 @@ class SearchDraftTest {
     assertEquals(setOf(Rating.G), Rating.inTags(listOf("rating:safe")))
   }
 
-  /** A post's rating code reads as the search bar's badge and name, as in the post details (#139). */
   @Test
   fun aPostsRatingCodeIsTheSearchBarsBadgeAndName() {
     val shown = listOf("s", "q", "e").map { Rating.ofCode(it)?.let { rating -> rating.badge to rating.label } }
@@ -97,7 +96,6 @@ class SearchDraftTest {
 
   @Test
   fun aTabTitleNamesTheFavouritesFilterWithoutTheUsersName() {
-    // With content tags the filter is left to the subtitle (#233), which doesn't name the user either.
     assertEquals("Blue Hair", tabTitle(Route.Grid(listOf("fav:me", "blue_hair"))))
     assertEquals(listOf("favourites"), filterNotes(listOf("fav:me", "blue_hair")))
     assertEquals("Favourites", tabTitle(Route.Grid(listOf("fav:me"))))

@@ -23,22 +23,14 @@ import dev.marzahn.sankaku.shell.LocalOpenSearch
 import dev.marzahn.sankaku.ui.components.ApiErrorState
 import org.koin.compose.koinInject
 
-/**
- * What lies past a grid's last loaded post in its viewer (#524): its trailing page says so. Next goes there from the
- * last post, as a swipe does on a phone.
- */
 sealed interface ViewerEnd {
-  /** The next page is loading, or will once asked: the trailing page turns into its first post when it comes. */
   data object Loading : ViewerEnd
 
-  /** The next page failed to load with [error]: the trailing page gives its advice (#520) and Retry. */
   data class Failed(val error: Throwable) : ViewerEnd
 
-  /** The grid has no more posts. */
   data object NoMore : ViewerEnd
 }
 
-/** The [ViewerEnd] for a list whose next page ([append]) is in that state. */
 fun viewerEnd(append: LoadState): ViewerEnd = when {
   append is LoadState.Error -> ViewerEnd.Failed(append.error)
   append is LoadState.NotLoading && append.endOfPaginationReached -> ViewerEnd.NoMore
@@ -49,14 +41,8 @@ internal const val LoadingMorePosts = "Loading more posts"
 internal const val NoMorePosts = "No more posts"
 internal const val ViewerEndTag = "viewer-end"
 
-/**
- * The viewer's trailing page past the last loaded post (#524, the owner's pick from the mockups): on the viewer's
- * black (the phone's, which draws it dark) or in the desktop card's image panel: the loading indicator with "Loading
- * more posts", the failure's advice with its steps (`ApiErrorState`, as the grid's footer), or "No more posts".
- */
 @Composable
 fun ViewerEndPage(end: ViewerEnd, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-  // The theme's text colour, not what's around: on the phone's black that's the light theme's dark text.
   CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) { EndPageContent(end, onRetry, modifier) }
 }
 
@@ -71,8 +57,6 @@ private fun EndPageContent(end: ViewerEnd, onRetry: () -> Unit, modifier: Modifi
         AppLoadingIndicator()
         Text(LoadingMorePosts, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
       }
-      // The failure's advice (#520), as the grid's footer gives it: its sentence and next steps (a 429's countdown,
-      // Edit search, Sign in), never the exception's own text.
       is ViewerEnd.Failed -> ApiErrorState(end.error, onRetry = onRetry, onEditSearch = LocalOpenSearch.current, onSignIn = signIn::open)
       ViewerEnd.NoMore -> Text(NoMorePosts, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
     }

@@ -18,17 +18,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
-/**
- * #280 (#279, findings 1 and 2): a let-go queue swipe settles on the app's expressive spring without the bounce. The
- * stretch gets nothing once a swipe moves or springs back, only at an end; the settle keeps the finger's speed, never
- * passes the width, and the move lands as soon as the picture looks settled.
- */
 @OptIn(ExperimentalTestApi::class)
 class QueueSettleTest {
   private val width = 1280
   private val minFling = 1050f
 
-  /** Android's stretch, as far as a swipe sees it: what's left of a fling after the settle is what it absorbs. */
   private class RecordingOverscroll : OverscrollEffect {
     var left: Velocity? = null
     override val isInProgress = false
@@ -41,13 +35,8 @@ class QueueSettleTest {
     }
   }
 
-  /** What followed a let-go: the offset per frame, the frame the queue stepped in, and what the stretch was left. */
   private class AfterLetGo(val frames: List<Float>, val movedAt: Int?, val move: QueueMove?, val left: Velocity?)
 
-  /**
-   * Drags the real [QueueSwipeState] [drag] px towards the end and lets go at [velocity] px/s, on a 16 ms test clock,
-   * in a layout left to right or, with [direction] -1, right to left.
-   */
   private fun letGo(drag: Float, velocity: Float, hasNext: Boolean = true, direction: Float = 1f): AfterLetGo {
     val overscroll = RecordingOverscroll()
     val frames = mutableListOf<Float>()
@@ -62,7 +51,6 @@ class QueueSettleTest {
           val spec = spatialSpec<Float>()
           state = remember {
             QueueSwipeState(scope, spec) { move ->
-              // The frame the queue steps in, counted from the let-go.
               movedAt = frames.size
               moved = move
               true
@@ -108,7 +96,6 @@ class QueueSettleTest {
 
   @Test
   fun aLetGoAtAnEndStillReachesTheStretch() {
-    // No next item: the drag towards it moves nothing, and the whole fling is the stretch's, in px from the left.
     for (direction in listOf(1f, -1f)) {
       val atEnd = letGo(drag = -300f, velocity = -3000f, hasNext = false, direction = direction)
       assertEquals(null, atEnd.move)
@@ -129,9 +116,7 @@ class QueueSettleTest {
       val frames = after.frames
       println("#280 $name: " + frames.take(40).joinToString(" ") { it.toInt().toString() } + " | moved at frame ${after.movedAt}")
       assertTrue(frames.all { abs(it) <= width }, "$name passes the width: $frames")
-      // From the let-go on, every frame moves until the offset is in place.
       assertNotEquals(drag, frames[0], "$name stands still on the first frame")
-      // A fling carries on: the first frame goes at least most of the way the finger would have in one frame.
       if (abs(velocity) >= minFling) {
         val step = frames[0] - drag
         assertTrue(step * velocity > 0f && abs(step) >= 0.7f * abs(velocity) * 0.016f, "$name drops the fling: first step $step")
@@ -139,7 +124,6 @@ class QueueSettleTest {
       val inPlace = frames.indexOfFirst { abs(it - target) < 1f }
       assertTrue(inPlace >= 0, "$name never settles: $frames")
       for (i in 1..inPlace) assertNotEquals(frames[i - 1], frames[i], "$name stands still at frame $i: $frames")
-      // Once within 1 px it's in place, and a move steps the queue within 2 frames.
       assertTrue(frames.drop(inPlace).all { it == target }, "$name creeps after landing: $frames")
       if (target != 0f) {
         val movedAt = after.movedAt

@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runDesktopComposeUiTest
@@ -16,6 +17,7 @@ import dev.marzahn.sankaku.ACCESSIBILITY_FILE
 import dev.marzahn.sankaku.CACHE_DIR
 import dev.marzahn.sankaku.DebugFlags
 import dev.marzahn.sankaku.FIRST_LAUNCH_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.OUTBOX_FILE
@@ -54,10 +56,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-/**
- * #525: on a short window (a phone in landscape) at 200% font, the sidebar's entries scroll, so Books is still reached,
- * while Settings and Sign in stay pinned at its foot, wholly on screen. Bounds only.
- */
 @OptIn(ExperimentalTestApi::class)
 class SidebarLargeFontTest {
   @BeforeTest
@@ -68,7 +66,7 @@ class SidebarLargeFontTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<PlatformContext> { PlatformContext.INSTANCE }
@@ -92,17 +90,25 @@ class SidebarLargeFontTest {
     }
     waitForIdle()
 
-    // The text is at twice the size: Settings' line alone is over 40 dp.
     val settings = onNodeWithText(SETTINGS_TITLE).getUnclippedBoundsInRoot()
     assertTrue(settings.height >= 40.dp, "$settings")
     val signIn = onNodeWithText("Sign in", substring = true).getUnclippedBoundsInRoot()
     listOf(settings, signIn).forEach { assertTrue(it.top >= 0.dp && it.bottom <= 420.dp, "off screen: $it") }
 
-    // Books is further down than the room above Settings, and scrolls into it, staying above Settings.
     val books = onNodeWithText(BOOKS_TITLE)
     books.performScrollTo()
     waitForIdle()
     val shown = books.getUnclippedBoundsInRoot()
     assertTrue(shown.top >= 0.dp && shown.bottom <= settings.top, "books $shown, settings $settings")
+  }
+
+  @Test
+  fun theMemoryReadoutShowsUnderSignIn() = runDesktopComposeUiTest(width = 360, height = 720) {
+    setContent { SankakuTheme { Sidebar(open = true, onClose = {}, readMemory = { 300L * 1024 * 1024 }) } }
+    waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Memory usage 300.0 MB").fetchSemanticsNodes().isNotEmpty() }
+
+    val memory = onNodeWithText("Memory usage 300.0 MB").getUnclippedBoundsInRoot()
+    val signIn = onNodeWithText("Sign in", substring = true).getUnclippedBoundsInRoot()
+    assertTrue(memory.top >= signIn.bottom && memory.bottom <= 720.dp, "memory $memory, sign in $signIn")
   }
 }

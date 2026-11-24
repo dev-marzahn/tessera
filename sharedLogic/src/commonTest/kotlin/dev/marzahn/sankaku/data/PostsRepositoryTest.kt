@@ -8,6 +8,7 @@ import dev.marzahn.sankaku.api.SankakuJson
 import dev.marzahn.sankaku.api.dto.PostDto
 import dev.marzahn.sankaku.auth.InMemoryTokenStore
 import dev.marzahn.sankaku.json
+import dev.marzahn.sankaku.queue.TodayStore
 import dev.marzahn.sankaku.storedTokens
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -31,6 +32,27 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class PostsRepositoryTest {
   private val post: PostDto = SankakuJson.decodeFromString(Fixtures.post(favourited = false))
+
+  @Test
+  fun aFavouriteCountsAsLikedTodayUnlessItFails() = runTest {
+    val today = TodayStore(InMemoryTextFile())
+    val ok = Harness(InMemoryTokenStore(storedTokens())) { json("""{"success":true,"fav_count":1,"is_favorited":true}""") }
+    assertTrue(PostsRepository(ok.posts, PostStateStore(), ok.session, backgroundScope, today = today).toggleFavourite(post).isSuccess)
+    assertEquals(1, today.counts().liked)
+
+    val failing = TodayStore(InMemoryTextFile())
+    val h = Harness(InMemoryTokenStore(storedTokens())) { json("{}", HttpStatusCode.InternalServerError) }
+    assertTrue(PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope, today = failing).toggleFavourite(post).isFailure)
+    assertEquals(0, failing.counts().liked)
+
+    val favourited: PostDto = SankakuJson.decodeFromString(Fixtures.post(favourited = true))
+    assertTrue(PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope, today = failing).toggleFavourite(favourited).isFailure)
+    assertEquals(0, failing.counts().liked)
+
+    failing.liked(favourited.id, on = true)
+    assertTrue(PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope, today = failing).toggleFavourite(favourited).isFailure)
+    assertEquals(1, failing.counts().liked)
+  }
 
   @Test
   fun failedFavouriteRevertsToThePreviousState() = runTest {
@@ -92,7 +114,6 @@ class PostsRepositoryTest {
   @Test
   fun secondToggleShowsAtOnceAndSurvivesTheFirstFailing() = runTest {
     val store = PostStateStore()
-    // Each favourite call waits on a gate the test completes: true answers 200, false 500.
     val pending = Channel<CompletableDeferred<Boolean>>(Channel.UNLIMITED)
     val h = Harness(InMemoryTokenStore(storedTokens())) {
       val gate = CompletableDeferred<Boolean>().also { pending.send(it) }
@@ -105,13 +126,11 @@ class PostsRepositoryTest {
     val second = launch { repo.toggleFavourite(post) }
     runCurrent()
 
-    // The second toggle shows before the first call returns.
     assertEquals(false, store.overrides.value.getValue(post.id).isFavourited)
     assertTrue(store.overrides.value.getValue(post.id).inFlight)
 
     pending.receive().complete(false)
     first.join()
-    // The first call failed, but the second toggle owns the post: nothing was rolled back.
     assertEquals(false, store.overrides.value.getValue(post.id).isFavourited)
     assertTrue(store.overrides.value.getValue(post.id).inFlight)
 
@@ -140,8 +159,6 @@ class PostsRepositoryTest {
   @Test
   fun aListTakesOnlyTheStateThatSettledBeforeItWasAskedFor() {
     val store = PostStateStore()
-    // p1: favourited and settled before the list was asked for. p2: in flight then. p3: favourited after the ask.
-    // p4: a full post's vote before the ask; p6: a full post's vote and URLs after it.
     store.setFavourite("p1", true, 8, inFlight = false, generation = store.beginToggle("p1", true, 8))
     store.setUrls(post.copy(id = "p1", fileUrl = "older"))
     val p2Toggle = store.beginToggle("p2", value = true, favCount = 8)
@@ -170,10 +187,6 @@ class PostsRepositoryTest {
     assertNull(all.getValue("p3").urls, "a favourite-only override gets no URLs")
   }
 
-  /**
-   * #347: favourite a post, open one of its tags (a search whose page lists the post), come back to the post. Every
-   * copy loaded before the favourite (the full post, the grid's earlier page) still shows it favourited.
-   */
   @Test
   fun aFavouriteSurvivesASearchThatListsThePostAgain() = runTest {
     var serverFavourited = false
@@ -196,7 +209,6 @@ class PostsRepositoryTest {
     assertTrue(repo.toggleFavourite(full).isSuccess)
     assertTrue(shown(repo.heldPost("p1")))
 
-    // A tap on one of its tags opens a search whose page lists the post, as the server has it now.
     repo.page(listOf("blue_hair"))
 
     assertTrue(shown(repo.heldPost("p1")), "the post's sheet, back through the queue")
@@ -248,7 +260,6 @@ class PostsRepositoryTest {
     assertEquals(2, h.requestsTo("/v2/posts").size)
   }
 
-  /** #342: the Children strip is one `parent:<id>` keyset request per post and search, without hidden posts. */
   @Test
   fun childrenAreOneParentSearchPerPostAndSearch() = runTest {
     val hidden = Fixtures.post("c3").replace("\"status\": \"active\",", "\"status\": \"active\", \"redirect_to_signup\": true,")
@@ -271,7 +282,6 @@ class PostsRepositoryTest {
     assertEquals("20", asked.first().url.parameters["limit"])
   }
 
-  /** #342: a full first page may have more, also when some of it is hidden here, so the "All" tile still shows. */
   @Test
   fun aFullPageOfChildrenMayHaveMoreEvenWithSomeHidden() = runTest {
     val hidden = Fixtures.post("c0").replace("\"status\": \"active\",", "\"status\": \"active\", \"redirect_to_signup\": true,")
@@ -285,7 +295,6 @@ class PostsRepositoryTest {
     assertTrue(children.mayHaveMore)
   }
 
-  /** #342: a held parent with nothing to show (no preview) is asked for, not left out. */
   @Test
   fun aHeldParentWithoutAPreviewIsAskedFor() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { json(Fixtures.page(null, "p0")) }
@@ -297,7 +306,6 @@ class PostsRepositoryTest {
     assertEquals(listOf("id:p0"), h.requests.map { it.url.parameters["tags"] })
   }
 
-  /** #342: a parent the app holds costs no request; one it doesn't is one `id:` request, asked once. */
   @Test
   fun aHeldParentIsShownWithoutARequestAndAnotherIsAskedOnce() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { json(Fixtures.page(null, "p0")) }
@@ -316,7 +324,6 @@ class PostsRepositoryTest {
     assertTrue(h.requests.isEmpty(), "a held parent costs no request")
   }
 
-  /** #342: with the rating locked, a held parent of another rating is asked for with `rating:s`, which leaves it out. */
   @Test
   fun aHeldParentTheLockHidesIsAskedForWithTheLock() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { json("""{ "meta": { "next": null, "prev": null }, "data": [] }""") }
@@ -343,7 +350,6 @@ class PostsRepositoryTest {
     assertEquals(1, h.requests.size)
   }
 
-  /** #321: a recommendation held before its lone post opens is the held post, never over a copy already held. */
   @Test
   fun aHeldRecommendationIsTheHeldPostUntilTheAccountChanges() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { json(Fixtures.fullPost("p1")) }
@@ -364,7 +370,6 @@ class PostsRepositoryTest {
     assertNull(repo.heldPost(post.id), "another account's held posts are dropped")
   }
 
-  /** #277: a lone post's first frame reads the held post without suspending; nothing is fetched for it. */
   @Test
   fun heldPostIsTheCachedPostWithoutWaiting() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { json(Fixtures.fullPost("p1")) }
@@ -404,7 +409,6 @@ class PostsRepositoryTest {
     val repo = PostsRepository(h.posts, PostStateStore(), h.session, backgroundScope)
 
     val size = PostsRepository.FULL_POST_CACHE_SIZE
-    // Fill the cache with p0..p(size-1), use p0 again, then one more post pushes out p1, the oldest unused.
     (0 until size).forEach { repo.fullPost("p$it") }
     repo.fullPost("p0")
     repo.fullPost("p$size")
@@ -415,7 +419,6 @@ class PostsRepositoryTest {
     assertEquals(2, h.requestsTo("/posts/p1").size)
   }
 
-  /** Two keyset pages for one search: p1, p2, then p3, p4. */
   @Test
   fun forgettingASearchsPagesMakesTheNextLoadAskTheApiAndLeavesOtherSearches() = runTest {
     val h = twoPages()
@@ -451,7 +454,6 @@ class PostsRepositoryTest {
     assertEquals(listOf("p1", "p2"), again.data.map { it.id })
     assertEquals(1, h.requests.size)
 
-    // Another search is its own page.
     repo.page(listOf("b"))
     assertEquals(2, h.requests.size)
 
@@ -476,7 +478,6 @@ class PostsRepositoryTest {
     assertEquals(null, repo.cachedIndexOf(listOf("b"), "p1"))
   }
 
-  /** #507: signed out, the grid leaves out posts hidden from signed-out users, says so, and counts without them. */
   @Test
   fun theGridLeavesOutPostsHiddenFromSignedOutUsers() = runTest {
     val hidden = """{ "id": "p2", "md5": "m2", "rating": "s", "status": "active", "redirect_to_signup": true }"""
@@ -494,11 +495,6 @@ class PostsRepositoryTest {
     assertEquals(null, repo.cachedIndexOf(tags, "p2"))
   }
 
-  /**
-   * Shaped like For you (2026-10-31): it pages by the `page` number and ignores `next`, and pages repeat a post now
-   * and then. Without `page` it answered page 1 again, with the `next` it was asked with, which put every post in the
-   * grid twice (#72).
-   */
   private fun forYouFeed() = Harness(InMemoryTokenStore(storedTokens())) { request ->
     when (request.url.parameters["page"]) {
       "2" -> json(Fixtures.page("n3", "p3", "p2", "p4"))
@@ -545,7 +541,6 @@ class PostsRepositoryTest {
 
     repo.fullPost("p1")
     assertEquals(9, repo.cachedPost("p1")?.tags?.size)
-    // The batch lookup gives the same copies, and leaves out what isn't held.
     assertEquals(mapOf("p1" to 9), repo.cachedPosts(listOf("p1", "p9")).mapValues { it.value.tags.size })
   }
 
@@ -569,7 +564,6 @@ class PostsRepositoryTest {
   @Test
   fun aResponseForThePreviousUserIsNotCachedAfterTheChange() = runTest {
     val gate = CompletableDeferred<Unit>()
-    // The engine answers on its own dispatcher, so the test waits for each request to arrive rather than runCurrent.
     val arrived = Channel<String>(Channel.UNLIMITED)
     val h = Harness(InMemoryTokenStore(storedTokens())) { request ->
       val path = request.url.encodedPath
@@ -586,7 +580,6 @@ class PostsRepositoryTest {
     val store = PostStateStore()
     val repo = PostsRepository(h.posts, store, h.session, backgroundScope)
     runCurrent()
-    // Two hosts of one strip at once share the request.
     val recommended = listOf(async { repo.recommended("p1") }, async { repo.recommended("p1") })
     val full = async { repo.fullPost("p1") }
     val page = async { repo.page(listOf("a")) }
@@ -594,13 +587,10 @@ class PostsRepositoryTest {
 
     h.session.signOut()
     runCurrent()
-    // Asked again after the change, while the previous account's requests are still out: new requests, not theirs.
     val recommendedAfter = async { repo.recommended("p1") }
     val fullAfter = async { repo.fullPost("p1") }
     assertEquals(listOf("/posts/p1", "/v2/posts"), arrivals(2))
 
-    // The new account's own favourite (settled, not in flight), which the previous account's page, listing p1, must not
-    // drop. (Not a vote: the new account's full post rightly sets that from the server.)
     store.setFavourite("p1", true, 8, inFlight = false, generation = store.beginToggle("p1", value = true, favCount = 8))
     gate.complete(Unit)
     recommended.awaitAll()
@@ -609,7 +599,6 @@ class PostsRepositoryTest {
     recommendedAfter.await()
     fullAfter.await()
 
-    // Only the new account's answers are kept: one more call for each is served from memory.
     repo.recommended("p1")
     repo.fullPost("p1")
     assertEquals(2, h.requestsTo("/v2/posts").size)
@@ -618,7 +607,6 @@ class PostsRepositoryTest {
     assertEquals(true, store.overrides.value["p1"]?.isFavourited)
   }
 
-  /** #317: the queue's preload puts a grid's first page in the cache, and the grid then starts from it. */
   @Test
   fun aPreloadedFirstPageIsTheGridsWithNoRequestOfItsOwn() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { json(Fixtures.page(null, "p1", "p2")) }
@@ -632,13 +620,11 @@ class PostsRepositoryTest {
 
     assertEquals(listOf("p1", "p2"), posts.map { it.id })
     assertEquals(1, h.requestsTo("/v2/posts/keyset").size)
-    // The grid still sees the page once, for its previews, though the preload asked for it.
     assertEquals(listOf(listOf("p1", "p2")), seen)
     repo.posts(tags, onPage = { page -> seen += page.map { it.id } }).asSnapshot()
     assertEquals(1, seen.size)
   }
 
-  /** A grid shown while its preload's request is still on the way waits for that request instead of making one. */
   @Test
   fun aGridJoinsThePreloadsRequest() = runTest {
     val gate = CompletableDeferred<Unit>()
@@ -654,7 +640,6 @@ class PostsRepositoryTest {
     var seen = 0
     val grid = async { repo.page(tags, onPage = { seen++ }) }
     runCurrent()
-    // Landed: the preload has moved on, but the grid still wants the page.
     preload.cancel()
     runCurrent()
     gate.complete(Unit)
@@ -664,10 +649,8 @@ class PostsRepositoryTest {
     assertEquals(1, seen)
   }
 
-  /** A preload no one else waits for is cancelled with its request when its item stops being a neighbour. */
   @Test
   fun aPreloadCancelledAloneCancelsItsRequest() = runTest {
-    // The engine answers on its own threads: the test waits for what it does.
     val started = CompletableDeferred<Unit>()
     val cancelled = CompletableDeferred<Unit>()
     val h = Harness(InMemoryTokenStore(storedTokens())) {
@@ -689,7 +672,6 @@ class PostsRepositoryTest {
     assertNull(repo.cachedFirstPage(listOf("a")))
   }
 
-  /** A refresh while the page is still on the way asks again, and the answer from before it isn't cached. */
   @Test
   fun aRefreshDoesNotJoinARequestFromBeforeIt() = runTest {
     val first = CompletableDeferred<Unit>()
@@ -708,7 +690,6 @@ class PostsRepositoryTest {
     val tags = listOf("a")
 
     val preload = async { repo.gridStart(tags) }
-    // The engine answers on its own threads: the preload's request is there before the refresh.
     arrived.await()
     repo.forgetPages(tags)
     assertEquals(listOf("new"), repo.page(tags).data.map { it.id })
@@ -719,7 +700,6 @@ class PostsRepositoryTest {
     assertEquals(listOf("new"), repo.cachedFirstPage(tags)?.map { it.id })
   }
 
-  /** A request a refresh dropped still stops once its last caller leaves: no one else can join it. */
   @Test
   fun aDroppedRequestIsCancelledWhenItsLastCallerLeaves() = runTest {
     val started = CompletableDeferred<Unit>()

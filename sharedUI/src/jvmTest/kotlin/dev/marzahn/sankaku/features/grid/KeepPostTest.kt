@@ -12,11 +12,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/**
- * #504: keeping a post from the viewer is the grid's keep. It goes at the end of the grid's block, after the posts kept
- * from it before, and a post already in the queue opens nothing and answers where it is, or "Kept again" when it had
- * been seen since it was kept.
- */
 class KeepPostTest {
   private var now = Instant.parse("2026-11-12T12:00:00Z")
   private val clock = object : Clock {
@@ -45,7 +40,6 @@ class KeepPostTest {
 
     assertEquals(listOf("fixture_tag", "a", "b", "other_tag"), tops())
     assertEquals(source, tabs.tabs.value.drop(1).take(2).map { tabs.sourceOf(it) }.distinct().single())
-    // Kept in the background: the grid stays shown.
     assertEquals(source, tabs.activeTab)
   }
 
@@ -67,7 +61,20 @@ class KeepPostTest {
     seen.record("a", "md5-a")
 
     assertEquals(Kept(2, already = true, again = true), keep(post("a")))
-    // Kept anew: unseen again.
+    assertEquals(false, tabs.keptPostSeen("a", seen))
+  }
+
+  @Test
+  fun aReuploadOfAKeptPostKeepsTheQueuesCopyAgain() {
+    navigator.goTo(grid)
+    keep(post("a"))
+    keep(post("b"))
+    now += 1.minutes
+    seen.record("a", "md5-a")
+    val copyOfA = { p: PostDto -> tabs.tabs.value.takeIf { p.id == "a-again" }?.first { (it.top as? Route.Post)?.id == "a" } }
+
+    assertEquals(Kept(2, already = true, again = true), keepPost(post("a-again"), grid.tags, navigator, tabs, seen, copyOfA))
+    assertEquals(listOf("fixture_tag", "a", "b"), tops())
     assertEquals(false, tabs.keptPostSeen("a", seen))
   }
 

@@ -16,11 +16,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 
-/**
- * A slim slider for media (a video's position and volume): the M3 slider with a 4 dp track and a short handle, where
- * the expressive default's 16 dp track would outweigh the video's controls. A screen reader reads it as [description]
- * ("Seek", "Volume") at [state] ("01:05 of 02:10", "60%").
- */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MediaSlider(

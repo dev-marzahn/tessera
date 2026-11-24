@@ -20,7 +20,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** #184 on the queue page: a closed source's kept posts under their "from … (closed)" row, which TalkBack can move. */
 @OptIn(ExperimentalTestApi::class)
 class ClosedBlockPageTest {
   private val tabs = TabsController()
@@ -28,7 +27,6 @@ class ClosedBlockPageTest {
   private fun post(id: String) = Route.Post(id, md5 = null, originTags = emptyList(), label = id, rating = "s")
 
   init {
-    // Browse, a with p1 and p2 kept, then b.
     tabs.open(Route.Grid(listOf("a")), background = false)
     tabs.openInBlock(listOf(post("p1")))
     tabs.openInBlock(listOf(post("p2")))
@@ -45,6 +43,7 @@ class ClosedBlockPageTest {
         QueuePage(
           onDismiss = {}, controller = tabs, posts = TabPosts.None, privacy = privacy,
           seen = seen, clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {},
+          folding = false,
         )
       }
     }
@@ -82,7 +81,6 @@ class ClosedBlockPageTest {
     actions("from A (closed)").first { it.label == "Move down" }.action()
     waitForIdle()
     assertEquals(listOf("Browse", "B", "p1", "p2"), titles())
-    // Now it's last: only up is left.
     assertEquals(listOf("Move up"), actions("from A (closed)").map { it.label })
 
     actions("from A (closed)").first { it.label == "Move up" }.action()
@@ -95,7 +93,6 @@ class ClosedBlockPageTest {
     tabs.close(tabs.tabs.value.single { it.title == "A" }.id)
     show()
 
-    // The first post can go up: out of the block.
     assertEquals(listOf("Close", "Move up", "Move down"), actions("p1").map { it.label })
     actions("p1").first { it.label == "Move up" }.action()
     waitForIdle()
@@ -117,7 +114,6 @@ class ClosedBlockPageTest {
 
     onNodeWithText("Closed “A”").assertExists()
     onNodeWithText("2 kept stay").assertExists()
-    // TalkBack hears it as one sentence.
     assertEquals(
       "Closed “A” · 2 kept stay",
       onNodeWithText("Closed “A”").fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription)?.single(),

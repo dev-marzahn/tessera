@@ -11,7 +11,6 @@ class GridPresetsTest {
 
   @Test
   fun popularAndTopAreTheirOrderTagAlone() {
-    // No rating or other filter: presets open a clean slate.
     assertEquals(listOf("order:popularity"), GridPresets.popular)
     assertEquals(listOf("order:quality"), GridPresets.top)
   }

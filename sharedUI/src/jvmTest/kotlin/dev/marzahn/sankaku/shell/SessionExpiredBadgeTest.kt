@@ -23,7 +23,6 @@ class SessionExpiredBadgeTest {
     waitForIdle()
     assertEquals(true, expired)
 
-    // A failed sign-in attempt doesn't clear it; signing in does.
     state.value = AuthState.SignedOut(Reason.WrongCredentials)
     waitForIdle()
     assertEquals(true, expired)

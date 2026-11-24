@@ -6,7 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** #181: when a drag down closes a post, over a grid and on a lone post. */
 class DragDownClosesTest {
   private fun closes(
     dy: Float = 10f,
@@ -27,7 +26,6 @@ class DragDownClosesTest {
     assertFalse(closes(closable = false), "nothing to close it with")
   }
 
-  // A 2400 px window at a Pixel 9 Pro's 2.625 px a dp, where the queue swipe's 400 dp/s fling is 1050 px/s.
   private val minFling = with(Density(2.625f)) { MIN_FLING.toPx() }
 
   private fun loneCloses(offset: Float, velocity: Float) =
@@ -42,10 +40,6 @@ class DragDownClosesTest {
     assertTrue(loneCloses(offset = 0.25f * 2400f, velocity = -2000f), "past 20%, moving back up at release still closes")
   }
 
-  /**
-   * #308: a drag let go while still moving slowly springs back; only a deliberate fling, the queue swipe's, closes.
-   * Before, any release faster than Android's minimum fling (about 50 dp/s) closed.
-   */
   @Test
   fun aSlowReleaseSpringsBackAndADeliberateFlingCloses() {
     assertFalse(loneCloses(offset = 0.1f * 2400f, velocity = 300f), "300 px/s at 10% springs back")

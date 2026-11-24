@@ -44,11 +44,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #261: ↑ Top is the count pill's and Undo's size, on their line, and clear of the pill. The row is drawn as the grid
- * draws it on a 360 dp phone with a 24 dp navigation bar, over placeholder tiles (no post images). With `EVIDENCE_DIR`
- * set, each frame is saved there as a PNG for the PR.
- */
 @OptIn(ExperimentalTestApi::class)
 class BottomRowSizesTest {
   private val scale = 2.625f
@@ -67,7 +62,6 @@ class BottomRowSizesTest {
       CompositionLocalProvider(LocalDensity provides Density(scale, fontScale)) {
         SankakuTheme {
           Box(Modifier.size(width, height).background(MaterialTheme.colorScheme.surface)) {
-            // The grid's box ends at the navigation bar, as on a phone; ↑ is placed in it as GridScreen places it.
             Box(Modifier.fillMaxSize().padding(bottom = navigationBar)) {
               PlaceholderTiles()
               ScrollToTopButton(
@@ -92,7 +86,6 @@ class BottomRowSizesTest {
         }
       }
     }
-    // Undo after a close, so all three pieces are in the frame.
     runOnIdle { undo.close(tabs.activeTab.id) }
     waitForIdle()
   }
@@ -106,24 +99,18 @@ class BottomRowSizesTest {
     val top = onNodeWithContentDescription("Top").getUnclippedBoundsInRoot()
     println("#261 $name: pill $pill, undo $undo, top $top")
 
-    // The same 48 dp height (the drawn 40 dp inside each), and round.
     assertEquals(48f, pill.height.value, 0.5f, "pill $pill")
     assertEquals(48f, undo.height.value, 0.5f, "undo $undo")
     assertEquals(48f, top.height.value, 0.5f, "top $top")
     assertEquals(48f, top.width.value, 0.5f, "top $top")
-    // One centre line, 32 dp above the navigation bar, give or take the pixel each piece rounds to. With queue
-    // buttons on, Undo's ↶ circle sits above ✕ when the pill leaves no room beside it (#178), so it's off the line.
     val line = (height - navigationBar - BottomRowLayout.CentreLine).value
     val onLine = if (arrows) listOf(pill, top) else listOf(pill, undo, top)
     onLine.forEach { assertEquals(line, it.middleY, 1f, "$it") }
     assertEquals(pill.middleY, top.middleY, 1 / scale, "pill $pill, top $top")
-    // ↑'s middle 44 dp in from the right edge, and clear of the pill.
     assertEquals((width - BottomRowLayout.CornerCentre).value, (top.left + top.right).value / 2, 0.5f)
     assertTrue(pill.right <= top.left, "pill $pill overlaps top $top")
-    // #276: every piece stays on the screen, and Undo clear of the pill, with queue buttons on and off.
     listOf(pill, undo, top).forEach { assertTrue(it.left >= 0.dp && it.right <= width, "off screen: $it") }
     if (!arrows) assertTrue(undo.right <= pill.left, "undo $undo overlaps pill $pill")
-    // The line stays where #118 left it, so the target ends 8 dp above the navigation bar, as the pill's does.
     assertEquals(8f, (height - navigationBar - top.bottom).value, 1f, "top $top")
   }
 
@@ -152,7 +139,6 @@ class BottomRowSizesTest {
 
 private val DpRect.middleY get() = ((top + bottom) / 2).value
 
-/** Flat coloured tiles where the grid's posts would be: no post images. */
 @androidx.compose.runtime.Composable
 private fun PlaceholderTiles() {
   val colours = listOf(Color(0xFF90A4AE), Color(0xFFB0BEC5), Color(0xFF78909C))

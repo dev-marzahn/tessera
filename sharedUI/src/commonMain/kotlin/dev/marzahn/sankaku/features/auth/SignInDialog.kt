@@ -58,10 +58,6 @@ import dev.marzahn.sankaku.ui.components.AppLoadingIndicator
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
-/**
- * The terms notice under the fields, on both platforms: the terms risk (spec, Security and privacy; #210), then where
- * the session lives, which follows [storage].
- */
 internal fun termsNotice(storage: TokenStorageStatus): String {
   val kept = when (storage) {
     TokenStorageStatus.Keychain -> "keeps your session in the system keychain"
@@ -75,23 +71,11 @@ internal fun termsNotice(storage: TokenStorageStatus): String {
 internal const val LoginFieldTag = "sign-in-login"
 internal const val PasswordFieldTag = "sign-in-password"
 
-/**
- * The labels stay on the border instead of moving into an empty field when it loses focus. While a label moves, M3
- * makes the field about 10 px taller for a few frames, so everything below it bounced at every switch between the
- * fields (seen on Android, 192 → 202 → 192 px). This position is a standard M3 setting, and it is only available on
- * the [TextFieldState] fields.
- */
 private val FieldLabelPosition = TextFieldLabelPosition.Attached(alwaysMinimize = true)
 
 internal const val ShowPasswordTag = "sign-in-show-password"
 internal const val SignInButtonTag = "sign-in-button"
 
-/**
- * The two fields, marked with autofill content types so a password manager offers to fill and save them. When
- * [rejection] is set, both fields are in their error state and it is shown under Password with an error icon. The
- * trailing eye shows or hides the password; whether it is shown is remembered here, so it is hidden again whenever
- * the form is shown anew.
- */
 @Composable
 internal fun SignInFields(
   login: TextFieldState,
@@ -153,10 +137,6 @@ internal fun SignInFields(
   )
 }
 
-/**
- * The form's one primary action: a filled button across the column, 48 dp tall. It looks disabled only until both
- * fields have text. While a sign-in runs it keeps its size and shows a progress indicator.
- */
 @Composable
 internal fun SignInButton(enabled: Boolean, submitting: Boolean, onClick: () -> Unit) {
   Button(
@@ -172,19 +152,10 @@ internal fun SignInButton(enabled: Boolean, submitting: Boolean, onClick: () -> 
   }
 }
 
-/**
- * Sankaku's own sign-up page (verified in a browser on 2026-11-03, #211; `docs/api.md`, Sign-up). It redirects to a
- * fresh "Create account" form, so the link needs no session of its own.
- */
 internal const val SignUpUrl = "https://login.sankakucomplex.com/registration"
 
 internal const val CreateAccountTag = "sign-in-create-account"
 
-/**
- * "Create an account", under Sign in on both platforms: it opens [SignUpUrl] in the system browser through [open].
- * There is no in-app registration, so the app itself sends nothing (decision 15 in #196). If no app can open it, it
- * says [NoAppForLink] under itself: the dialog covers the snackbar (#358).
- */
 @Composable
 internal fun CreateAccountLink(open: (String) -> OpenUrlResult = ::platformOpenUrl) {
   var failed by remember { mutableStateOf(false) }
@@ -206,7 +177,6 @@ internal fun CreateAccountLink(open: (String) -> OpenUrlResult = ::platformOpenU
   }
 }
 
-/** Shown over any screen while [SignInController.isOpen]. Enter submits; the username stays after an error. */
 @Composable
 fun SignInDialog(controller: SignInController = koinInject(), storage: TokenStorageStatus = koinInject()) {
   val isOpen by controller.isOpen.collectAsStateWithLifecycle()
@@ -216,12 +186,10 @@ fun SignInDialog(controller: SignInController = koinInject(), storage: TokenStor
   val viewModel = koinViewModel<SignInViewModel>()
   val state by viewModel.state.collectAsStateWithLifecycle()
   val login = rememberTextFieldState()
-  // Not saveable: the password never goes into saved state.
   val password = remember { TextFieldState() }
   val focus = remember { FocusRequester() }
   val passwordFocus = remember { FocusRequester() }
   LaunchedEffect(Unit) { focus.requestFocus() }
-  // Wrong credentials: back to Password with its text selected, ready to be typed over.
   LaunchedEffect(state.rejections) {
     if (state.rejections > 0) {
       passwordFocus.requestFocus()
@@ -251,8 +219,6 @@ fun SignInDialog(controller: SignInController = koinInject(), storage: TokenStor
         loginModifier = Modifier.focusRequester(focus).then(onEnter),
         passwordModifier = Modifier.focusRequester(passwordFocus).then(onEnter),
       )
-      // Wrong credentials are shown on the fields; any other error (network, rate limit, Sankaku unavailable,
-      // two-factor) stays under them, with its small print ("HTTP 503") below it.
       if (!state.fieldsInError) {
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.errorDetail?.let {

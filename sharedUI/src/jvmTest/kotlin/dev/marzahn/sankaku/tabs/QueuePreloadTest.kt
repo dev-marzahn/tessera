@@ -23,6 +23,7 @@ import dev.marzahn.sankaku.api.createMainClient
 import dev.marzahn.sankaku.api.dto.PostDto
 import dev.marzahn.sankaku.auth.AuthSession
 import dev.marzahn.sankaku.auth.InMemoryTokenStore
+import dev.marzahn.sankaku.data.GridPlace
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PostStateStore
 import dev.marzahn.sankaku.data.PostsRepository
@@ -65,7 +66,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
-/** #263: a neighbour's preload is what the lone post's first frame draws, so a move shows the picture at once. */
 @OptIn(ExperimentalTestApi::class)
 class QueuePreloadTest {
   private val now = Instant.parse("2026-11-02T12:00:00Z")
@@ -76,22 +76,17 @@ class QueuePreloadTest {
   private val png = ByteArrayOutputStream().also {
     ImageIO.write(BufferedImage(400, 600, BufferedImage.TYPE_INT_RGB), "png", it)
   }.toByteArray()
-  // Written from Ktor's threads while the test reads them: copy-on-write, so a read (`toSet`, `filter`, `sorted`)
-  // iterates a snapshot. A synchronized list threw ConcurrentModificationException when a request landed mid-read.
   private val imageRequests: MutableList<String> = CopyOnWriteArrayList()
   private val cancelled: MutableList<String> = CopyOnWriteArrayList()
 
-  // Image paths in [hanging] never answer, so a load that's cancelled shows in [cancelled].
   private var hanging = emptySet<String>()
 
-  // The searches (by their tag) whose page was asked for, and with [hangingPages] those whose request was cancelled.
   private val pageRequests: MutableList<String> = CopyOnWriteArrayList()
   private val cancelledPages: MutableList<String> = CopyOnWriteArrayList()
   private var hangingPages = false
   private val engine = MockEngine { request ->
     val path = request.url.encodedPath
     if (request.url.host == "sankakuapi.com" && path == "/v2/posts/keyset") {
-      // A grid's page: 30 posts named after its search's tag (besides the rating), in portrait.
       val search = request.url.parameters["tags"].orEmpty().split(' ').first { !it.startsWith("rating:") }
       pageRequests += search
       if (hangingPages) {
@@ -144,7 +139,6 @@ class QueuePreloadTest {
   private val grid = GridSettings(InMemoryTextFile())
 
   init {
-    // Signed out, so a grid's search gets the locked `rating:s`.
     runBlocking { session.restore() }
   }
 
@@ -183,9 +177,7 @@ class QueuePreloadTest {
     assertEquals(listOf("/data/preview/m1.avif", "/data/sample/m1.png"), imageRequests)
     imageRequests.clear()
 
-    // The lone post's first frame: the decoded sample, found by its key alone.
     assertNotNull(decodedInMemory(loader, post.md5, previewToo = false))
-    // Its zoomable sample: the same request, answered from memory.
     val size = fittedRequestSize(400f / 600f, WIDTH, HEIGHT)
     val sample = loader.execute(sampleRequest(PlatformContext.INSTANCE, post, size))
     assertEquals(DataSource.MEMORY_CACHE, (sample as SuccessResult).dataSource)
@@ -198,7 +190,6 @@ class QueuePreloadTest {
     assertEquals(listOf("m1-Preview"), requests.map { it.memoryCacheKey })
   }
 
-  /** A keep puts the sample on disk only, so a neighbour's preload later reads it from there, not the network. */
   @Test
   fun aKeptPostsSampleGoesToDiskOnly() = runBlocking {
     val post = post()
@@ -225,7 +216,6 @@ class QueuePreloadTest {
 
   @Test
   fun movingOnCancelsWhatCanNoLongerBeLandedOnAndKeepsWhatItLandedOn() = runComposeUiTest {
-    // Items 1, 2, 3 and 4 in a row; 2 is shown, so 1 and 3 load. Neither answers yet.
     hanging = setOf("/data/sample/m1.png", "/data/sample/m3.png")
     val items = listOf("1", "2", "3", "4").map(::lonePost)
     var shown by mutableStateOf(1)
@@ -236,34 +226,24 @@ class QueuePreloadTest {
       }
     }
     waitUntil(timeoutMillis = 5_000) { "/data/sample/m1.png" in imageRequests && "/data/sample/m3.png" in imageRequests }
-    // Their previews have loaded while the samples hang: ready for the peek with the preview.
     try {
       waitUntil(timeoutMillis = 5_000) { ready.keys.toSet() == setOf("1", "3") }
     } catch (e: Throwable) {
       throw AssertionError("ready ${ready.keys}, requests $imageRequests, memory ${loader.memoryCache?.keys}", e)
     }
 
-    // On to 3: 1 can't be landed on any more, 3 is shown, 4 is the new neighbour.
     shown = 2
     waitUntil(timeoutMillis = 5_000) { "/data/sample/m4.png" in imageRequests && "/data/sample/m1.png" in cancelled }
     waitForIdle()
     assertEquals(listOf("/data/sample/m1.png"), cancelled.toList())
-    // Each image asked for once: the shown post's load went on, and 2 (now behind) was loaded already.
-    // One snapshot: 2's sample may be asked for between two reads.
     imageRequests.toList().let { assertEquals(it.distinct(), it) }
-    // 1 is gone from what peeks in; 3, shown now, stays; 2 and 4, the new neighbours, come in.
     waitUntil(timeoutMillis = 5_000) { ready.keys.toSet() == setOf("2", "3", "4") }
   }
 
-  /**
-   * #317: a grid beside the item shown loads the page it opens on and the thumbnails of its first screen, decoded, and
-   * nothing past them.
-   */
   @Test
   fun aGridNeighbourLoadsItsFirstPageAndTheThumbnailsOfItsFirstScreen() = runComposeUiTest {
     val shown = lonePost("1")
     val next = grid("scenery")
-    // At density 1, 220 px columns: 4 of them, and about 4 portrait rows.
     val small = object : WindowInfo by window {
       override val containerSize = IntSize(1080, 1200)
     }
@@ -289,19 +269,13 @@ class QueuePreloadTest {
     }
     waitForIdle()
     assertEquals(listOf("scenery"), pageRequests.toList())
-    // The first screen's thumbnails only, once each.
     assertEquals(first.map { "/data/preview/${it.md5}.avif" }.sorted(), imageRequests.sorted())
   }
 
-  /**
-   * #317: a grid that stops being a neighbour has its page request cancelled, as a post's load is, and swiping along a
-   * queue of grids and posts never has more than three items loading: the neighbours and the one shown.
-   */
   @Test
   fun movingOnCancelsAGridsLoadAndAtMostThreeItemsLoad() = runComposeUiTest {
     hangingPages = true
     hanging = setOf("/data/sample/m1.png", "/data/sample/m3.png")
-    // grid a, post 1, grid b, post 3, grid c. Post 1 is shown, so grids a and b load. Nothing answers.
     val items = listOf(grid("a"), lonePost("1"), grid("b"), lonePost("3"), grid("c"))
     var shown by mutableStateOf(1)
     setContent {
@@ -309,37 +283,50 @@ class QueuePreloadTest {
         PreloadNeighbours(items[shown], listOfNotNull(items.getOrNull(shown - 1), items.getOrNull(shown + 1)), repository, loader, session, privacy, grid)
       }
     }
-    // What's loading: the pages asked for and not cancelled, and the hanging samples likewise.
     fun loading() = (pageRequests - cancelledPages.toSet()).toSet() + (imageRequests.filter { it in hanging } - cancelled.toSet()).toSet()
     waitUntil(timeoutMillis = 5_000) { pageRequests.toSet() == setOf("a", "b") }
     assertEquals(setOf("a", "b"), loading())
 
-    // On to grid b: grid a can't be landed on any more; b, shown now, goes on; posts 1 and 3 load.
     shown = 2
     waitUntil(timeoutMillis = 5_000) { "a" in cancelledPages && "/data/sample/m1.png" in imageRequests && "/data/sample/m3.png" in imageRequests }
     waitForIdle()
     assertEquals(setOf("b", "/data/sample/m1.png", "/data/sample/m3.png"), loading())
 
-    // On to post 3: post 1 is cancelled, grid c loads, grid b (behind now) is still on the way.
     shown = 3
     waitUntil(timeoutMillis = 5_000) { "c" in pageRequests && "/data/sample/m1.png" in cancelled }
     waitForIdle()
     assertEquals(setOf("b", "/data/sample/m3.png", "c"), loading())
-    // Each asked for once.
     assertEquals(listOf("a", "b", "c"), pageRequests.sorted())
     imageRequests.toList().let { assertEquals(it.distinct(), it) }
   }
 
   @Test
+  fun scrollingTheGridShownDoesNotRecomposeThePreloadsCaller() = runComposeUiTest {
+    val shown = grid("scenery")
+    val route = shown.top as Route.Grid
+    var compositions = 0
+    setContent {
+      CompositionLocalProvider(LocalWindowInfo provides window) {
+        compositions++
+        PreloadNeighbours(shown, listOf(lonePost("1")), repository, loader, session, privacy, grid)
+      }
+    }
+    waitForIdle()
+    val before = compositions
+    repeat(5) {
+      shown.reportPlace(route, GridPlace("p$it", index = it * 3))
+      waitForIdle()
+    }
+    assertEquals(before, compositions)
+  }
+
+  @Test
   fun theFirstScreenStopsOnceEveryColumnIsFull() {
     fun post(id: String, w: Int, h: Int) = post().copy(id = id, previewWidth = w, previewHeight = h)
-    // Two 500 px columns, 1,000 px tall: two squares a column fill it.
     val squares = (1..10).map { post("$it", 100, 100) }
     assertEquals(4, firstScreen(squares, 1000, 1000, 400).size)
-    // A tall post fills its column alone, so the other column takes the rest.
     val mixed = listOf(post("tall", 100, 300)) + (1..10).map { post("$it", 100, 100) }
     assertEquals(listOf("tall", "1", "2"), firstScreen(mixed, 1000, 1000, 400).map { it.id })
-    // A post that needs signing in is left out of the grid, so it takes no room (#507).
     val restricted = listOf(post("1", 100, 100).copy(redirectToSignup = true)) + squares.drop(1)
     assertEquals(listOf("2", "3", "4", "5"), firstScreen(restricted, 1000, 1000, 400).map { it.id })
   }

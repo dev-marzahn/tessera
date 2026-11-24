@@ -42,15 +42,6 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import dev.marzahn.sankaku.platformBackKeys
 
-/**
- * A modal side sheet over the whole window, at its right edge (#460, option A of its mockup): [SideSheetWidth] wide
- * (the window's width when that's narrower), its inner corners rounded, over a 32% scrim. It slides in on M3's
- * emphasized decelerate in 350 ms and out on emphasized accelerate in 250 ms, the scrim fading with it.
- *
- * It's a focusable popup while [open], so the keys and Tab stay in it, and anything opened from it (a confirmation, a
- * dialog) comes over it and closes first. Esc, the mouse back button and a click on the scrim call [onClose]. Closed,
- * it lets go of the focus at once, so the caller can hand the keys back while it slides out.
- */
 @Composable
 fun ModalSideSheet(
   open: Boolean,
@@ -96,7 +87,6 @@ fun ModalSideSheet(
             .widthIn(max = SideSheetWidth)
             .fillMaxWidth()
             .fillMaxHeight()
-            // A pane, so screen readers announce it and treat it as the screen.
             .semantics { paneTitle = title },
         ) {
           Column(modifier.fillMaxSize(), content = content)
@@ -106,21 +96,17 @@ fun ModalSideSheet(
   }
 }
 
-/** The sheet's width: M3's side sheets top out at 400 dp; Settings' rows and its slider want more (#460). */
 val SideSheetWidth = 480.dp
 
 internal const val SideSheetScrimTag = "side-sheet-scrim"
 
-// The sheet's scrim and motion, which a tag's page on the desktop shares (#522).
 internal const val SCRIM_ALPHA = 0.32f
 internal const val SHEET_IN_MS = 350
 internal const val SHEET_OUT_MS = 250
 
-// M3's emphasized decelerate and accelerate curves.
 internal val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 internal val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 
-/** Puts the popup at the window's top left; its content fills the window. */
 private object WholeWindow : PopupPositionProvider {
   override fun calculatePosition(
     anchorBounds: IntRect,

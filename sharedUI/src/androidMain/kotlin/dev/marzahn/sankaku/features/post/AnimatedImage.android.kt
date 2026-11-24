@@ -17,31 +17,25 @@ import coil3.gif.repeatCount
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.size.Size
+import okio.Path
 import org.koin.compose.koinInject
 
-/** Coil's GIF decoder: the platform's `AnimatedImageDrawable`. */
 actual val platformAnimatesGifs: Boolean = true
 
-/**
- * `AnimatedImageDrawable` decodes each frame as it's drawn, so a long GIF never sits in memory whole. The bytes are
- * already in hand, so neither of Coil's caches is used. Frames are decoded at the size laid out, again whenever that
- * changes (the viewer's details panel opening or closing), so the GIF stays sharp.
- */
 @Composable
-actual fun AnimatedImage(bytes: ByteArray, modifier: Modifier, onShown: () -> Unit) {
+actual fun AnimatedImage(file: Path, modifier: Modifier, onShown: () -> Unit) {
   val context = LocalPlatformContext.current
   val imageLoader = koinInject<ImageLoader>()
   val shown by rememberUpdatedState(onShown)
   BoxWithConstraints(modifier) {
-    // Unbounded, the GIF decodes at its own size.
     val size = if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
       Size(constraints.maxWidth, constraints.maxHeight)
     } else {
       Size.ORIGINAL
     }
-    val request = remember(bytes, size) {
+    val request = remember(file, size) {
       ImageRequest.Builder(context)
-        .data(bytes)
+        .data(file.toFile())
         .size(size)
         .decoderFactory(AnimatedImageDecoder.Factory())
         .repeatCount(MovieDrawable.REPEAT_INFINITE)

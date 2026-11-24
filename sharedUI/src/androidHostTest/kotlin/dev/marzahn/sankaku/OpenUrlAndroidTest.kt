@@ -4,7 +4,6 @@ import android.content.ActivityNotFoundException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** No app for the link comes back as a result, not a crash (#358). */
 class OpenUrlAndroidTest {
   @Test
   fun noAppForTheLinkFails() {

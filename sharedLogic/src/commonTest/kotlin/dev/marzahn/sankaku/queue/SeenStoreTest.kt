@@ -31,7 +31,6 @@ import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
-/** The seen store (#174): recording, copies by md5, "seen since kept", pruning, the bound and clearing. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SeenStoreTest {
   private class MovableClock(var now: Instant = Instant.parse("2026-11-01T12:00:00Z")) : Clock {
@@ -87,7 +86,6 @@ class SeenStoreTest {
     seen.record("p1", "aa11")
     assertTrue(seen.seenSince("p1", "aa11", kept))
 
-    // Kept again: its kept-at moves to now, so it's unseen since then until it's seen again.
     clock.now += 1.minutes
     val keptAgain = clock.now
     assertFalse(seen.seenSince("p1", "aa11", keptAgain))
@@ -139,15 +137,12 @@ class SeenStoreTest {
   fun pruningRunsAtMostOnceADay() {
     store().record("old", null)
 
-    // A launch an hour before "old" is due prunes nothing, and it was the day's prune.
     clock.now += 90.days - 1.hours
     assertTrue(store().isSeen("old"))
 
-    // Two hours later "old" is past 90 days, but a launch within a day of that prune doesn't prune again.
     clock.now += 2.hours
     assertTrue(store().isSeen("old"))
 
-    // The next day's launch does.
     clock.now += 1.days
     assertFalse(store().isSeen("old"))
   }
@@ -182,6 +177,17 @@ class SeenStoreTest {
   }
 
   @Test
+  fun clearingClearsTheOtherCopiesToo() {
+    var cleared = 0
+    val seen = SeenStore(InMemoryTextFile(), onClear = { cleared++ })
+    seen.record("p1", "aa11")
+
+    seen.clear()
+
+    assertEquals(1, cleared)
+  }
+
+  @Test
   fun signingOutClearsTheStore() = runTest {
     val h = Harness(InMemoryTokenStore(storedTokens())) { error("no requests") }
     h.session.restore()
@@ -199,7 +205,6 @@ class SeenStoreTest {
 
   @Test
   fun aSessionThatRanOutWhileClosedClearsTheStoreAtLaunch() = runTest {
-    // So whoever signs in next doesn't inherit the last account's seen posts.
     val h = Harness(InMemoryTokenStore(storedTokens().copy(refreshExpiresAt = NOW - 1.days))) { error("no requests") }
     h.session.restore()
     store().record("p1", "aa11")
@@ -232,7 +237,6 @@ class SeenStoreTest {
 
     SeenStore(file, clock, backgroundScope)
 
-    // Read back without a saver: what's on disk is already pruned, and a launch within a day doesn't prune again.
     assertEquals(0, store().size)
     assertFalse(file.read()!!.contains("old"))
   }
@@ -243,7 +247,6 @@ class SeenStoreTest {
     val scope = CoroutineScope(SupervisorJob())
     try {
       val seen = SeenStore(file, clock, scope)
-      // Let the saver subscribe, then clear.
       withTimeout(2_000) { while (!seen.isSeen("p1")) yield() }
       delay(100)
 
@@ -276,7 +279,6 @@ class SeenStoreTest {
 
   @Test
   fun aFullStoreLoadsAndRecordsQuickly() {
-    // A full file in the store's own format: synthetic ids, each with a 32-character md5, seen a second apart.
     val at = clock.now.epochSeconds - SeenStore.LIMIT
     val text = (0 until SeenStore.LIMIT).joinToString(",", """{"version":1,"posts":[""", "]}") {
       """{"i":"${10_000_000 + it}","m":"${it.toString().padStart(32, '0')}","t":${at + it}}"""
@@ -290,7 +292,6 @@ class SeenStoreTest {
 
     assertEquals(SeenStore.LIMIT, loaded.size)
     assertTrue(loaded.isSeen("new"))
-    // The oldest gave way to the new post.
     assertFalse(loaded.isSeen("10000000"))
     println(
       "seen.json, ${SeenStore.LIMIT} posts: ${text.length / 1024} KB; load ${loading.inWholeMilliseconds} ms, " +

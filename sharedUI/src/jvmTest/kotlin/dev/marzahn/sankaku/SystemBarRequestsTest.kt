@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** #297: the system bars follow the newest viewer, whatever order the viewers leave in. */
 class SystemBarRequestsTest {
 
   private data class Look(val name: String, val lightIcons: Boolean, val appLight: Boolean = true)
@@ -59,7 +58,6 @@ class SystemBarRequestsTest {
       window.requests.release("viewer")
       assertTrue(window.requests.isEmpty)
       assertEquals(listOf("apply viewer", "restore app"), window.log)
-      // A light theme has dark icons, a dark theme light ones.
       assertEquals(!appLight, window.lightIcons)
     }
   }
@@ -71,7 +69,6 @@ class SystemBarRequestsTest {
     assertEquals(listOf("apply viewer"), window.log)
   }
 
-  /** The swipe of #297 in composition: the next post's viewer composes, and the last one leaves a frame later. */
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun aViewerLeavingAfterTheNextOneComposedDoesntUndoIt() = runComposeUiTest {
@@ -88,14 +85,12 @@ class SystemBarRequestsTest {
     assertEquals(listOf("apply post 1", "apply post 2"), window.log)
     assertEquals(true, window.lightIcons)
 
-    // The same in one frame, as when the queue page closes back onto a viewer.
     viewers.clear()
     viewers += "post 3"
     waitForIdle()
     assertEquals(true, window.lightIcons)
     assertEquals("apply post 3", window.log.last())
 
-    // Closing the viewer back to the grid restores the app's icons.
     viewers.clear()
     waitForIdle()
     assertEquals("restore app", window.log.last())

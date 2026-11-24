@@ -14,10 +14,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * #419: the viewer's picture plays the phone's heart for each favourite toggle: filled for a favourite, broken for an
- * unfavourite or a rollback to it, a second toggle restarting it; with animations off, none.
- */
 @OptIn(ExperimentalTestApi::class)
 class FavouriteBurstsTest {
   private val hearts = MutableSharedFlow<Boolean>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -25,7 +21,6 @@ class FavouriteBurstsTest {
   private fun ComposeUiTest.show() {
     setContent { SankakuTheme { FavouriteBursts(hearts) } }
     waitForIdle()
-    // Frame by frame from here, or waiting for idle would run each heart to its end.
     mainClock.autoAdvance = false
   }
 
@@ -42,7 +37,6 @@ class FavouriteBurstsTest {
     repeat(2) { mainClock.advanceTimeByFrame() }
     burst().assertExists().assert(shows(true))
 
-    // It pops and fades, then leaves nothing behind.
     mainClock.advanceTimeBy(3_000)
     burst().assertDoesNotExist()
   }
@@ -63,7 +57,6 @@ class FavouriteBurstsTest {
 
     hearts.tryEmit(true)
     repeat(2) { mainClock.advanceTimeByFrame() }
-    // A rollback right after: the heart of the state it went back to, and only that one.
     hearts.tryEmit(false)
     repeat(2) { mainClock.advanceTimeByFrame() }
 
@@ -76,7 +69,6 @@ class FavouriteBurstsTest {
     show()
 
     hearts.tryEmit(true)
-    // Not even for a frame: with no motion, a heart that played would pop and go within one.
     repeat(4) {
       mainClock.advanceTimeByFrame()
       burst().assertDoesNotExist()

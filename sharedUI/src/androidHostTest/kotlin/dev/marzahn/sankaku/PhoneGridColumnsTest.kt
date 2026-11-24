@@ -5,10 +5,6 @@ import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * Android's own grid sizes on a 360 dp phone (a Galaxy Z Flip 7: 1080 px at 480 dpi, 3 px per dp), so a change to
- * the default, the edges or the gap that loses the third column fails here (#468).
- */
 class PhoneGridColumnsTest {
   private val density = 3f
 

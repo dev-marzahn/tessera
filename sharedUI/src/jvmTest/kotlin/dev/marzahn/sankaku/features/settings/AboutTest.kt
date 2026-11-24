@@ -35,10 +35,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * Settings → About (#206): its rows, the licences page over Settings, and the list the build bundles. State and
- * semantics only; how it looks is checked in the running app.
- */
 @OptIn(ExperimentalTestApi::class)
 class AboutTest {
   private val export = """
@@ -54,7 +50,7 @@ class AboutTest {
     onNodeWithText(APP_VERSION).assertExists()
     onNodeWithText("GPL-3.0-only · Copyright the Tessera authors").assertExists()
     onNodeWithText("Source code").assertExists()
-    onNodeWithText("github.com/dev-marzahn/tessera-app").assertExists()
+    onNodeWithText("github.com/dev-marzahn/tessera").assertExists()
     onNodeWithText(OpenSourceLicencesTitle).assertExists()
   }
 
@@ -85,7 +81,6 @@ class AboutTest {
       SankakuTheme {
         var showing by remember { mutableStateOf(true) }
         val behind = remember { FocusRequester() }
-        // The Settings sheet's Esc, as `ModalSideSheet` has it, with focus on a row behind the page.
         Box(Modifier.platformBackKeys { tabClosed++ }) {
           Box(Modifier.focusRequester(behind).focusable())
           LaunchedEffect(Unit) { behind.requestFocus() }
@@ -134,7 +129,6 @@ class AboutTest {
     val desktopIds = desktop.map { it.id }.toSet()
     val phoneIds = phone.map { it.id }.toSet()
 
-    // Each platform's own libraries, and the shared ones in both.
     assertTrue("com.github.javakeyring:java-keyring" in desktopIds)
     assertTrue("org.slf4j:slf4j-nop" in desktopIds)
     assertTrue("com.google.crypto.tink:tink-android" !in desktopIds)
@@ -143,12 +137,9 @@ class AboutTest {
     listOf("io.ktor:ktor-client-core", "io.coil-kt.coil3:coil", "org.jetbrains.kotlin:kotlin-stdlib").forEach {
       assertTrue(it in desktopIds && it in phoneIds, it)
     }
-    // No test-only library ships.
     assertTrue(listOf("app.cash.turbine:turbine", "io.ktor:ktor-client-mock").none { it in desktopIds || it in phoneIds })
-    // java-keyring's POM names "BSD-3" with no text; sharedUI/licences gives it BSD-3-Clause's.
     val keyring = desktop.single { it.id == "com.github.javakeyring:java-keyring" }
     assertEquals(listOf("BSD 3-Clause \"New\" or \"Revised\" License"), keyring.licences.map { it.name })
-    // Every library has a licence with its full text, so the list reads offline.
     val textless = (desktop + phone).filter { library -> library.licences.none { it.text != null } }.map { it.id }
     assertEquals(emptyList(), textless)
   }

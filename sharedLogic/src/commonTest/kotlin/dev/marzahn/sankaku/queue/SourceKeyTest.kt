@@ -3,10 +3,11 @@ package dev.marzahn.sankaku.queue
 import dev.marzahn.sankaku.api.Feed
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
-/** One source per search (#174): which searches are the same source, and which tops are which kind. */
 class SourceKeyTest {
   @Test
   fun orderDoesNotCount() {
@@ -31,6 +32,16 @@ class SourceKeyTest {
     assertNotEquals(SourceKey.of(listOf("artist_x")), SourceKey.of(listOf("artist_y")))
     assertNotEquals(SourceKey.of(listOf("artist_x")), SourceKey.of(listOf("artist_x", "blue_hair")))
     assertNotEquals(SourceKey.of(listOf("artist_x")), SourceKey.of(listOf("artist_x", "-blue_hair")))
+  }
+
+  @Test
+  fun onlyAFavouritesSearchIsFavourites() {
+    fun isOnlyFavourites(vararg tags: String) = checkNotNull(SourceKey.of(tags.toList())).isOnlyFavourites
+    assertTrue(isOnlyFavourites("fav:someone"))
+    assertTrue(isOnlyFavourites("rating:s", "order:popularity", "fav:Someone"))
+    assertFalse(isOnlyFavourites("fav:someone", "artist_x"))
+    assertFalse(isOnlyFavourites("-fav:someone"))
+    assertFalse(isOnlyFavourites("artist_x"))
   }
 
   @Test

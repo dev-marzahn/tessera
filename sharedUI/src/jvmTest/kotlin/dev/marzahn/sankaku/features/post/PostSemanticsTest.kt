@@ -29,7 +29,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** What TalkBack says for a post: its title and kind, its state, and the rating as an adjustable node (#143). */
 @OptIn(ExperimentalTestApi::class)
 class PostSemanticsTest {
   private val id = "98765432"
@@ -50,7 +49,6 @@ class PostSemanticsTest {
     )
     assertEquals("Rosehip, Peach. Unfavourited", cellDescription(post, openInTab = false, unfavourited = true))
     assertEquals("Rosehip, Peach. Video", cellDescription(post.copy(fileType = "video/webm"), openInTab = false))
-    // GIFs, Flash and a video this platform can't play say so, as their marks show it (#524).
     assertEquals("Rosehip, Peach. Animated GIF", cellDescription(post.copy(fileType = "image/gif"), openInTab = false))
     assertEquals("Rosehip, Peach. Flash, can't play", cellDescription(post.copy(fileExt = "swf"), openInTab = false))
     assertEquals(
@@ -115,13 +113,11 @@ class PostSemanticsTest {
 
   @Test
   fun theGBadgeSaysGOnlyAndWhy() {
-    // The words every visible label uses (#523).
     assertEquals("Signed out: G only", ratingsDescription(setOf(Rating.G), signedOut = true))
     assertEquals("G only", ratingsDescription(setOf(Rating.G), signedOut = false))
     assertEquals("Ratings R15, R18", ratingsDescription(setOf(Rating.R18, Rating.R15), signedOut = false))
   }
 
-  /** One node, adjustable 0–5 in whole steps, with a vote action per star and one to take it back. */
   @Test
   fun theStarsAreOneAdjustableNode() = runComposeUiTest {
     var shown by mutableStateOf(post.copy(voteCount = 12, totalScore = 50, userVote = 2))
@@ -139,7 +135,6 @@ class PostSemanticsTest {
 
     stars.performSemanticsAction(SemanticsActions.SetProgress) { it(4f) }
     stars.performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
-    // The vote it already has is no new vote.
     stars.performSemanticsAction(SemanticsActions.SetProgress) { it(2f) }
     assertEquals(listOf(4, null), votes)
 
@@ -149,7 +144,6 @@ class PostSemanticsTest {
     assertTrue("Take vote back" !in stars.fetchSemanticsNode().config[SemanticsActions.CustomActions].map { it.label })
   }
 
-  /** Signed out the stars aren't adjustable: activating them opens sign-in, as a tap on a star does. */
   @Test
   fun signedOutActivatingTheStarsOpensSignIn() = runComposeUiTest {
     var signIns = 0
@@ -160,12 +154,10 @@ class PostSemanticsTest {
     }
     val stars = onNodeWithContentDescription("No votes")
     assertNull(stars.fetchSemanticsNode().config.getOrNull(SemanticsActions.SetProgress))
-    // What TalkBack's double-tap does: the action, not a touch, which would land on a star.
     stars.performSemanticsAction(SemanticsActions.OnClick)
     assertEquals(1, signIns)
   }
 
-  /** ♡ is a toggle with its state, named by what it is and its count; the key only on desktop. */
   @Test
   fun theFavouriteIsAToggleNamedWithItsCount() = runComposeUiTest {
     setContent {
@@ -173,7 +165,6 @@ class PostSemanticsTest {
         PostStats(post.copy(isFavorited = true), onToggleFavourite = {}, onVote = {}, modifier = Modifier.width(320.dp))
       }
     }
-    // The JVM tests run as desktop, which keeps its key.
     onNodeWithContentDescription("Favourite, 6 (F)")
       .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
     assertEquals("Favourite, 6", favouriteDescription("6", key = null))

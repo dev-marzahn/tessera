@@ -60,7 +60,6 @@ class ErrorAdviceTest {
     }
   }
 
-  /** Signed out, Sankaku answers a post only accounts may see with a 404: like the grids' "Sign in to view" (#520). */
   @Test
   fun aNotFoundSignedOutAsksToSignIn() {
     val advice = ApiError.Http(404, "code=\"snackbar__server-error_not-found\"").advice(signedIn = false)

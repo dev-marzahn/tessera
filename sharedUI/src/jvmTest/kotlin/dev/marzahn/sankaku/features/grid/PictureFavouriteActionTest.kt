@@ -25,11 +25,6 @@ import dev.marzahn.sankaku.api.dto.PostDto
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * #527: the phone viewer's picture has TalkBack's and Switch Access's Favourite, the long-press's, next to the sheet's
- * Expand (#494), and only while the post isn't a favourite. The picture here carries the actions as [PhoneViewer]'s
- * page gives them to it.
- */
 @OptIn(ExperimentalTestApi::class)
 class PictureFavouriteActionTest {
   private var post by mutableStateOf(PostDto(id = "p1", md5 = "0123456789abcdef0123456789abcdef", rating = "s", status = "active"))
@@ -61,7 +56,6 @@ class PictureFavouriteActionTest {
     waitForIdle()
 
     assertEquals(1, favourited)
-    // A favourite now: unfavouriting stays on the sheet's ♡.
     assertEquals(listOf("Expand details"), labels())
   }
 

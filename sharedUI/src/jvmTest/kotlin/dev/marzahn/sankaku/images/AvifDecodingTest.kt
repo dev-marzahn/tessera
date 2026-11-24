@@ -9,11 +9,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** Previews are AVIF (see `docs/api.md`). Coil decodes through Skia on desktop, which can't read them. */
 class AvifDecodingTest {
   private val avif = javaClass.getResourceAsStream("/sample.avif")!!.readBytes()
 
-  // ImageIO is macOS only; CI builds on Linux, where the decoder tests are reported as skipped.
   private val onMac = System.getProperty("os.name").startsWith("Mac")
 
   @Test

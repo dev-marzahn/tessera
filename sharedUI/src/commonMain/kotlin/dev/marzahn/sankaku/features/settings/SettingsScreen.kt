@@ -77,6 +77,8 @@ import com.google.fonts.icons.close
 import com.google.fonts.icons.error
 import dev.marzahn.sankaku.PlatformBackHandler
 import dev.marzahn.sankaku.auth.AuthSession
+import dev.marzahn.sankaku.data.CacheSizes
+import dev.marzahn.sankaku.features.post.platformKeepsVideos
 import dev.marzahn.sankaku.auth.AuthState
 import dev.marzahn.sankaku.auth.TokenStorageStatus
 import dev.marzahn.sankaku.data.AccessibilitySettings
@@ -112,50 +114,34 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-/** What the Hide in Recents switch says it does. Android 12 has only `FLAG_SECURE` for it, which blocks screenshots too. */
 internal const val HideInRecentsHelp =
   "Shows a blank preview in the app switcher. On Android 12 this also blocks screenshots."
 
-/** The one confirmation's words: no counts, no names, and what stays. Only Android keeps a video cache (#180). */
 internal val ClearEverythingConfirmText = clearEverythingConfirmText(platformIsTouch)
 
-/** [ClearEverythingConfirmText] on a phone ([touch]), which has the queue and no tabs (#249), or on desktop. */
 internal fun clearEverythingConfirmText(touch: Boolean): String =
   (if (touch) "Empties the queue and Recently closed" else "Closes all tabs and the recently closed ones") +
     ", and clears the ${if (touch) "image and video caches" else "image cache"} " +
     "and the tags and searches the app remembers. You stay signed in. Posts you saved to Download/Tessera stay."
 
-/** What the Always start in G only switch says it does. */
 internal const val AlwaysStartGOnlyHelp = "Turns G only on each time the app starts. You can still turn it off."
 
-/** What the Show For you in the queue switch says it does (#229). */
 internal const val ForYouInQueueHelp = "Signed in, For you stays at the end of the queue, after Following."
 
-/** What Post size says under its label: the columns its size makes in this window, or on a phone ([touch]) screen. */
 internal fun postSizeHelp(columns: Int, touch: Boolean = false): String =
   "Larger posts, fewer columns. ${columnsLabel(columns)} " +
     if (touch) "on this screen." else "in this window."
 
-/** "1 column" or "N columns": Post size's help and its slider's state. */
 private fun columnsLabel(columns: Int): String = if (columns == 1) "1 column" else "$columns columns"
 
-/** What the Start videos muted switch says it does (#524). */
 internal const val StartVideosMutedHelp = "Mutes videos each time the app starts. Unmuting lasts until you close it."
 
-/** What the Show queue buttons switch says it does (#178). */
 internal const val ShowQueueButtonsHelp = "Shows ✕, ‹ and › beside the queue count, to close and move without swiping."
 
-/** What the Left-handed switch says it does (#528). */
 internal const val LeftHandedHelp = "Puts ♡ and ⋮ at the left end of a post's vote row, under your left thumb."
 
-/** The desktop warning when the keychain can't be used (`TokenStorageStatus.InMemory`): the spec's words. */
 internal const val InMemoryTokensWarning = "Can't store tokens; you'll need to sign in each launch"
 
-/**
- * Settings' sections, in order (#205). Updates, Diagnostics and About are slots their tickets fill (`SectionSlots.kt`).
- * Queue and Accessibility are the switches #229, #178 and #528 added; Grid is the Post size slider (#445, the phone's #468);
- * Videos is Start videos muted (#524).
- */
 internal enum class SettingsSection(val title: String) {
   Account("Account"),
   Privacy("Privacy"),
@@ -170,10 +156,6 @@ internal enum class SettingsSection(val title: String) {
   About("About"),
 }
 
-/**
- * The sections drawn on a phone ([touch]) or desktop: Accessibility's switches are for the count pill and the viewer's
- * sheet, which only a phone has; a slot is drawn once its ticket has filled it.
- */
 internal fun shownSections(
   touch: Boolean,
   updates: Boolean = UPDATES_FILLED,
@@ -182,7 +164,6 @@ internal fun shownSections(
 ): List<SettingsSection> = SettingsSection.entries.filter {
   when (it) {
     SettingsSection.Accessibility -> touch
-    // The keyboard shortcuts sheet (#521): only the desktop has the keys.
     SettingsSection.Keyboard -> !touch
     SettingsSection.Updates -> updates
     SettingsSection.Diagnostics -> diagnostics
@@ -191,26 +172,16 @@ internal fun shownSections(
   }
 }
 
-/** What Storage's second wipe is called: "Clear saved tabs" on desktop, "Clear the queue" on a phone (#249). */
 internal fun clearSavedTabsLabel(touch: Boolean): String = if (touch) "Clear the queue" else "Clear saved tabs"
 
-/** Its confirmation's words: what goes and what stays. */
 internal fun clearSavedTabsConfirmText(touch: Boolean): String =
   (if (touch) "Empties the queue and Recently closed." else "Closes all tabs and the recently closed ones.") +
     " The cache, the posts you've seen, your searches and settings stay."
 
-/** What Clear cache's confirmation says: only Android keeps a video cache (#180). */
 internal fun clearCacheConfirmText(touch: Boolean): String =
   "Deletes the ${if (touch) "images and videos" else "images"} the app has downloaded; they load again when shown. " +
     "${if (touch) "The queue" else "Your tabs"}, your searches and settings stay."
 
-/**
- * Desktop: Settings as a side sheet over the current tab while [SettingsController.isOpen] (#460), not a tab: the tab
- * strip, the active tab, its scroll and its cursor stay as they were. A heading with a close button, a hint row for
- * the keys, then the sections. Esc, Back (the mouse button), the scrim and ✕ close it; [onSidebarKey] gets each key
- * the sheet doesn't take, so G opens the sidebar over it as from any screen (#416). Clear everything closes it, as it
- * closes the phone's page.
- */
 @Composable
 fun SettingsSheet(onSidebarKey: (KeyEvent) -> Boolean, controller: SettingsController = koinInject()) {
   val isOpen by controller.isOpen.collectAsStateWithLifecycle()
@@ -241,15 +212,6 @@ fun SettingsSheet(onSidebarKey: (KeyEvent) -> Boolean, controller: SettingsContr
   }
 }
 
-/**
- * The sheet's sections, scrolling (#205, #460).
- *
- * Keys (#423): W/S and ↑/↓ scroll a line (the reader's 120 dp), with Shift a screen, wherever focus is in the sheet.
- * Its [KeyFocusHolder] has the keys as it opens, and the first Tab from it lands on the first setting under the
- * account row; Shift-Tab from there reaches Sign out, and so does Tab once it has gone round the sheet. Only that first
- * Tab skips the account row: the holder takes the keys back (the sidebar closing over it) armed again. The holder sits
- * outside the scrolling column, so taking the keys back doesn't scroll the sheet to it.
- */
 @Composable
 internal fun SettingsColumn(onClearedEverything: () -> Unit, modifier: Modifier = Modifier) {
   val scroll = rememberScrollState()
@@ -257,7 +219,6 @@ internal fun SettingsColumn(onClearedEverything: () -> Unit, modifier: Modifier 
   val scope = rememberCoroutineScope()
   val line = with(LocalDensity.current) { KeyScrollLine.toPx() }
   val firstSetting = remember { FocusRequester() }
-  // Whether Tab from the holder skips to the first setting: until the holder first lets go of the keys.
   var skipAccount by remember { mutableStateOf(true) }
   var holderFocused by remember { mutableStateOf(false) }
   val returns = LocalKeyFocus.current.returns
@@ -291,10 +252,6 @@ internal fun SettingsColumn(onClearedEverything: () -> Unit, modifier: Modifier 
 
 internal const val SettingsScrollTag = "settings-scroll"
 
-/**
- * How far a key scrolls Settings, in px: S and ↓ a [line] down, W and ↑ up, with Shift a screen of [viewport]. Null
- * for any other key, and with Cmd, Ctrl or Alt, so the shell's chords pass.
- */
 internal fun settingsKeyStep(event: KeyEvent, viewport: Int, line: Float): Float? {
   if (event.type != KeyEventType.KeyDown || event.isCommand || event.isAltPressed) return null
   val step = if (event.isShiftPressed) viewport * KEY_SCROLL_SCREEN else line
@@ -305,12 +262,6 @@ internal fun settingsKeyStep(event: KeyEvent, viewport: Int, line: Float): Float
   }
 }
 
-/**
- * Touch: Settings as a page over the whole app while [SettingsController.isOpen] (#205), not a queue item: the phone's
- * queue holds what's being looked through, and Settings is never that. A top app bar with Back and the title, then the
- * sections. The back arrow and system back close it, and the item under it is as it was. Its messages ("Cache
- * cleared") show on its own top line, on [snackbar], since the app's is under the page.
- */
 @Composable
 fun SettingsPage(snackbar: SnackbarHostState, controller: SettingsController = koinInject()) {
   val isOpen by controller.isOpen.collectAsStateWithLifecycle()
@@ -318,7 +269,6 @@ fun SettingsPage(snackbar: SnackbarHostState, controller: SettingsController = k
   PlatformBackHandler(enabled = true, onBack = controller::close)
   Box(Modifier.fillMaxSize()) {
     Scaffold(
-      // A pane, so accessibility services announce it and treat it as the screen.
       modifier = Modifier.semantics { paneTitle = SETTINGS_TITLE },
       topBar = {
         AppTopBar(
@@ -337,7 +287,6 @@ fun SettingsPage(snackbar: SnackbarHostState, controller: SettingsController = k
           .verticalScroll(rememberScrollState())
           .padding(horizontal = 16.dp, vertical = 8.dp),
       ) {
-        // Clear everything leaves an empty queue: the page closes on it, as the dialog did, so the Browse grid shows.
         SettingsSections(touch = true, onClearedEverything = controller::close)
       }
     }
@@ -349,10 +298,6 @@ fun SettingsPage(snackbar: SnackbarHostState, controller: SettingsController = k
   }
 }
 
-/**
- * Every shown section ([shownSections]) under its heading, with a divider between them. [firstSetting] goes on the
- * first setting under the account row.
- */
 @Composable
 internal fun ColumnScope.SettingsSections(
   touch: Boolean,
@@ -388,10 +333,6 @@ private fun SectionHeading(title: String) {
   )
 }
 
-/**
- * Account: the avatar and name with Sign out (asking for a second tap, #134), or Sign in when signed out; and on
- * desktop, while the keychain can't be used, the warning that tokens are kept in memory only.
- */
 @Composable
 private fun AccountSettings(
   touch: Boolean,
@@ -413,7 +354,6 @@ private fun AccountSettings(
       }
     }
   }
-  // Followed tags (#314): what Following shows, with Unfollow. Signed in only, as following is.
   if (user != null) {
     var showingFollowed by rememberSaveable { mutableStateOf(false) }
     ActionRow(FollowedTagsTitle, help = FollowedTagsHelp, onClick = { showingFollowed = true })
@@ -439,10 +379,6 @@ private fun AccountSettings(
   }
 }
 
-/**
- * Privacy: Hide in Recents and Start on (Android), Always start in G only, and Clear everything, which asks once.
- * [onClearedEverything] runs as it's confirmed. [firstRow] goes on the section's first row.
- */
 @Composable
 private fun PrivacySettings(
   touch: Boolean,
@@ -454,10 +390,7 @@ private fun PrivacySettings(
   val startOn by privacy.startOn.collectAsStateWithLifecycle()
   val alwaysStartGOnly by privacy.alwaysStartGOnly.collectAsStateWithLifecycle()
   var confirming by remember { mutableStateOf(false) }
-  // The app's scope: the page closes on the confirm (phone), and the wipe closes this tab itself (desktop), so a scope
-  // of this screen's would cancel the wipe halfway.
   val scope = koinInject<CoroutineScope>()
-  // Only Android has a Recents screen, and only touch has the queue page to start on.
   if (touch) {
     SwitchRow("Hide in Recents", HideInRecentsHelp, hideInRecents, privacy::setHideInRecents, firstRow)
     StartOnChoice(startOn, privacy::setStartOn)
@@ -475,19 +408,13 @@ private fun PrivacySettings(
   }
 }
 
-/** Keyboard (#521, desktop): opens the keyboard shortcuts sheet over Settings, as ? does elsewhere. */
 @Composable
 private fun KeyboardSettings(shortcuts: ShortcutSheetController = koinInject()) {
   ActionRow("Keyboard shortcuts", help = KeyboardShortcutsHelp, onClick = shortcuts::open)
 }
 
-/** What Settings' Keyboard shortcuts row says it opens. */
 internal val KeyboardShortcutsHelp = "Every key and where it works. ${Shortcuts.Help.label} opens it from anywhere."
 
-/**
- * Queue: Show For you in the queue (#229), and on a phone How the queue works (#559), which shows the "Your queue"
- * page over Settings again.
- */
 @Composable
 private fun QueueSettings(queue: QueueSettings = koinInject(), intro: QueueIntro = koinInject()) {
   val forYouInQueue by queue.forYouInQueue.collectAsStateWithLifecycle()
@@ -495,11 +422,6 @@ private fun QueueSettings(queue: QueueSettings = koinInject(), intro: QueueIntro
   if (platformIsTouch) ActionRow(QueueIntroSettingsLabel, help = null, onClick = intro::show)
 }
 
-/**
- * Grid: Post size, the narrowest a grid column may be, from small to large in the platform's steps
- * (`GridSettings.sizes`). Under it, how many columns that makes in this window, or on this screen on a phone
- * ([touch]); every grid follows the slider as it moves.
- */
 @Composable
 private fun GridSettings(touch: Boolean, grid: GridSettings = koinInject()) {
   val saved by grid.cellWidth.collectAsStateWithLifecycle()
@@ -507,7 +429,6 @@ private fun GridSettings(touch: Boolean, grid: GridSettings = koinInject()) {
   val cellWidth = saved ?: sizes.default
   val windowWidth = LocalWindowInfo.current.containerSize.width
   val columns = with(LocalDensity.current) {
-    // The grid spans the window (the sidebar is modal), less its edges and the scrollbar's room.
     val gridWidth = windowWidth - (platformGridEdge * 2 + gridScrollbarRoom).roundToPx()
     gridColumns(gridWidth, cellWidth.dp.roundToPx(), platformCellGap.roundToPx())
   }
@@ -530,13 +451,11 @@ private fun GridSettings(touch: Boolean, grid: GridSettings = koinInject()) {
 
 internal const val PostSizeSliderTag = "post-size-slider"
 
-/** Videos: Start videos muted (#524). */
 @Composable
 private fun VideoSettings(player: PlayerPreferences = koinInject()) {
   SwitchRow("Start videos muted", StartVideosMutedHelp, player.startMuted, player::changeStartMuted)
 }
 
-/** Accessibility (touch): Show queue buttons (#178) and Left-handed (#528). */
 @Composable
 private fun AccessibilitySettings(accessibility: AccessibilitySettings = koinInject()) {
   val showQueueButtons by accessibility.showQueueButtons.collectAsStateWithLifecycle()
@@ -545,23 +464,57 @@ private fun AccessibilitySettings(accessibility: AccessibilitySettings = koinInj
   SwitchRow("Left-handed", LeftHandedHelp, leftHanded, accessibility::setLeftHanded)
 }
 
-/**
- * Storage: the disk caches' size in use, read as the section shows and after each clear, with Clear cache; and Clear
- * saved tabs (Clear the queue on a phone). Each asks once.
- */
 @Composable
 private fun StorageSettings(
   touch: Boolean,
   cache: ClearCache = koinInject(),
+  limits: CacheLimits = koinInject(),
   savedTabs: ClearSavedTabs = koinInject(),
   messages: Messages = koinInject(),
 ) {
   var cleared by remember { mutableIntStateOf(0) }
   var inUse by remember { mutableStateOf<Long?>(null) }
-  LaunchedEffect(cleared) { inUse = runCatching { cache.bytesInUse() }.getOrNull() }
+  var imagesInUse by remember { mutableStateOf<Long?>(null) }
+  var videosInUse by remember { mutableStateOf<Long?>(null) }
+  val imageBytes by limits.imageBytes.collectAsStateWithLifecycle()
+  val videoBytes by limits.videoBytes.collectAsStateWithLifecycle()
+  LaunchedEffect(cleared) {
+    inUse = runCatching { cache.bytesInUse() }.getOrNull()
+    imagesInUse = runCatching { limits.imagesInUse() }.getOrNull()
+    videosInUse = runCatching { limits.videosInUse() }.getOrNull()
+  }
   var confirming by remember { mutableStateOf<StorageWipe?>(null) }
-  // The app's scope, so leaving Settings mid-wipe doesn't stop it halfway.
+  var choosing by remember { mutableStateOf<CacheKind?>(null) }
   val scope = koinInject<CoroutineScope>()
+  ActionRow(
+    "Image cache",
+    help = cacheSizeHelp(imageBytes, imagesInUse),
+    onClick = { choosing = CacheKind.Images },
+    modifier = Modifier.testTag(ImageCacheRowTag),
+  )
+  if (platformKeepsVideos) {
+    ActionRow(
+      "Video cache",
+      help = cacheSizeHelp(videoBytes, videosInUse),
+      onClick = { choosing = CacheKind.Videos },
+      modifier = Modifier.testTag(VideoCacheRowTag),
+    )
+  }
+  choosing?.let { kind ->
+    CacheSizeDialog(
+      title = kind.title,
+      sizes = kind.sizes,
+      selected = if (kind == CacheKind.Images) imageBytes else videoBytes,
+      onDismiss = { choosing = null },
+      onSelect = { bytes ->
+        choosing = null
+        scope.launch {
+          if (kind == CacheKind.Images) limits.setImageBytes(bytes) else limits.setVideoBytes(bytes)
+          cleared++
+        }
+      },
+    )
+  }
   ActionRow(
     "Clear cache…",
     help = "Cache in use: ${inUse?.let(::storageSize) ?: "…"}",
@@ -598,10 +551,51 @@ private fun StorageSettings(
 }
 
 internal const val CacheRowTag = "settings-cache"
+internal const val ImageCacheRowTag = "settings-image-cache"
+internal const val VideoCacheRowTag = "settings-video-cache"
 
 private enum class StorageWipe { Cache, SavedTabs }
 
-/** Asks once before a wipe: [confirm] in the error colour runs [onConfirm]; Cancel or outside the dialog doesn't. */
+private enum class CacheKind(val title: String, val sizes: CacheSizes) {
+  Images("Image cache", CacheSizes.Images),
+  Videos("Video cache", CacheSizes.Videos),
+}
+
+internal fun cacheSizeHelp(maxBytes: Long, inUse: Long?): String =
+  "Up to ${storageSize(maxBytes)} · ${inUse?.let { if (it <= 0) "empty" else "${storageSize(it)} in use" } ?: "…"}"
+
+internal fun cacheSizeLabel(bytes: Long, sizes: CacheSizes): String =
+  if (bytes == sizes.default) "${storageSize(bytes)} (default)" else storageSize(bytes)
+
+@Composable
+private fun CacheSizeDialog(
+  title: String,
+  sizes: CacheSizes,
+  selected: Long,
+  onDismiss: () -> Unit,
+  onSelect: (Long) -> Unit,
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(title) },
+    text = {
+      Column(Modifier.selectableGroup()) {
+        Text(
+          "A smaller size deletes the least recently used files to fit.",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.padding(bottom = 8.dp),
+        )
+        sizes.presets.forEach { bytes ->
+          RadioRow(cacheSizeLabel(bytes, sizes), selected = bytes == selected, onSelect = { onSelect(bytes) })
+        }
+      }
+    },
+    confirmButton = {},
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+  )
+}
+
 @Composable
 private fun ConfirmDialog(title: String, text: String, confirm: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
   AlertDialog(
@@ -620,10 +614,6 @@ private fun ConfirmDialog(title: String, text: String, confirm: String, onDismis
   )
 }
 
-/**
- * A row that does something when tapped: [label], and [help] under it. The whole row is the button, 56 dp tall at
- * least; a [destructive] one's label is in the error colour.
- */
 @Composable
 internal fun ActionRow(
   label: String,
@@ -651,10 +641,6 @@ internal fun ActionRow(
   }
 }
 
-/**
- * "Start on": what the app opens on at a launch, or on coming back after more than 5 minutes away (#177). A radio
- * group, each choice a row a screen reader reads as one.
- */
 @Composable
 private fun StartOnChoice(selected: StartOn, onSelect: (StartOn) -> Unit) {
   Column(Modifier.selectableGroup()) {
@@ -665,33 +651,30 @@ private fun StartOnChoice(selected: StartOn, onSelect: (StartOn) -> Unit) {
       color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     StartOn.entries.forEach { choice ->
-      Row(
-        Modifier
-          .fillMaxWidth()
-          .heightIn(min = 48.dp)
-          .selectable(selected = choice == selected, role = Role.RadioButton, onClick = { onSelect(choice) }),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        // The row is the control: the button only shows its state.
-        RadioButton(selected = choice == selected, onClick = null)
-        Text(
-          when (choice) {
-            StartOn.Queue -> "Queue"
-            StartOn.Browse -> "Browse"
-          },
-          style = MaterialTheme.typography.bodyLarge,
-        )
+      val label = when (choice) {
+        StartOn.Queue -> "Queue"
+        StartOn.Browse -> "Browse"
       }
+      RadioRow(label, selected = choice == selected, onSelect = { onSelect(choice) })
     }
   }
 }
 
-/**
- * Asks once before Clear everything (Settings, and the queue page's ⋮), then runs it in [scope] and says so. [scope]
- * is the caller's, and must outlive this dialog and whatever the wipe closes; the wipe runs on the main thread, as it
- * closes tabs. [onConfirm] runs as the user confirms, before the wipe.
- */
+@Composable
+private fun RadioRow(label: String, selected: Boolean, onSelect: () -> Unit) {
+  Row(
+    Modifier
+      .fillMaxWidth()
+      .heightIn(min = 48.dp)
+      .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    RadioButton(selected = selected, onClick = null)
+    Text(label, style = MaterialTheme.typography.bodyLarge)
+  }
+}
+
 @Composable
 internal fun ClearEverythingConfirm(
   scope: CoroutineScope,
@@ -720,10 +703,6 @@ internal fun ClearEverythingConfirm(
   )
 }
 
-/**
- * A labelled switch: the whole row toggles it, and a screen reader reads it as one switch. An [icon] leads the row, as
- * on the sidebar's entries.
- */
 @Composable
 internal fun SwitchRow(
   label: String,
@@ -743,7 +722,6 @@ internal fun SwitchRow(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    // 12 dp from the icon to the label, as on the sidebar's entries, so their labels line up.
     Row(
       Modifier.weight(1f),
       verticalAlignment = Alignment.CenterVertically,
@@ -757,7 +735,6 @@ internal fun SwitchRow(
         }
       }
     }
-    // The row is the control: the switch only shows its state.
     Switch(checked = checked, onCheckedChange = null, enabled = enabled)
   }
 }

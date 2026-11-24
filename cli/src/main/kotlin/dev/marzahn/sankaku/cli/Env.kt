@@ -2,7 +2,6 @@ package dev.marzahn.sankaku.cli
 
 import java.io.File
 
-/** The first of `.env.local` and `.env` that exists. `SANKAKU_*` environment variables override the file. */
 fun loadEnv(dir: File = File(".")): Map<String, String> {
   val file = listOf(".env.local", ".env").map { File(dir, it) }.firstOrNull { it.exists() }
   val fromFile = file?.readLines()

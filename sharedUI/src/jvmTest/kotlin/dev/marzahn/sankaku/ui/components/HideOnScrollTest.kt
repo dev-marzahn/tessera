@@ -32,23 +32,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #300: the hidden pill comes back on a keep, a screen change or a count change. It used to jump from hidden to shown
- * in one frame; it slides back in over several, on the spring it settles with after a scroll.
- */
 @OptIn(ExperimentalTestApi::class)
 class HideOnScrollTest {
   private lateinit var hide: HideOnScroll
-  /** How many times an item, screen or count changed, as `Shell`'s keys do. */
   private var changeCount by mutableIntStateOf(0)
 
-  /** How many times a post covered the bar. */
   private var coverCount by mutableIntStateOf(0)
 
-  /** Whether Undo is pending, as `Shell` shows the pill for. */
   private var undoPending by mutableStateOf(false)
 
-  /** A list, and a pill at its bottom that hides while it scrolls down, as the count pill does over a grid. */
   private fun ComposeUiTest.showList() {
     setContent {
       SankakuTheme {
@@ -69,7 +61,6 @@ class HideOnScrollTest {
     }
   }
 
-  /** Scrolls the list down until the pill is all the way out, then stops the clock. */
   private fun ComposeUiTest.scrollThePillOut(): Float {
     onNodeWithTag(LIST).performTouchInput { swipeUp() }
     waitForIdle()
@@ -79,7 +70,6 @@ class HideOnScrollTest {
     return out
   }
 
-  /** How far the pill is hidden in each of the next [frames] frames, in px, logged. */
   private fun ComposeUiTest.hiddenPerFrame(name: String, frames: Int = 20): List<Float> = List(frames) {
     mainClock.advanceTimeByFrame()
     hide.hiddenBy
@@ -93,8 +83,6 @@ class HideOnScrollTest {
     changeCount++
     val frames = hiddenPerFrame("a change (a keep, a screen, a count)")
 
-    // No jump: no frame moves it more than half the way, at least four frames are between out and in, it only moves
-    // up (no overshoot past its place), and it ends shown.
     val steps = (listOf(out) + frames).zipWithNext { a, b -> a - b }
     assertTrue(steps.all { it >= 0f }, "only up, never past its place: $frames")
     assertTrue(steps.max() < out / 2, "no step of half the way or more: $frames")
@@ -111,7 +99,6 @@ class HideOnScrollTest {
     val midway = hide.hiddenBy
     assertTrue(midway > 0f, "still on its way: $midway")
 
-    // The user scrolls down again: the pill follows the scroll out, and the slide doesn't pull it back.
     mainClock.autoAdvance = true
     onNodeWithTag(LIST).performTouchInput { swipeUp() }
     waitForIdle()
@@ -133,7 +120,6 @@ class HideOnScrollTest {
     showList()
     scrollThePillOut()
 
-    // A post covers the bar, which isn't drawn meanwhile: the viewer closes into a shown pill.
     coverCount++
     val frames = hiddenPerFrame("covered", frames = 2)
     assertEquals(0f, frames.first(), "$frames")
@@ -155,8 +141,6 @@ class HideOnScrollTest {
     showList()
     val out = scrollThePillOut()
 
-    // Undo goes pending, slides the pill back, then ends (tapped, or its window closes) before the slide is done: the
-    // effect restarts, and the pill still comes all the way back, through several frames.
     undoPending = true
     repeat(2) { mainClock.advanceTimeByFrame() }
     undoPending = false

@@ -27,11 +27,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #299: ↑ Top follows the user scrolling back up, not the grid's own scroll as the viewer closes. A three-column grid
- * of 400 fixed cells, the viewer's close as [scrollBackForClose] (what `closeViewer` runs), and the user's scrolls as
- * real swipes.
- */
 @OptIn(ExperimentalTestApi::class)
 class ScrollUpAfterCloseTest {
   private class Grid(val state: LazyStaggeredGridState, val watch: ScrollUpWatch, val scope: CoroutineScope)
@@ -51,7 +46,6 @@ class ScrollUpAfterCloseTest {
     return grid
   }
 
-  /** The user scrolls far down, as with a fling: a jump, then a swipe to be sure the last move was down. */
   private fun ComposeUiTest.userScrollsFarDown(grid: Grid) {
     grid.scope.launch { grid.state.scrollToItem(150) }
     waitForIdle()
@@ -70,7 +64,6 @@ class ScrollUpAfterCloseTest {
     userScrollsFarDown(grid)
     assertFalse(grid.watch.backUp, "scrolled down: no Top yet")
     val before = grid.state.firstVisibleItemIndex
-    // Paged back about 10 posts' worth of rows in the viewer, then closed.
     closeOnto(grid, before - 60)
     assertTrue(grid.state.firstVisibleItemIndex < before, "the close scrolled the grid up")
     assertFalse(grid.watch.backUp, "the close's own scroll up shows Top")
@@ -105,7 +98,6 @@ class ScrollUpAfterCloseTest {
     onNodeWithTag(GRID).performTouchInput { swipeDown() }
     waitForIdle()
     assertTrue(grid.watch.backUp, "the user's scroll up after the close shows Top (#261)")
-    // And a scroll down hides it again, as before.
     onNodeWithTag(GRID).performTouchInput { swipeUp() }
     waitForIdle()
     assertFalse(grid.watch.backUp)
@@ -122,10 +114,6 @@ class ScrollUpAfterCloseTest {
     assertTrue(grid.watch.backUp, "the close's own scroll down hid the user's Top")
   }
 
-  /**
-   * A user scroll cancels the close's scroll right after its jump, before a frame has passed: the jump is still the
-   * app's, so it shows no ↑ Top. The scroll here cancels itself after its jump, as a user scroll would cancel it.
-   */
   @Test
   fun aCloseCancelledAfterItsJumpDoesNotShowTop() = runDesktopComposeUiTest(width = 400, height = 800) {
     val grid = grid()
@@ -143,7 +131,6 @@ class ScrollUpAfterCloseTest {
     assertFalse(grid.watch.backUp, "a cancelled close's jump shows Top")
   }
 
-  /** The bug the quiet scroll fixes: the same scroll, not marked as the app's own, read as the user scrolling up. */
   @Test
   fun theSameScrollUnmarkedWouldShowTop() = runDesktopComposeUiTest(width = 400, height = 800) {
     val grid = grid()

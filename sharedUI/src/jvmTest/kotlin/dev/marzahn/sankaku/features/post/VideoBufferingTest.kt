@@ -18,10 +18,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * A video waiting for data (#524): it shows a spinner, and the play button follows play-when-ready, so while it buffers
- * the button reads Pause and cancels the autoplay; Space does the same. The tracks have names for screen readers.
- */
 @OptIn(ExperimentalTestApi::class)
 class VideoBufferingTest {
   private val mp4 = PostDto(
@@ -29,7 +25,6 @@ class VideoBufferingTest {
     sampleUrl = "https://v.example.test/data/sample/ab/sample-abc.mp4?token=t",
   )
 
-  /** Wants to play from the start but never gets the data: buffering, not playing. */
   private class StalledPlayback : VideoPlayback {
     override var playWhenReady by mutableStateOf(false)
     var waiting by mutableStateOf(false)
@@ -68,7 +63,6 @@ class VideoBufferingTest {
     val keys = VideoKeys(preferences)
     setContent {
       CompositionLocalProvider(LocalVideoKeys provides keys) {
-        // Not shown: the surface is the platform player's, which a fake isn't.
         PostVideo(mp4, player = player, preferences = preferences, shown = false)
         VideoSeekRow(keys, preferences = preferences)
       }
@@ -112,7 +106,6 @@ class VideoBufferingTest {
   fun theDesktopVolumeSliderIsNamed() = runComposeUiTest {
     val player = StalledPlayback()
     val preferences = PlayerPreferences(InMemoryTextFile())
-    // Paused, so the desktop controls show.
     setContent { PostVideo(mp4, player = player, preferences = preferences, shown = false) }
     player.pause()
     waitForIdle()

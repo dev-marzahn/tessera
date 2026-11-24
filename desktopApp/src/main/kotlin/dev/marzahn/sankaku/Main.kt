@@ -35,11 +35,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlin.system.exitProcess
 
-@OptIn(ExperimentalComposeUiApi::class) // LocalWindowExceptionHandlerFactory, for recordingWindowCrashes.
+@OptIn(ExperimentalComposeUiApi::class)
 fun main() {
-  // First, so a failure in start-up is recorded (#208). Only main's closes the app here: another thread's (a
-  // background one, or an AWT listener's) leaves it running, so it's passed on unrecorded. A crash in the window is
-  // recorded by recordingWindowCrashes, the one place that knows the window is closing.
   val mainThread = Thread.currentThread()
   val crashReports = desktopCrashReports().also {
     it.installUncaughtHandler(closesApp = { Thread.currentThread() === mainThread })
@@ -68,14 +65,10 @@ fun main() {
         title = "Tessera",
         icon = painterResource("icon.png"),
         state = windowState,
-        // Behind the first-launch screen (#210) the shortcuts and Esc do nothing: there are no tabs to act on yet.
         onPreviewKeyEvent = { firstLaunch.accepted.value && tabShortcuts(it, tabs, newTab, refresh, clearViewed) },
       ) {
-        // Esc that nothing focused handled goes back, under any open dialog's own Esc (#364). First, so it's the last
-        // handler asked.
         val accepted by firstLaunch.accepted.collectAsState()
         WindowBackHandler(enabled = accepted, onBack = navigator::goBack)
-        // Started from a terminal or Gradle, hand focus back to what the user was doing (see LaunchFocus.kt).
         LaunchedEffect(Unit) {
           delay(300)
           LaunchFocus.yieldFocus()
@@ -93,11 +86,6 @@ fun main() {
   }
 }
 
-/**
- * Compose's own window exception handler, recording first (#208). A crash in the window (composition, layout, input,
- * its effects) reaches it; the default then shows its error dialog, closes the window (which quits the app) and
- * rethrows on the AWT event thread. That rethrow isn't recorded again: the uncaught handler records only `main`'s.
- */
 @OptIn(ExperimentalComposeUiApi::class)
 private fun recordingWindowCrashes(reports: CrashReports) = WindowExceptionHandlerFactory { window ->
   val default = DefaultWindowExceptionHandlerFactory.exceptionHandler(window)
@@ -107,11 +95,6 @@ private fun recordingWindowCrashes(reports: CrashReports) = WindowExceptionHandl
   }
 }
 
-/**
- * Cmd/Ctrl-T (a Browse tab with its search open, #542), Cmd/Ctrl-Shift-T (reopen a closed tab), Cmd/Ctrl-Shift-E
- * (Clear viewed), Cmd/Ctrl-W, Ctrl-(Shift-)Tab and Cmd/Ctrl-R or F5 (refresh the grid), at window level so they work
- * wherever focus is.
- */
 private fun tabShortcuts(
   event: KeyEvent,
   tabs: TabsController,
@@ -122,7 +105,6 @@ private fun tabShortcuts(
   if (event.type != KeyEventType.KeyDown) return false
   val command = event.isCommand
   return when {
-    // The keys are Shortcuts', so the shortcut sheet (#521) lists what these do.
     event.key == Shortcuts.NextTabCommand.key && event.isCtrlPressed -> true.also { tabs.cycle(forward = !event.isShiftPressed) }
     command && event.isShiftPressed && event.key == Shortcuts.ReopenTabCommand.key -> true.also { tabs.reopenClosed() }
     command && event.isShiftPressed && Shortcuts.ClearViewed.matches(event.key) -> true.also { clearViewed() }

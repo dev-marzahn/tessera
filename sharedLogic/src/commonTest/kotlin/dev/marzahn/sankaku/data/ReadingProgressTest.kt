@@ -29,7 +29,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** [inner], counting its [deletes]. */
 private class DeleteCounting(private val inner: TextFile) : TextFile by inner {
   @Volatile var deletes = 0
     private set
@@ -41,15 +40,12 @@ private class DeleteCounting(private val inner: TextFile) : TextFile by inner {
 }
 
 class ReadingProgressTest {
-  // Answers each PUT with the next of these, then with success.
   private val answers = ArrayDeque<HttpStatusCode>()
 
-  // When set, a PUT waits for it before it's answered; [held] says one is waiting.
   private var gate: CompletableDeferred<Unit>? = null
 
   @Volatile private var held = false
 
-  // While set, a PUT finds no connection.
   @Volatile private var unreachable = false
 
   private fun harness(signedIn: Boolean) = Harness(InMemoryTokenStore(if (signedIn) storedTokens() else null)) { request ->
@@ -67,12 +63,10 @@ class ReadingProgressTest {
 
   private fun HttpRequestData.bookId() = url.encodedPath.removePrefix("/pools/").removeSuffix("/reading")
 
-  /** Waits (on real time: the engine answers on its own threads) until [done]. */
   private suspend fun until(done: () -> Boolean) = withContext(Dispatchers.Default) {
     withTimeout(5_000) { while (!done()) delay(10) }
   }
 
-  /** The PUTs, once [count] have come and a little longer, so one more would be counted too. */
   private suspend fun Harness.puts(count: Int): List<HttpRequestData> {
     until { requests.size >= count }
     withContext(Dispatchers.Default) { delay(50) }
@@ -92,7 +86,6 @@ class ReadingProgressTest {
     progress(h, file, backgroundScope).save("b1", BookPlace(sequence = 79, page = 80, pages = 120))
     until { h.puts().size == 1 && file.read()?.contains("79") == true }
 
-    // The process dies; a later launch, still offline, shows the unsent place over the server's older one and tries it.
     val server = BookDto(id = "b1", postCount = 120, reading = ReadingDto(currentPage = 12, sequence = 11))
     val h2 = harness(signedIn = true)
     h2.session.restore()
@@ -100,7 +93,6 @@ class ReadingProgressTest {
     assertEquals(79, later.savedOf(server)?.sequence)
     until { h2.puts().size == 1 }
 
-    // Online again: sent once, and no longer kept as unsent.
     unreachable = false
     h2.connectivity.requestRetry()
     until { h2.puts().size == 2 }
@@ -109,7 +101,6 @@ class ReadingProgressTest {
     h2.connectivity.requestRetry()
     withContext(Dispatchers.Default) { delay(100) }
     assertEquals(2, h2.puts().size, "a sent place isn't sent again")
-    // A launch after that sends nothing.
     val h3 = harness(signedIn = true)
     h3.session.restore()
     progress(h3, file, backgroundScope)
@@ -133,7 +124,6 @@ class ReadingProgressTest {
   fun aPlaceSentAtOnceIsNotKeptAsUnsent() = runTest {
     val h = harness(signedIn = true)
     h.session.restore()
-    // Counts the deletes: the file is deleted only once it would hold nothing, here once the place was sent.
     val file = DeleteCounting(InMemoryTextFile())
     progress(h, file, backgroundScope).save("b1", BookPlace(sequence = 7, page = 8, pages = 20))
     h.puts(1)
@@ -179,14 +169,12 @@ class ReadingProgressTest {
     assertEquals(HttpMethod.Put, sent.single().method)
     assertEquals("/pools/b1/reading", sent.single().url.encodedPath)
     assertEquals(11, sent.single().sequence())
-    // Shown before the list is loaded again, over the server's older place; not a place kept on the device.
     assertEquals(SavedReading(sequence = 11, page = 12, pages = 28, finished = false), progress.savedOf(book.copy(reading = ReadingDto(currentPage = 3, sequence = 2))))
     assertNull(progress.savedOf(book, signedIn = false))
   }
 
   @Test
   fun landedCountsOnlyThePlacesSankakuTook() = runTest {
-    // #503: the shelf asks again once Sankaku has a place; a refused or unreachable send doesn't change its order.
     answers += HttpStatusCode.InternalServerError
     val h = harness(signedIn = true)
     h.session.restore()
@@ -220,10 +208,8 @@ class ReadingProgressTest {
     val progress = progress(h, InMemoryTextFile(), backgroundScope)
     progress.save("b1", BookPlace(4, 5, 10))
     h.puts(1)
-    // Shown this run although it didn't reach Sankaku.
     assertEquals(4, progress.savedOf(BookDto(id = "b1"))?.sequence)
 
-    // No automatic retry (REVIEW.md): the next save sends only itself.
     progress.save("b2", BookPlace(1, 2, 10))
     assertEquals(listOf("b1" to 4, "b2" to 1), h.puts(2).map { it.bookId() to it.sequence() })
   }
@@ -233,7 +219,6 @@ class ReadingProgressTest {
     val h = harness(signedIn = true)
     h.session.restore()
     val progress = progress(h, InMemoryTextFile(), backgroundScope)
-    // The first send is held at the server while two more queue behind it.
     gate = CompletableDeferred()
     progress.save("b1", BookPlace(1, 2, 10))
     until { held }
@@ -258,7 +243,6 @@ class ReadingProgressTest {
     assertTrue(progress.revision.value > revision)
     val book = BookDto(id = "b1", postCount = 6)
     assertEquals(SavedReading(5, 6, 6, finished = true), progress.savedOf(book))
-    // Written in the background, and kept across launches.
     until { file.read() != null }
     assertEquals(SavedReading(5, 6, 6, finished = true), progress(h, file, backgroundScope).savedOf(book))
 
@@ -279,7 +263,6 @@ class ReadingProgressTest {
     assertEquals(12f / 34, started!!.fraction)
     assertTrue(progress.savedOf(BookDto(id = "b1", postCount = 34, reading = ReadingDto(currentPage = 34, sequence = 33)))!!.finished)
     assertTrue(progress.savedOf(BookDto(id = "b1", postCount = 34, reading = ReadingDto(currentPage = 34, sequence = 33, percent = 100.0)))!!.finished)
-    // Signed out, the server's place isn't the device's.
     assertNull(progress.savedOf(BookDto(id = "b1", postCount = 34, reading = ReadingDto(currentPage = 12)), signedIn = false))
   }
 
@@ -288,15 +271,12 @@ class ReadingProgressTest {
     val h = harness(signedIn = true)
     h.session.restore()
     val file = InMemoryTextFile()
-    // 20 of its 34 pages came back; the reader reached the 20th.
     progress(h, file, backgroundScope).save("b1", BookPlace(sequence = 19, page = 20, pages = 20))
-    // Sent, and so no longer kept as unsent (#491): the restart below reads only the book finished here.
     until { file.read()?.let { "\"unsent\"" !in it } == true }
 
     val later = progress(h, file, backgroundScope)
     val atThatPage = BookDto(id = "b1", postCount = 34, reading = ReadingDto(currentPage = 20, sequence = 19, percent = 59.0))
     assertTrue(later.savedOf(atThatPage)!!.finished)
-    // Moved back since, on the website: not read.
     assertFalse(later.savedOf(atThatPage.copy(reading = ReadingDto(currentPage = 3, sequence = 2)))!!.finished)
   }
 

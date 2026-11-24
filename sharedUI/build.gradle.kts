@@ -10,23 +10,14 @@ plugins {
   alias(libs.plugins.aboutlibraries)
 }
 
-// Every compilation here holds a startKoin (commonMain, and the jvmTest harnesses), so the plugin's own guess is strict
-// too. Left unset, it guesses by reading every source file while configuring, which makes any source edit invalidate
-// the configuration cache.
 koinCompiler {
   strictSafety = true
 }
 
-// Settings → About's open-source licences (#206): every dependency's name, version and licence text, collected at build
-// time into a Compose resource, so the list reads offline on both platforms. Each library names the Kotlin targets it's
-// in (`targets`), so each platform lists only its own.
 val licencesFile = layout.buildDirectory.file("generated/aboutLibraries/aboutlibraries.json")
 aboutLibraries {
-  // The licence texts come from `licences/licenses/` (SPDX's, by id), not the network, so every build lists the same
-  // texts. A dependency under a licence not there yet fails AboutTest: add its file.
   offlineMode = true
   collect {
-    // Also fixes what a POM gets wrong (java-keyring names its licence "BSD-3", with no text), in `licences/libraries/`.
     configPath = file("licences")
     includeTargets = true
   }
@@ -40,8 +31,6 @@ aboutLibraries {
   }
 }
 
-// The export as `files/aboutlibraries.json` in a resource folder of its own: the plugin's Android task writes next to
-// the export file too, which the resource tasks mustn't read.
 val licencesResourcesDir = layout.buildDirectory.dir("generated/licencesResources")
 val licencesResources = tasks.register<Sync>("licencesResources") {
   from(tasks.named("exportLibraryDefinitions")) { include("aboutlibraries.json") }
@@ -70,7 +59,6 @@ kotlin {
     androidResources {
       enable = true
     }
-    // Stubbed android.jar returns defaults, so a host test can build an Intent and throw an Android exception (#358).
     withHostTest {
       isReturnDefaultValues = true
     }
@@ -104,14 +92,11 @@ kotlin {
     }
     jvmMain.dependencies {
       implementation(compose.desktop.currentOs)
-      // Desktop's video player; Android plays through Media3 directly (#189).
       implementation(libs.composemediaplayer)
       implementation(libs.kotlinx.coroutines.swing)
       implementation(libs.java.keyring)
       implementation(libs.jna)
-      // The window's Esc as a back handler under the dialogs' own (#364).
       implementation(libs.jetbrains.navigationevent.compose)
-      // Ktor logs through SLF4J; this silences it. Here rather than in :desktopApp, so the licences list it (#206).
       runtimeOnly(libs.slf4j.nop)
     }
     androidMain.dependencies {
@@ -133,11 +118,6 @@ kotlin {
   }
 }
 
-// The desktop UI tests are most of CI's build time (about 3 of its 6 minutes on the build runner), one class after
-// another. Forks run classes side by side, each its own JVM, so each harness's startKoin stays its own; 45 s to 26 s
-// locally. At most 4: the build runner's 7 GB also holds Gradle's 4 GB.
-// Those tests start AWT, which on macOS gives each test JVM a Java icon in the Dock while it runs. As a UI element it
-// stays out of the Dock and still renders.
 tasks.withType<Test>().configureEach {
   maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
   systemProperty("apple.awt.UIElement", "true")

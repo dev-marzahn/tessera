@@ -86,12 +86,8 @@ class PostSaverTest {
       scope,
     )
 
-    /** Saves [post] and returns the first [count] messages; the last one ends the save. */
     fun save(count: Int): List<Message> = runBlocking {
       withTimeout(5_000) {
-        // Undispatched, so it's subscribed before the save emits: a message with no subscriber is dropped. Unconfined,
-        // so each message is taken on the saver's thread as it's emitted: dispatched to this loop, a quick failure
-        // could replace "Saving…" in the one-message buffer before it was read.
         val collected = async(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) { messages.messages.take(count).toList() }
         saver.save(post)
         collected.await()
@@ -136,7 +132,6 @@ class PostSaverTest {
 
     assertTrue(rig.saver.fresh.value.getValue(post.id) is SaveOutcome.Saved)
     assertEquals(setOf(post.id), rig.saver.saved.value.keys)
-    // Neither "Saving…" nor "Saved": ⋮ shows both.
     assertEquals(emptyList(), shown)
     rig.saver.settle(post.id)
     assertTrue(rig.saver.fresh.value.isEmpty())
@@ -153,7 +148,6 @@ class PostSaverTest {
     }
     val shown = async(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { rig.messages.messages.first() } }
 
-    // The viewer closed (or ⋮ moved to another post) before the window ended.
     release()
 
     assertEquals("Saved" to "Open", shown.await().let { it.text to it.actionLabel })

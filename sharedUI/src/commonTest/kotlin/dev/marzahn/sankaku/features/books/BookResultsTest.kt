@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** #382: what the reader moves between, and what comes next in a series. */
 class BookResultsTest {
   private val one = BookDto(id = "1", nameEn = "One")
   private val two = BookDto(id = "2", nameEn = "Two")
@@ -31,7 +30,6 @@ class BookResultsTest {
     assertEquals(two, nextInSeries(series, "1"))
     assertEquals(three, nextInSeries(series, "2"))
     assertNull(nextInSeries(series, "3"), "the last has no next")
-    // G only left the book out of its series: no next rather than a guess.
     assertNull(nextInSeries(listOf(one, three), "2"))
   }
 
@@ -53,7 +51,6 @@ class BookResultsTest {
     assertEquals(OpenBook("2", "Two") to 1, session.book to session.index)
     assertEquals(opening, session.opening)
     assertEquals(OpenBook("2", "Two"), reader.shown.value)
-    // Its Next card continued into the series' next book in place: still result 1, showing that book.
     reader.showing(1, OpenBook("3", "Three"))
     assertEquals(OpenBook("3", "Three") to 1, reader.session.value!!.let { it.book to it.index })
     reader.open(results, 0)
@@ -71,10 +68,8 @@ class BookResultsTest {
     reader.open(results, 0)
     reader.report("1", BookPlace(sequence = 3, page = 4, pages = 10))
     reader.report("1", BookPlace(sequence = 5, page = 6, pages = 10))
-    // A swipe to the next result (#382): the book left, at its last place.
     reader.showing(1, OpenBook("2", "Two"))
     assertEquals(listOf("1" to 5), sent)
-    // Book 2 was only looked at: the next swipe and the close send nothing for it.
     reader.showing(2, OpenBook("3", "Three"))
     reader.report("3", BookPlace(sequence = 1, page = 2, pages = 10))
     reader.close()

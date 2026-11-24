@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
 
-/** The fields both platforms share carry the content types Android turns into autofill hints. */
 @OptIn(ExperimentalTestApi::class)
 class SignInAutofillTest {
   private fun hasContentType(expected: ContentType) =

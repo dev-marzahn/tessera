@@ -96,25 +96,6 @@ import dev.marzahn.sankaku.ui.openOnClick
 import dev.marzahn.sankaku.ui.theme.Amber
 import org.koin.compose.koinInject
 
-/**
- * The tab switcher (#461, desktop only): a grid of every open tab over the window, opened with [Shortcuts.TabSwitcher],
- * to jump to a far tab without stepping through (and loading) every tab between.
- *
- * It opens with the selection, the grid cursor's amber ring, on the active tab. W/A/S/D (or the arrows) move it, held
- * keys repeating; while the selection is scrolled out of view, the next move puts it on the first card in view instead.
- * Space or E goes to the selected tab, as a click on its tab does, and closes the switcher. X closes the selected tab
- * and Z reopens the last closed one, as they do outside it, and the switcher stays open. Esc or C closes it. The mouse
- * is apart from the keys, as on the grid: hover only highlights, a click goes to the tab, a middle click or the card's ✕
- * closes it, and a click outside the panel closes the switcher.
- *
- * Space, E, Esc and C act on their release, so the key's repeats and release never reach the screen under it (the grid
- * would take a repeated Space for a press and open the viewer). [keyHeld] says the key that opened it is still down: its
- * repeats are ignored and its release does nothing, so a held C opens it once and the next press closes it.
- *
- * Nothing in it makes a request: titles and favourites come from what the app holds ([TabPosts]), pictures from the
- * image cache only ([PreviewImage]), and only the chosen tab loads, once it's shown. With G only on, an R15 or R18 tab
- * ([isAdult]) shows its kind's icon instead of its picture.
- */
 @Composable
 fun TabSwitcher(
   open: Boolean,
@@ -125,7 +106,6 @@ fun TabSwitcher(
   controller: TabsController = koinInject(),
   tabPosts: TabPosts = koinInject(),
   privacy: PrivacySettings = koinInject(),
-  // The queue list's seen marks and Clear viewed (#502); without them (a test of the cards) nothing is seen.
   seen: SeenStore? = null,
   clearViewed: ClearViewed? = null,
 ) {
@@ -137,23 +117,20 @@ fun TabSwitcher(
   val posts by remember(tabPosts, postIds) { tabPosts.of(postIds) }.collectAsStateWithLifecycle(emptyMap())
   val twins by remember(tabs) { derivedStateOf { twinSuffixes(tabs.map { it.title }) } }
   var selected by remember { mutableStateOf(active) }
-  // A closed selection moves to the card that took its place (the next, else the previous), as closing does.
   val ids = remember(tabs) { tabs.map { it.id } }
   var lastIds by remember { mutableStateOf(ids) }
   LaunchedEffect(ids) {
     selected = selectionAfter(lastIds, ids, selected)
     lastIds = ids
   }
-  // A reopen (Z, here or on the + badge) makes the tab it brought back active: the selection follows it.
   LaunchedEffect(controller) { controller.reopened.collect { selected = controller.active.value } }
-  // The queue list (#502): the phone page's rows, find, ⋮ and Recently closed.
   val closed by controller.closed.collectAsStateWithLifecycle()
   val seenRevision = seen?.revision?.collectAsStateWithLifecycle()?.value
   val seenSince: (TabState) -> Boolean = remember(seen, seenRevision) { { tab -> seen != null && tab.seenSinceKept(seen) } }
   var query by remember { mutableStateOf<String?>(null) }
   var menuOpen by remember { mutableStateOf(false) }
   val known: (TabState) -> TabPost? = { tab -> (tab.top as? Route.Post)?.let { posts[it.id] } }
-  val rows = if (list) queueRows(tabs, closed, inline = null, query?.takeIf { it.isNotBlank() }, gOnly, known) else emptyList()
+  val rows = if (list) queueRows(tabs, closed, inline = null, query?.takeIf { it.isNotBlank() }, gOnly, post = known) else emptyList()
   val selectable = selectableIds(rows)
   var lastSelectable by remember { mutableStateOf(selectable) }
   LaunchedEffect(selectable) {
@@ -163,28 +140,22 @@ fun TabSwitcher(
     lastSelectable = selectable
   }
   val selectedRow = rows.indexOfFirst { selectableIds(listOf(it)).firstOrNull() == selected }
-  // A couple of rows above the current item, as the phone page opens.
   val queueList = rememberLazyListState(initialFirstVisibleItemIndex = (selectedRow - 2).coerceAtLeast(0))
   LaunchedEffect(list, selectedRow) { if (list && selectedRow >= 0) queueList.bringIntoView(selectedRow) }
   val presses = remember { SwitcherPresses(heldAtOpen = Shortcuts.TabSwitcher.key.takeIf { keyHeld }) }
-  // The opening C let go before the switcher had the focus (a quick tap): the shell heard its release.
   LaunchedEffect(keyHeld) { if (!keyHeld) presses.letGo(Shortcuts.TabSwitcher.key) }
-  // Releases while another app has the focus go there: no key is held any more.
   val windowFocused = LocalWindowInfo.current.isWindowFocused
   LaunchedEffect(windowFocused) { if (!windowFocused) presses.forget() }
   val grid = rememberLazyGridState(initialFirstVisibleItemIndex = tabs.indexOfFirst { it.id == active }.coerceAtLeast(0))
   val focus = remember { FocusRequester() }
-  // The grid's columns as last laid out, for the moves; set as the frame applies, not a frame later.
   val columns = remember { intArrayOf(1) }
 
   fun go(id: TabId) {
-    // A closed source's row stands for its block: going there shows its first kept item.
     val target = if (tabs.any { it.id == id }) id else blockIds(tabs, id).firstOrNull() ?: return
-    controller.activate(target)
+    controller.jumpTo(target)
     onClose()
   }
 
-  // The list's X: the item, or a closed source's row's kept items; Shift+X: the whole block of the selected row.
   fun closeRow(id: TabId) {
     val tab = tabs.firstOrNull { it.id == id }
     if (tab != null) {
@@ -214,18 +185,14 @@ fun TabSwitcher(
     }
   }
 
-  // Back on the cards, a closed source's row's selection (no tab) goes to the current tab.
   LaunchedEffect(list) { if (!list && tabs.none { it.id == selected }) selected = active }
   val selectedIndex = tabs.indexOfFirst { it.id == selected }
   LaunchedEffect(selectedIndex) { if (selectedIndex >= 0) grid.bringIntoView(selectedIndex) }
 
-  // Esc is the switcher's own key, on its release: the dialog's own Esc would close it on the press, and its release
-  // and repeats would then reach the screen under it.
   Dialog(onDismissRequest = onClose, properties = DialogProperties(dismissOnBackPress = false, usePlatformDefaultWidth = false)) {
     BoxWithConstraints(
       Modifier
         .fillMaxSize()
-        // A click outside the panel closes the switcher.
         .clickable(interactionSource = null, indication = null, onClick = onClose)
         .onPreviewKeyEvent { event ->
           if (list) {
@@ -238,8 +205,6 @@ fun TabSwitcher(
             presses,
             onMove = { move ->
               val index = tabs.indexOfFirst { it.id == selected }
-              // Scrolled out of view (the wheel), the selection comes back on the first card in view. Partly in view,
-              // as while a move's scroll runs, it moves on from where it is.
               val from = index.takeIf { it >= 0 && grid.layoutInfo.visibleItemsInfo.any { item -> item.index == it } }
               val next = if (from == null) grid.firstFullyShown() else switcherStep(from, tabs.size, columns[0], move)
               next?.let { tabs.getOrNull(it) }?.let { selected = it.id }
@@ -264,7 +229,6 @@ fun TabSwitcher(
           .padding(top = 48.dp, bottom = 48.dp)
           .width(panelWidth)
           .heightIn(max = maxHeight - 96.dp)
-          // Clicks on the panel itself don't reach the scrim's close.
           .clickable(interactionSource = null, indication = null, onClick = {})
           .testTag(TAB_SWITCHER_TAG),
       ) {
@@ -281,7 +245,6 @@ fun TabSwitcher(
               menuOpen = menuOpen,
               onMenu = { open ->
                 menuOpen = open
-                // The menu's popup had the keys: the releases it took (R's, a held key's) never reached the list.
                 if (!open) {
                   presses.forget()
                   focusRoot()
@@ -328,7 +291,6 @@ fun TabSwitcher(
           SwitcherKeyHints(Modifier.padding(top = 8.dp, bottom = 4.dp))
           val gap = 12.dp
           BoxWithConstraints {
-            // Cards at least [CardMinWidth] wide, as many as fit; the ring's reach is the grid's padding.
             val room = maxWidth - CardRingReach * 2
             val fit = ((room + gap) / (CardMinWidth + gap)).toInt().coerceIn(1, MaxColumns)
             SideEffect { columns[0] = fit }
@@ -364,7 +326,6 @@ fun TabSwitcher(
   }
 }
 
-/** What the keys do in the switcher, as the sidebar lists its own. */
 @Composable
 private fun SwitcherKeyHints(modifier: Modifier = Modifier) {
   FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -377,7 +338,6 @@ private fun SwitcherKeyHints(modifier: Modifier = Modifier) {
   }
 }
 
-/** Cards or Queue (#502): the switcher's two views, which Q changes too. */
 @Composable
 private fun ModeToggle(list: Boolean, onList: (Boolean) -> Unit) {
   Row(
@@ -408,7 +368,6 @@ private fun ModeChoice(text: String, chosen: Boolean, onClick: () -> Unit) {
 
 internal fun modeTag(text: String) = "switcher-mode-$text"
 
-/** Scrolls the least distance that shows the row at [index] whole, or to it when it's out of view. */
 private suspend fun LazyListState.bringIntoView(index: Int) {
   val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
   if (item == null) {
@@ -423,12 +382,6 @@ private suspend fun LazyListState.bringIntoView(index: Int) {
   }
 }
 
-/**
- * One tab's card: its picture (a post's or book's preview, a grid's 2×2 from where it was last scrolled to, else its
- * kind's icon), its number, title and kind, the ♥ of a favourited post and "Current" on the active tab. The selection
- * has the grid cursor's ring; hover only lightens the card. A click goes to the tab; a middle click or the ✕ (on the
- * hovered or selected card, not a feed's) closes it.
- */
 @Composable
 private fun TabCard(
   tab: TabState,
@@ -466,7 +419,6 @@ private fun TabCard(
     Column(Modifier.padding(6.dp)) {
       Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f).clip(RoundedCornerShape(10.dp)).background(colors.surfaceVariant)) {
         CardPicture(tab, gOnly, hidePicture)
-        // "Current" beside the number, so the active card keeps the ✕'s corner.
         Row(Modifier.align(Alignment.TopStart).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
           NumberBadge(number)
           if (current) CurrentChip()
@@ -475,7 +427,6 @@ private fun TabCard(
         if (favourited) FavouritedMark(Modifier.align(Alignment.BottomEnd).padding(6.dp))
       }
       Row(Modifier.padding(start = 2.dp, end = 2.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        // The kind's icon: the picture is just above.
         TabIcon(tab.top, size = 16.dp, decorative = true, picture = false)
         Spacer(Modifier.width(6.dp))
         TwinTitle(tab.title, twin, tab.untitled, maxLines = 2, Modifier.weight(1f))
@@ -486,10 +437,6 @@ private fun TabCard(
   }
 }
 
-/**
- * The card's picture, from the image cache only; nothing while [hide] (an R15 or R18 tab under G only) or when the tab
- * holds none (its icon shows). Under [gOnly] each picture is checked too ([switcherPictures]).
- */
 @Composable
 private fun CardPicture(tab: TabState, gOnly: Boolean, hide: Boolean) {
   val pictures = if (hide) emptyList() else switcherPictures(tab, gOnly)
@@ -509,15 +456,6 @@ private fun CardPicture(tab: TabState, gOnly: Boolean, hide: Boolean) {
   }
 }
 
-/**
- * What a card shows, all cache-only: a post's or a book's preview (by its route, else what its screen last held), a
- * grid's mosaic (up to four, from where it was last scrolled to, as saved for a tab not shown since launch) or what its
- * screen last held; nothing for a tab that has never loaded.
- *
- * With [gOnly] on, a grid shows only its mosaic's G thumbnails (one saved before G only, or with unrated thumbnails,
- * may hold others), and never what a screen held, which carries no rating. A post's or book's own picture is judged by
- * the caller, by its rating ([isAdult]).
- */
 internal fun switcherPictures(tab: TabState, gOnly: Boolean): List<PostImage> {
   val held = { if (gOnly) emptyList() else tab.topContents()?.preview.orEmpty() }
   return when (val top = tab.top) {
@@ -530,7 +468,6 @@ internal fun switcherPictures(tab: TabState, gOnly: Boolean): List<PostImage> {
   }
 }
 
-/** A card's kind, as its row on the queue page names it. */
 internal fun switcherKindLabel(tab: TabState): String = when (tab.kind) {
   QueueKind.Source -> if (tab.top?.isBooks == true) BOOKS_TITLE else "Grid"
   QueueKind.Feed -> "Feed"
@@ -568,7 +505,6 @@ private fun CloseButton(onClick: () -> Unit, modifier: Modifier) {
   }
 }
 
-/** The grid cursor's ring ([FocusRingWidth] of amber, [FocusRingGap] outside) while [shown]. */
 internal fun Modifier.cursorRing(shown: Boolean, shape: RoundedCornerShape): Modifier = drawWithContent {
   drawContent()
   if (!shown) return@drawWithContent
@@ -578,7 +514,6 @@ internal fun Modifier.cursorRing(shown: Boolean, shape: RoundedCornerShape): Mod
   translate(-out, -out) { drawOutline(outline, Amber, style = Stroke(ring)) }
 }
 
-/** Whether the card at [index] is wholly in view, its ring's reach (the top content padding) included. */
 private fun LazyGridState.fullyShows(index: Int): Boolean {
   val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
   val reach = layoutInfo.beforeContentPadding
@@ -586,11 +521,9 @@ private fun LazyGridState.fullyShows(index: Int): Boolean {
     item.offset.y + item.size.height + reach <= layoutInfo.viewportEndOffset
 }
 
-/** The first card wholly in view, else the first in view at all. */
 private fun LazyGridState.firstFullyShown(): Int? =
   layoutInfo.visibleItemsInfo.map { it.index }.let { shown -> shown.firstOrNull(::fullyShows) ?: shown.firstOrNull() }
 
-/** Scrolls the least distance that shows the card at [index] whole. */
 private suspend fun LazyGridState.bringIntoView(index: Int) {
   val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
   if (item == null) {
@@ -606,10 +539,6 @@ private suspend fun LazyGridState.bringIntoView(index: Int) {
   }
 }
 
-/**
- * Where a [move] from the card at [index] lands among [count] cards in rows of [columns], or null at an edge: the
- * selection stops there, as the grid cursor does, and a short last row has nothing below the cards past its end.
- */
 internal fun switcherStep(index: Int, count: Int, columns: Int, move: GridMove): Int? {
   val next = when (move) {
     GridMove.Left -> if (index % columns == 0) return null else index - 1
@@ -620,10 +549,6 @@ internal fun switcherStep(index: Int, count: Int, columns: Int, move: GridMove):
   return next.takeIf { it in 0 until count }
 }
 
-/**
- * The selection once the tabs went from [before] to [after]: [selected] while it's still open, else the tab that took
- * its place (the next, else the previous, as closing the active tab does), else the first.
- */
 internal fun selectionAfter(before: List<TabId>, after: List<TabId>, selected: TabId): TabId {
   if (selected in after || after.isEmpty()) return selected
   val at = before.indexOf(selected)
@@ -632,24 +557,17 @@ internal fun selectionAfter(before: List<TabId>, after: List<TabId>, selected: T
   return next ?: previous ?: after.first()
 }
 
-/**
- * Tells the switcher's key presses from their repeats and releases: desktop key events carry no repeat flag. A key's
- * first down is a fresh press; more downs before its release are repeats. The key that opened the switcher
- * ([heldAtOpen]) is down already, so its repeats and release are not fresh.
- */
 internal class SwitcherPresses(heldAtOpen: Key? = null) {
   private val down = mutableSetOf<Key>().apply { heldAtOpen?.let(::add) }
   private val fresh = mutableSetOf<Key>()
 
   enum class Press { Fresh, Repeat, Release, StaleRelease, Other }
 
-  /** [key] isn't down any more: its release went elsewhere (the shell heard the opening C's, on a quick tap). */
   fun letGo(key: Key) {
     down.remove(key)
     fresh.remove(key)
   }
 
-  /** No key is down any more: the window lost the focus, and their releases go to another app. */
   fun forget() {
     down.clear()
     fresh.clear()
@@ -665,11 +583,6 @@ internal class SwitcherPresses(heldAtOpen: Key? = null) {
   }
 }
 
-/**
- * The switcher's keys, before anything in it sees them; every key is taken, so none reaches the screen under it, but
- * Cmd/Ctrl and Alt chords, which go on to the window's shortcuts (Cmd/Ctrl-W, Ctrl-Tab). W/A/S/D and the arrows move on each press and repeat; X closes the selected tab once per press, Z reopens on each
- * press and repeat (as outside it); Space and E go, Esc and C close, each on a fresh press's release.
- */
 internal fun switcherKey(
   event: KeyEvent,
   presses: SwitcherPresses,
@@ -699,7 +612,6 @@ internal fun switcherKey(
   return true
 }
 
-/** What the active tab's card says, on its chip and to a screen reader. */
 internal const val CURRENT_TAB = "Current"
 
 internal const val TAB_SWITCHER_TAG = "tab-switcher"

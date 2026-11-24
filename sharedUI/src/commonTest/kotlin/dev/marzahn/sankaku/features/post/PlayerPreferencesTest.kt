@@ -6,10 +6,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * The player's volume and mute (#524): a fresh install plays at full volume, unmuted, as the system volume is what sets
- * how loud (the owner, 2026-11-12); Start videos muted mutes every run's first video.
- */
 class PlayerPreferencesTest {
   @Test
   fun aFreshInstallPlaysUnmutedAtFullVolumeWithStartMutedOff() {
@@ -25,14 +21,12 @@ class PlayerPreferencesTest {
     val file = InMemoryTextFile()
     PlayerPreferences(file).apply {
       changeStartMuted(true)
-      // Unmuted during the run…
       toggleMute()
       toggleMute()
       changeVolume(0.6f)
       assertFalse(muted)
     }
 
-    // …the next run starts muted again, at the volume it was left at.
     val next = PlayerPreferences(file)
     assertTrue(next.startMuted)
     assertTrue(next.muted)
@@ -55,7 +49,6 @@ class PlayerPreferencesTest {
   fun aStartsMuteIsntSavedAsTheUsersOwn() {
     val file = InMemoryTextFile()
     PlayerPreferences(file).changeStartMuted(true)
-    // Muted by the setting, never by the user; then the setting goes off.
     PlayerPreferences(file).apply {
       assertTrue(muted)
       changeStartMuted(false)
@@ -69,7 +62,6 @@ class PlayerPreferencesTest {
     val file = InMemoryTextFile()
     PlayerPreferences(file).changeStartMuted(true)
     PlayerPreferences(file).apply {
-      // Unmuted, then muted again by hand: the user's own mute now.
       toggleMute()
       toggleMute()
       changeStartMuted(false)

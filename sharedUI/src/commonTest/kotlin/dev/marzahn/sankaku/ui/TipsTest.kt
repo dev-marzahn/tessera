@@ -30,7 +30,6 @@ class TipsTest {
     val tips = Tips(file, touch = true)
     assertTrue(tips.offer(Tip.ReopenHold))
     tips.appeared(Tip.ReopenHold)
-    // Got it, a tap elsewhere or back.
     tips.dismissed(Tip.ReopenHold)
     assertNull(tips.current)
     assertFalse(tips.offer(Tip.ReopenHold))
@@ -43,7 +42,6 @@ class TipsTest {
     val tips = Tips(file, touch = true)
     tips.offer(Tip.TabList)
     tips.appeared(Tip.TabList)
-    // The app closed with the tip on screen.
     assertFalse(Tips(file, touch = true).pending(Tip.TabList))
   }
 
@@ -52,12 +50,10 @@ class TipsTest {
     val file = InMemoryTextFile()
     val tips = Tips(file, touch = true)
     assertTrue(tips.offer(Tip.GridGestures))
-    // Its cell scrolled away, or the viewer reopened, during the wait.
     tips.dismissed(Tip.GridGestures)
     assertNull(tips.current)
     assertTrue(tips.pending(Tip.GridGestures))
     assertTrue(Tips(file, touch = true).pending(Tip.GridGestures))
-    // The other tip isn't held up meanwhile.
     assertTrue(tips.offer(Tip.TabList))
   }
 
@@ -85,7 +81,6 @@ class TipsTest {
     val tips = Tips(InMemoryTextFile(), touch = true)
     assertTrue(tips.offer(Tip.GridGestures))
     assertFalse(tips.offer(Tip.TabList))
-    // Still pending: it comes once the first has gone.
     assertTrue(tips.pending(Tip.TabList))
     tips.dismissed(Tip.TabList)
     assertEquals(Tip.GridGestures, tips.current)
@@ -95,13 +90,11 @@ class TipsTest {
 
   @Test
   fun aTipThatLeftTheScreenHoldsTheNextUntilTheNextGestureEnds() {
-    // #538: "Tap the count…" came at once after Got it on the swipe tip, and took the first swipe to dismiss itself.
     val tips = Tips(InMemoryTextFile(), touch = true)
     assertTrue(tips.offer(Tip.QueueSwipe))
     tips.appeared(Tip.QueueSwipe)
     tips.dismissed(Tip.QueueSwipe)
     assertTrue(tips.resting)
-    // The swipe after Got it went through: the next tip may come.
     tips.gestureEnded()
     assertFalse(tips.resting)
   }
@@ -110,25 +103,89 @@ class TipsTest {
   fun aTipThatNeverShowedHoldsNothingUp() {
     val tips = Tips(InMemoryTextFile(), touch = true)
     assertTrue(tips.offer(Tip.QueueSwipe))
-    // Its anchor went during the wait: nothing was on screen to take a touch.
     tips.dismissed(Tip.QueueSwipe)
     assertFalse(tips.resting)
   }
 
   @Test
   fun aTipOfferedOnAnActionDoesntWaitForTheRest() {
-    // #538 review: the keep tip is offered once, as the viewer closes; the close was the user's action.
     val tips = Tips(InMemoryTextFile(), touch = true)
     tips.offer(Tip.TabList)
     tips.appeared(Tip.TabList)
     tips.dismissed(Tip.TabList)
+    tips.visiting("next")
     assertTrue(tips.offer(Tip.GridGestures))
+  }
+
+  @Test
+  fun aScreenVisitShowsOneTipAtMost() {
+    val tips = Tips(InMemoryTextFile(), touch = true)
+    tips.visiting("grid")
+    assertTrue(tips.offer(Tip.OpenedInFront))
+    assertTrue(tips.appeared(Tip.OpenedInFront))
+    tips.dismissed(Tip.OpenedInFront)
+    tips.gestureEnded()
+    assertFalse(tips.offer(Tip.QueueSwipe), "not on the same visit")
+    tips.visiting("grid")
+    assertFalse(tips.offer(Tip.QueueSwipe))
+    tips.visiting("next")
+    assertTrue(tips.offer(Tip.QueueSwipe))
+  }
+
+  @Test
+  fun aTipStillOnScreenGoesWithItsVisit() {
+    val tips = Tips(InMemoryTextFile(), touch = true)
+    tips.visiting("grid")
+    tips.offer(Tip.QueueSwipe)
+    tips.appeared(Tip.QueueSwipe)
+    tips.visiting("opener")
+    assertNull(tips.bubble)
+    assertNull(tips.current)
+    assertFalse(tips.visitSpent)
+    assertFalse(tips.resting)
+  }
+
+  @Test
+  fun aTipOfferedBeforeAnotherCameInTheVisitDoesntAppear() {
+    val tips = Tips(InMemoryTextFile(), touch = true)
+    tips.visiting("grid")
+    assertTrue(tips.offer(Tip.QueueSwipe))
+    assertTrue(tips.tell(Tip.WayBack))
+    assertFalse(tips.appeared(Tip.QueueSwipe))
+    assertNull(tips.current)
+    assertTrue(tips.pending(Tip.QueueSwipe), "it can come on a later visit")
+  }
+
+  @Test
+  fun aTipSaidOnTheTopLineIsTheVisitsTip() {
+    val tips = Tips(InMemoryTextFile(), touch = true)
+    tips.visiting("grid")
+    assertTrue(tips.tell(Tip.WayBack))
+    assertFalse(tips.pending(Tip.WayBack))
+    assertFalse(tips.offer(Tip.KeptWaits))
+    tips.visiting("next")
+    assertFalse(tips.tell(Tip.WayBack), "once")
+    assertTrue(tips.offer(Tip.KeptWaits))
+  }
+
+  @Test
+  fun aGestureThatBeganOverATipTakesItAwayAsItEnds() {
+    val tips = Tips(InMemoryTextFile(), touch = true)
+    tips.offer(Tip.GridGestures)
+    tips.gestureStarted()
+    tips.appeared(Tip.GridGestures)
+    tips.gestureEnded()
+    assertEquals(Tip.GridGestures, tips.bubble?.tip)
+    tips.gestureStarted()
+    tips.gestureEnded()
+    assertNull(tips.bubble)
+    assertNull(tips.current)
+    assertFalse(tips.resting, "the gesture that ended it went on to what's under it")
   }
 
   @Test
   fun aSecondTabAppearsOnlyOnARiseFromOne() {
     val tips = Tips(InMemoryTextFile(), touch = true)
-    // Two tabs restored at launch: no tip at launch.
     tips.counted(2)
     assertFalse(tips.secondTabAppeared)
     tips.counted(1)
@@ -139,7 +196,6 @@ class TipsTest {
 
   @Test
   fun eachPlatformShowsOnlyItsOwnTips() {
-    // Desktop (#504): the keep loop's tip, and none of the phone's.
     val desktop = Tips(InMemoryTextFile(), touch = false)
     assertFalse(desktop.offer(Tip.GridGestures))
     assertFalse(desktop.offer(Tip.TabList))
@@ -162,16 +218,14 @@ class TipsTest {
   fun theLongPressTipComesOnceAfterTheFirstHeartThatFavourites() {
     val file = InMemoryTextFile()
     val tips = Tips(file, touch = true)
-    // An unfavourite, or a ♡ that opened sign-in, isn't the moment.
     assertFalse(tips.offerLongPressTip(wasFavourited = true, ran = true))
     assertFalse(tips.offerLongPressTip(wasFavourited = false, ran = false))
     assertNull(tips.current)
 
     assertTrue(tips.offerLongPressTip(wasFavourited = false, ran = true))
-    assertEquals(Tip.LongPressFavourite, tips.current)
-    tips.appeared(Tip.LongPressFavourite)
-    tips.dismissed(Tip.LongPressFavourite)
+    assertNull(tips.current)
 
+    tips.visiting("next")
     assertFalse(tips.offerLongPressTip(wasFavourited = false, ran = true))
     assertFalse(Tips(file, touch = true).offerLongPressTip(wasFavourited = false, ran = true))
   }

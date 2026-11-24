@@ -21,11 +21,6 @@ import androidx.compose.ui.unit.dp
 import com.google.fonts.icons.arrow_back
 import dev.marzahn.sankaku.ui.components.AppTopBar
 
-/**
- * A full-screen sign-in screen over the whole app. Not a bottom sheet: M3's modal bottom sheet moves its resting
- * position on every frame of the keyboard's animation, so it jumped when opening and moved when switching fields.
- * The back arrow and system back close it; with the keyboard open, back hides the keyboard first, as anywhere else.
- */
 @Composable
 internal actual fun SignInPresentation(
   reason: String?,
@@ -36,7 +31,6 @@ internal actual fun SignInPresentation(
 ) {
   BackHandler(onBack = onDismiss)
   Scaffold(
-    // A pane, so accessibility services announce it and treat it as the screen.
     modifier = Modifier.semantics { paneTitle = listOfNotNull("Sign in to Sankaku", reason).joinToString(" ") },
     topBar = {
       AppTopBar(

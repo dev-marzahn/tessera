@@ -7,10 +7,6 @@ import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 
-/**
- * Decodes AVIF (every preview) through macOS ImageIO, since Skia can't, sized as [FilteredSkiaDecoder] sizes the
- * formats Skia reads.
- */
 class AvifDecoder(private val source: ImageSource, private val options: Options) : Decoder {
   override suspend fun decode(): DecodeResult? {
     val bitmap = MacImageIo.decode(source.source().readByteArray()) ?: return null

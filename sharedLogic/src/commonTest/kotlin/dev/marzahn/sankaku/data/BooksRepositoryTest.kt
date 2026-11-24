@@ -64,7 +64,6 @@ class BookSearchTest {
 
   @Test
   fun continueReadingIsOrderReadingAndOnlyAPlainSearchShowsIt() {
-    // #503: Sankaku's own Continue reading list (`docs/api.md` → Books → Continue reading), narrowed like the list.
     assertEquals(listOf("order:reading"), BookSearch.reading(ratingLocked = false))
     assertEquals(listOf("order:reading", "rating:s"), BookSearch.reading(ratingLocked = true))
     assertTrue(BookSearch.isPlain(emptyList()))
@@ -81,7 +80,6 @@ class BookSearchTest {
       BookSearch.submitted(listOf("feed:following", "threshold:3", "order:quality", "rating:q", "maid", "english_language"), current),
     )
     assertEquals(listOf("maid"), BookSearch.submitted(listOf("order:popularity", "maid"), listOf("order:date")))
-    // Chips removed in the search bar turn Newest and English only off.
     assertEquals(listOf("maid"), BookSearch.submitted(listOf("maid"), current))
   }
 }
@@ -101,7 +99,6 @@ class BookListPagingSourceTest {
     val asked = mutableListOf<Int>()
     val series = listOf(
       SeriesSummaryDto(id = "s1", poolCount = 3, firstPool = book("b9")),
-      // Signed out: nothing to show or open.
       SeriesSummaryDto(id = "s2", poolCount = 2, firstPool = null),
     )
     val pager = TestPager(
@@ -110,7 +107,6 @@ class BookListPagingSourceTest {
         asked += page
         when (page) {
           1 -> response("b1", "b2", series = series)
-          // A short page doesn't end the list.
           2 -> response("b3")
           3 -> response("b4", "b5")
           else -> response()
@@ -177,7 +173,6 @@ class BooksRepositoryFirstPagesTest {
   @Test
   fun aRowGoneBeforeTheAnswerLeavesItToFinishAndAnotherShares() = runTest {
     val books = BooksRepository(BooksApi(harness.mainClient), backgroundScope)
-    // The row scrolled away: its wait is cancelled, the ask isn't.
     val gone = launch { books.firstPages("b1", signedIn = false) }
     val shown = async { books.firstPages("b1", signedIn = false) }
     gone.cancel()
@@ -195,11 +190,9 @@ class BooksRepositoryFirstPagesTest {
     assertEquals(listOf("p1", "p2", "p3"), books.firstPages("b1", signedIn = false).map { it.id })
     books.firstPages("b1", signedIn = false)
     assertEquals(1, harness.requestsTo("/v2/posts/keyset").size)
-    // One more than a row shows: the cover is usually page 1.
     assertEquals("4", harness.requestsTo("/v2/posts/keyset").single().url.parameters["limit"])
     assertEquals(3, books.cachedFirstPages("b1", signedIn = false)?.size)
 
-    // Signed in, a page can carry URLs it lacked signed out: asked again.
     books.firstPages("b1", signedIn = true)
     assertEquals(2, harness.requestsTo("/v2/posts/keyset").size)
 
@@ -214,7 +207,6 @@ class BooksRepositoryFirstPagesTest {
   }
 }
 
-/** #386: the book a post is a page of, for the post sheet's row. */
 class BooksRepositoryBookOfTest {
   private var failing = false
   private val harness = Harness(InMemoryTokenStore(storedTokens())) { request ->
@@ -244,7 +236,6 @@ class BooksRepositoryBookOfTest {
     assertEquals("11", books.bookOf(page, signedIn = true, ratingLocked = false)?.id)
     assertEquals("11", books.cachedBookOf(page, signedIn = true, ratingLocked = false)?.id)
     assertEquals(1, harness.requestsTo(BOOKS_OF_PATH).size)
-    // Signed out, a book can come without what it had signed in: asked again.
     books.bookOf(page, signedIn = false, ratingLocked = true)
     assertEquals(2, harness.requestsTo(BOOKS_OF_PATH).size)
   }
@@ -269,7 +260,6 @@ class BooksRepositoryBookOfTest {
 
   @Test
   fun aFailureIsNotKept() = runTest {
-    // Supervised as the app's scope is, so the failed ask reaches only its caller.
     val scope = CoroutineScope(backgroundScope.coroutineContext + SupervisorJob(backgroundScope.coroutineContext[Job]))
     val books = BooksRepository(BooksApi(harness.mainClient), scope)
     failing = true
@@ -280,7 +270,6 @@ class BooksRepositoryBookOfTest {
   }
 }
 
-/** #386 review: what was found for one account is forgotten on sign-out, the way to any other account. */
 class BooksRepositoryBookOfAccountTest {
   private val harness = Harness(InMemoryTokenStore(storedTokens())) {
     json("""[{ "id": 11, "name_en": "The book", "rating": "s" }]""")
@@ -299,7 +288,6 @@ class BooksRepositoryBookOfAccountTest {
   }
 }
 
-/** #395 review: an answer still on its way at a sign-out isn't kept for whoever signs in next. */
 class BooksRepositoryBookOfSignOutRaceTest {
   private val answer = kotlinx.coroutines.CompletableDeferred<Unit>()
   private val harness = Harness(InMemoryTokenStore(storedTokens())) {
@@ -319,12 +307,10 @@ class BooksRepositoryBookOfSignOutRaceTest {
     answer.complete(Unit)
     asking.await()
     assertNull(books.cachedBookOf(page, signedIn = true, ratingLocked = false))
-    // Signed in again: asked afresh.
     signedIn.value = true
     assertEquals("11", books.bookOf(page, signedIn = true, ratingLocked = false)?.id)
     assertEquals(2, harness.requestsTo(BOOKS_OF_PATH).size)
   }
 }
 
-/** Where a post's books are asked for: the web app's `/post/{id}/pools` (#475). */
 private const val BOOKS_OF_PATH = "/post/aB3dE5gH7jK/pools"

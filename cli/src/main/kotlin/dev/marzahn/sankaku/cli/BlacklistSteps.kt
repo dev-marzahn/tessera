@@ -13,12 +13,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-/**
- * Blacklisting a tag (#6): discovery step 22 through [probe], the gate the issue names. It reads the account's tag
- * rules, adds a `hide` rule on [BLACKLIST_TAG], reads them again, deletes the rule, deletes it a second time, and reads them a
- * last time, checking the account's rules are as they were. Every rule it adds it removes in the same step. Notes and
- * markers hold counts, keys and yes/no only: no rule id, user id or other tag.
- */
 internal class BlacklistSteps(private val smoke: SmokeSteps) {
   suspend fun run() {
     val bearer = smoke.session.currentBearerTokens()?.accessToken
@@ -69,7 +63,6 @@ internal class BlacklistSteps(private val smoke: SmokeSteps) {
     query = LANG + mapOf("limit" to "40", "page" to "1", "entity" to "tags"),
   )
 
-  /** The account's tag rules on the first page: their ids (never printed), tags and `count`. */
   private class Rules(raw: RawResponse) {
     private val root = raw.obj()
     private val rules = (root?.get("list") as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
@@ -91,5 +84,4 @@ private fun RawResponse.obj() = json as? JsonObject
 
 private fun RawResponse.keys() = obj()?.keys?.sorted()?.joinToString(",").orEmpty()
 
-/** The tag steps 15 and d22 blacklist and remove again: common in `rating:s`, as in step d19. */
 internal const val BLACKLIST_TAG = "blue_hair"

@@ -12,22 +12,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.em
 
-/** A tag a wiki links to: [shown] as the page names it until it loads, [searchName] to load and search it by. */
 internal data class WikiTag(val shown: String, val searchName: String)
 
-/**
- * A tag's wiki ([dtext], Sankaku's DText) as the tag page shows it (#522, the mockup the owner OK'd in its thread):
- * `h1.` to `h6.` lines as headings, `*` lines as bullets (`**` nested once), `[b]` `[i]` `[u]` `[s]` styled, `[quote]`
- * indented and italic, other tags dropped with what they hold kept. A wiki link (`[[tag]]`, `[[tag|label]]`) is a link
- * that calls [onTag]; a web link (`"text":https://…`, a bare `https://…`) opens in the browser; a link into the site
- * reads as its text. Blank lines collapse to one. Links are drawn in [linkColor], underlined.
- *
- * Plain lines only: a nested bullet and a quote are indented with an em space, since a paragraph style's edge adds an
- * empty line around it in Compose's layout, and the page's four lines until More count lines.
- */
 internal fun wikiText(dtext: String, linkColor: Color = Color.Unspecified, onTag: (WikiTag) -> Unit = {}): AnnotatedString {
   val links = TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-  // Open styles, by tag, at where they started. A quote starts with the line after its tag.
   val open = mutableMapOf<String, Int>()
   var quoted = false
   var quoteStart: Int? = null
@@ -87,7 +75,6 @@ internal fun wikiText(dtext: String, linkColor: Color = Color.Unspecified, onTag
 
     for (raw in dtext.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
       val line = raw.trim()
-      // A line of tags alone ([quote], [expand]): no line of its own.
       if (line.isNotEmpty() && line.replace(ONLY_TAG, "").isBlank() && !line.contains("[[")) {
         inline(line)
         continue
@@ -117,7 +104,6 @@ internal fun wikiText(dtext: String, linkColor: Color = Color.Unspecified, onTag
         else -> inline(line)
       }
     }
-    // Left open at the end: to the end.
     open.forEach { (name, from) -> if (from < length) addStyle(STYLES.getValue(name), from, length) }
     endQuote()
   }
@@ -132,7 +118,6 @@ private fun headingStyle(level: Int) = SpanStyle(
   },
 )
 
-/** An em space: a nested bullet's and a quote's indent. */
 private const val INDENT = " "
 private val QuoteStyle = SpanStyle(fontStyle = FontStyle.Italic)
 
@@ -162,7 +147,6 @@ private val INLINE = Regex(
     """"([^"]+)":\[?((?:https?://|/)[^\s\]]+)]?""",
     """\[(/?)([a-zA-Z]+)(?:=[^\]]*)?]""",
     """(https?://[^\s<>\[\]]+)""",
-    // Android's ICU patterns take no bare `}` (the JVM's do).
     """\{\{([^\}]*)\}\}""",
   ).joinToString("|"),
 )

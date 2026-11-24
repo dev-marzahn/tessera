@@ -14,10 +14,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #281: the viewer's sheet and its drag down, on the app's expressive spatial spring and a test clock, frame by frame,
- * never pass their stops; and a sheet springing down to peek takes a drag down as at peek all the way there.
- */
 @OptIn(ExperimentalTestApi::class)
 class ViewerSpringsTest {
   private val stops = SheetStops(half = 800f, full = 2000f)
@@ -48,8 +44,6 @@ class ViewerSpringsTest {
 
   @Test
   fun aSheetLetGoTowardsPeekIsHeadedForPeekWhileItSettles() = runComposeUiTest {
-    // Its spring's tail and bounce hold it a pixel or two above peek for a few hundred ms; a drag down then must close
-    // the viewer, not lower a sheet with nowhere to go (the touch did nothing until lifted).
     val sheet = letGo(velocity = 5000f)
     val frames = frames { Triple(sheet.lift, sheet.headedForPeek, sheet.atPeek) }
     assertTrue(frames.any { it.first > 1f && !it.third }, "the sheet should take some frames to come down")
@@ -71,7 +65,6 @@ class ViewerSpringsTest {
     assertFalse(runOnIdle { sheet.headedForPeek }, "a drag up kept the sheet headed for peek")
   }
 
-  /** A sheet lifted 150 px and let go at [velocity] (px/s, positive is down). */
   private fun ComposeUiTest.letGo(velocity: Float): ViewerSheetState {
     val sheet = sheet()
     runOnIdle { sheet.dragBy(-150f) }
@@ -95,10 +88,6 @@ class ViewerSpringsTest {
     assertTrue(enabled in 0..near + 2, "within 1 px at frame $near, swipes enabled only at frame $enabled")
   }
 
-  /**
-   * A card dragged 300 px and let go: its offset after each frame, and whether the pager and the queue swipe are
-   * enabled then (PhoneViewer enables them exactly when `atRest` is).
-   */
   private fun ComposeUiTest.springBackFrames(): List<Pair<Float, Boolean>> {
     lateinit var dismiss: CardDismiss
     setContent { SankakuTheme { dismiss = rememberCardDismiss(opening = 1, spatialSpec()) } }
@@ -124,7 +113,6 @@ class ViewerSpringsTest {
     return sheet
   }
 
-  /** [read] after each of the next [count] frames. */
   private fun <T> ComposeUiTest.frames(count: Int = 90, read: () -> T): List<T> = List(count) {
     mainClock.advanceTimeByFrame()
     runOnIdle { read() }

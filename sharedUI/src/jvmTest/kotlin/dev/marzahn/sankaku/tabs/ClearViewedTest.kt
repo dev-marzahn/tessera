@@ -19,7 +19,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** #183: Clear viewed removes the kept posts seen since kept, ends the session, and can be undone. */
 class ClearViewedTest {
   private var now = Instant.parse("2026-11-01T12:00:00Z")
   private val clock = object : Clock {
@@ -36,7 +35,6 @@ class ClearViewedTest {
 
   private fun titles() = tabs.tabs.value.map { it.title }
 
-  // Browse, then a source "a" with the kept posts p1, p2 and p3 after it, and a source "b" and the feed Following.
   private fun queue() {
     tabs.open(grid("a"), background = false)
     listOf("p1", "p2", "p3").forEach { tabs.openInBlock(listOf(grid("a"), post(it))) }
@@ -59,7 +57,6 @@ class ClearViewedTest {
     val closed = tabs.clearViewed(seen)!!
 
     assertEquals(2, closed.size)
-    // The unseen kept post, both sources, the feed and Browse stay.
     assertEquals(listOf("Browse", "A", "Post p2", "B", "Following"), titles())
   }
 
@@ -68,7 +65,6 @@ class ClearViewedTest {
     queue()
     see("p1")
     now += 1.minutes
-    // Kept again after it was seen: unseen since kept.
     tabs.keepAgain(tabs.tabs.value.single { it.top == post("p1") }.id)
 
     assertNull(tabs.clearViewed(seen))
@@ -76,18 +72,89 @@ class ClearViewedTest {
   }
 
   @Test
-  fun neverTheCurrentItemEvenWhenItIsAViewedKeptPost() {
+  fun theCurrentItemSeenIsClearedTooAndTheNextItemLeftComesForward() {
     queue()
     see("p1")
     see("p2")
     tabs.activate(tabs.tabs.value.single { it.top == post("p1") }.id)
 
+    assertEquals(2, clearViewed.status().count)
     val closed = tabs.clearViewed(seen)!!
 
-    assertEquals(1, closed.size)
-    assertEquals("Post p1", tabs.activeTab.title)
-    assertTrue(tabs.tabs.value.any { it.top == post("p1") })
-    assertFalse(tabs.tabs.value.any { it.top == post("p2") })
+    assertEquals(2, closed.size)
+    assertEquals(listOf("Browse", "A", "Post p3", "B", "Following"), titles())
+    assertEquals("Post p3", tabs.activeTab.title)
+  }
+
+  @Test
+  fun goingThroughKeptTheClearedCurrentPostGivesWayToTheRunsNextPost() {
+    queue()
+    val (p1, p3) = listOf("p1", "p3").map { id -> tabs.tabs.value.single { it.top == post(id) }.id }
+    tabs.startKeptRun(listOf(p1, p3), at = p1)
+    see("p1")
+
+    tabs.clearViewed(seen)!!
+
+    assertEquals(p3, tabs.active.value)
+    assertEquals(1 to 1, tabs.keptPlace())
+  }
+
+  @Test
+  fun goingThroughKeptTheClearedLastPostOfTheRunEndsItAndMovesOnInTheQueue() {
+    queue()
+    val p1 = tabs.tabs.value.single { it.top == post("p1") }.id
+    tabs.startKeptRun(listOf(p1), at = p1)
+    see("p1")
+
+    tabs.clearViewed(seen)!!
+
+    assertEquals("Post p2", tabs.activeTab.title)
+    assertNull(tabs.keptPlace())
+    assertNull(tabs.keptRunKind())
+  }
+
+  @Test
+  fun theCurrentItemLastInTheQueueGivesWayToTheItemBefore() {
+    tabs.open(grid("a"), background = false)
+    listOf("p1", "p2").forEach { tabs.openInBlock(listOf(grid("a"), post(it))) }
+    see("p1")
+    see("p2")
+    tabs.activate(tabs.tabs.value.single { it.top == post("p2") }.id)
+
+    tabs.clearViewed(seen)!!
+
+    assertEquals(listOf("Browse", "A"), titles())
+    assertEquals("A", tabs.activeTab.title)
+  }
+
+  @Test
+  fun clearingEveryItemLeavesAFreshBrowseGrid() {
+    tabs.open(grid("a"), background = false)
+    tabs.openInBlock(listOf(grid("a"), post("p1")))
+    tabs.tabs.value.filter { !it.kind.isKept }.forEach { tabs.close(it.id) }
+    see("p1")
+    tabs.activate(tabs.tabs.value.single { it.top == post("p1") }.id)
+
+    tabs.clearViewed(seen)!!
+
+    assertEquals(listOf("Browse"), titles())
+    assertEquals("Browse", tabs.activeTab.title)
+  }
+
+  @Test
+  fun undoBringsTheClearedCurrentItemBackAsTheCurrentItem() {
+    queue()
+    see("p1")
+    see("p2")
+    val p1 = tabs.tabs.value.single { it.top == post("p1") }.id
+    tabs.activate(p1)
+    val before = titles()
+
+    val closed = tabs.clearViewed(seen)!!
+    tabs.reopen(closed)
+
+    assertEquals(before, titles())
+    assertEquals(post("p1"), tabs.activeTab.top)
   }
 
   @Test
@@ -105,13 +172,11 @@ class ClearViewedTest {
     assertEquals("2 posts", closed.title)
     tabs.reopen(closed)
 
-    // The same order of titles, the block intact, nothing activated, and the entry used up.
     assertEquals(before.map { it.second }, titles())
     assertEquals(active, tabs.active.value)
     assertTrue(tabs.closed.value.isEmpty())
     val head = tabs.tabs.value.single { it.title == "A" }
     assertEquals(listOf("Post p1", "Post p2", "Post p3"), tabs.tabs.value.filter { it.block == head.id }.map { it.title })
-    // They are still kept posts seen since they were kept: reopening isn't keeping them again.
     assertEquals(2, tabs.viewedKeptPosts(seen).size)
   }
 
@@ -137,8 +202,6 @@ class ClearViewedTest {
     tabs.clearViewed(seen)
 
     assertNotEquals(first, tabs.sessions.current)
-    // With nothing added since, a new "later" tab goes at the end of the queue, not ahead of what's being gone through;
-    // the next goes after it.
     tabs.open(grid("fresh"), background = true)
     tabs.open(grid("fresher"), background = true)
     assertEquals(listOf("Fresh", "Fresher"), titles().takeLast(2))
@@ -166,7 +229,6 @@ class ClearViewedTest {
 
     val relaunched = TabsController(FakeStore(tabs.saved()), clock = clock)
     assertEquals(session, relaunched.sessions.current)
-    // The restored tabs are of the current session, so "later" goes after them.
     relaunched.open(grid("fresh"), background = true)
     assertEquals("Fresh", relaunched.tabs.value.last { it.addedIn == session }.title)
 
@@ -206,7 +268,7 @@ class ClearViewedTest {
   }
 
   @Test
-  fun theSuggestionCountsTheCurrentItemEvenThoughItIsNotCleared() {
+  fun theCountIncludesTheCurrentItemWhenItIsSeen() {
     queue()
     see("p1")
     see("p2")
@@ -215,7 +277,7 @@ class ClearViewedTest {
 
     val status = clearViewed.status()
 
-    assertEquals(2, status.count)
+    assertEquals(3, status.count)
     assertTrue(status.suggested)
   }
 

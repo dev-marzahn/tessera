@@ -32,6 +32,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.Route
@@ -89,14 +90,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
-/**
- * #317: a queue swipe from a lone post onto a grid shown for the first time, frame by frame, through the app's own
- * chain (the shell's [QueueSwipeHost] with its own [PreloadNeighbours], the tab's [ActiveTab] and the real
- * [GridScreen]), with synthetic fixture posts and one-colour thumbnails, never a real post. The landing frame shows the
- * grid's cells with their thumbnails, not its loading indicator, and the grid made no request of its own for its page.
- *
- * The frames are captured one test-clock frame apart. With `EVIDENCE_DIR` set they're saved there as PNGs.
- */
 @OptIn(ExperimentalTestApi::class)
 class QueueGridLandingRenderTest {
   private val thumbnail = 0xFF1565C0.toInt()
@@ -111,7 +104,6 @@ class QueueGridLandingRenderTest {
     ImageIO.write(image, "png", it)
   }.toByteArray()
 
-  // When each request started and finished, in ms from the first, by kind only: no URL, id or search.
   private val started = System.nanoTime()
   private val requestLog: MutableList<String> = Collections.synchronizedList(mutableListOf())
   private val pageRequests: MutableList<String> = Collections.synchronizedList(mutableListOf())
@@ -136,7 +128,7 @@ class QueueGridLandingRenderTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -150,7 +142,6 @@ class QueueGridLandingRenderTest {
             request.url.host == "sankakuapi.com" && path == "/v2/posts/keyset" -> {
               pageRequests += path
               requestLog += "${ms()} ms: page request starts"
-              // A normal connection's round trip.
               Thread.sleep(150)
               requestLog += "${ms()} ms: page request ends"
               respond(page(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
@@ -165,11 +156,9 @@ class QueueGridLandingRenderTest {
       }
     }
     startKoin { modules(sharedModule, platform, shellModule, authModule, gridModule, postModule, booksModule, fixtures) }
-    // The cells' AsyncImage uses the singleton, which the app sets to this loader.
     SingletonImageLoader.setUnsafe(GlobalContext.get().get<ImageLoader>())
   }
 
-  /** The share of a frame's pixels (every 4th) that are a thumbnail's, and the surface's. */
   private fun shares(frame: BufferedImage, surface: Int): Pair<Float, Float> {
     var t = 0
     var s = 0
@@ -210,14 +199,12 @@ class QueueGridLandingRenderTest {
               val tabList by tabs.tabs.collectAsState()
               val active = tabList.first { it.id == activeId }
               val holder = rememberSaveableStateHolder()
-              // The shell's own preload ([PreloadNeighbours]), as the app composes it.
               QueueSwipeHost(active, tabs = tabs, upNext = noUpNext(tabs), undo = ClosedTabUndo(tabs), content = {
                 swipe = LocalQueueSwipe.current
                 ActiveTab(active, tabs, navigator, holder) { key ->
                   NavEntry<NavKey>(key) {
                     when (key) {
                       is Route.Grid -> GridScreen(key)
-                      // The lone post swiped from stands in as a fill: what's measured is the grid.
                       else -> Box(Modifier.fillMaxSize().background(Color(lonePostFill)).queueSwipe(enabled = true, from = active.id))
                     }
                   }
@@ -227,9 +214,6 @@ class QueueGridLandingRenderTest {
           }
         }
         mainClock.advanceTimeBy(500)
-        // The preload runs on the engine's own threads: up to 3 s for the grid's first screen to be decoded, the two
-        // posts of its one 411 dp column, which is plenty after the page's 150 ms. Before #317 nothing loads, and the
-        // swipe starts when the time is up.
         val repository = koin.get<PostsRepository>()
         val loader = koin.get<ImageLoader>()
         val decoded = (1..2).map { MemoryCache.Key(PostImage.cacheKey("fixture-md5-$it", Variant.Preview)) }
@@ -271,11 +255,9 @@ class QueueGridLandingRenderTest {
         requestLog += "${ms()} ms: landed at frame $landing and 10 frames on"
       }
       requestLog.forEach { println("grid-landing $it") }
-      // The landing frame and every one after it: the grid's thumbnails, not its loading indicator on the surface.
       val landed = frames.drop(landing)
       val bare = landed.indices.filter { landed[it].first < 0.3f }
       assertTrue(bare.isEmpty(), "frames ${bare.map { it + landing }} after landing show no thumbnails: $landed")
-      // The grid took the preloaded page: one request for it in all.
       assertEquals(1, pageRequests.size, "page requests")
     } finally {
       SingletonImageLoader.reset()

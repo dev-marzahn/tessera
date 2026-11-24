@@ -63,12 +63,10 @@ class RateLimiterTest {
     val limiter = limiter()
 
     assertEquals(12.seconds, limiter.parseRetryAfter("12"))
-    // Sankaku's own 429s send fractions (2026-11-12): these must not fall back to the 30 s default.
     assertEquals(1.seconds + 966.milliseconds, limiter.parseRetryAfter("1.966"))
     assertEquals(10.seconds, limiter.parseRetryAfter("Thu, 29 Oct 2026 12:00:10 GMT"))
     assertEquals(null, limiter.parseRetryAfter("soon"))
     assertEquals(null, limiter.parseRetryAfter(null))
-    // Only digits with an optional fraction.
     for (other in listOf("NaN", "Infinity", "1e30", "0x1p3", "-5", ".5")) assertEquals(null, limiter.parseRetryAfter(other), other)
   }
 
@@ -76,7 +74,6 @@ class RateLimiterTest {
   fun retryAfterIsHeldBetweenOneSecondAndTenMinutes() = runTest {
     val limiter = limiter()
 
-    // Sankaku sent 0 and 0.006 while its window reset 1 to 3 s later.
     assertEquals(1.seconds, limiter.parseRetryAfter("0"))
     assertEquals(1.seconds, limiter.parseRetryAfter("0.352"))
     assertEquals(1.seconds, limiter.parseRetryAfter("Thu, 29 Oct 2026 11:00:00 GMT"))
@@ -139,10 +136,6 @@ class RateLimiterTest {
     assertEquals(3000, currentTime - before)
   }
 
-  /**
-   * The tag limit's 429 has neither `Retry-After` nor `x-ratelimit-*`, unlike the rate limit's (`docs/api.md`): it
-   * refuses one search, so the host isn't paused (#520).
-   */
   @Test
   fun theTagLimit429DoesNotPauseTheApi() = runTest {
     val limiter = limiter()
@@ -157,7 +150,6 @@ class RateLimiterTest {
     assertEquals(0, currentTime - before)
   }
 
-  /** Decided by the body's code, not the missing headers: any other 429 from the API still pauses it (#520 review). */
   @Test
   fun aRateLimit429WithoutHeadersStillPausesTheApi() = runTest {
     val limiter = limiter()

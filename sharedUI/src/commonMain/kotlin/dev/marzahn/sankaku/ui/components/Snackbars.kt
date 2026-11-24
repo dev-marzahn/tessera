@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.fonts.icons.error
 
-/** A snackbar's visuals, with [isError] for a failure's reason (an error icon before the text, when asked for). */
 data class AppSnackbarVisuals(
   override val message: String,
   override val actionLabel: String? = null,
@@ -35,17 +34,10 @@ data class AppSnackbarVisuals(
   override val withDismissAction: Boolean = false,
 ) : SnackbarVisuals
 
-/**
- * M3's snackbar host. With [swipeable] (touch), a sideways swipe either way dismisses the snackbar, as Android's own
- * do: it reports `Dismissed`, so its action doesn't run, and a drag that starts on the action cancels the click.
- * Without it (desktop) it's the plain host. With [errorIcons] (the touch top line) a failure's reason starts with the
- * error icon.
- */
 @Composable
 fun AppSnackbarHost(state: SnackbarHostState, swipeable: Boolean, modifier: Modifier = Modifier, errorIcons: Boolean = swipeable) {
   SnackbarHost(state, modifier) { data ->
     if (swipeable) {
-      // One swipe state per snackbar, so the next one starts in place rather than already swiped away.
       key(data) {
         SwipeToDismissBox(
           state = rememberSwipeToDismissBoxState(),
@@ -69,7 +61,6 @@ private fun AppSnackbar(data: SnackbarData, errorIcons: Boolean) {
     return
   }
   val action = visuals.actionLabel
-  // The 12 dp M3's `Snackbar(data)` keeps around itself.
   Snackbar(
     modifier = Modifier.padding(12.dp),
     action = action?.let {
@@ -82,7 +73,6 @@ private fun AppSnackbar(data: SnackbarData, errorIcons: Boolean) {
     },
   ) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      // The scheme's error is made for its own surface; on the inverse one the other scheme's tone reads.
       val onDark = MaterialTheme.colorScheme.inverseSurface.luminance() < 0.5f
       Icon(error, contentDescription = null, tint = if (onDark) ErrorOnDark else ErrorOnLight, modifier = Modifier.size(20.dp))
       Text(visuals.message)
@@ -90,6 +80,5 @@ private fun AppSnackbar(data: SnackbarData, errorIcons: Boolean) {
   }
 }
 
-/** M3's error tones 80 and 40 (the mockup's `#FFB4AB` on the light scheme's dark inverse surface). */
 private val ErrorOnDark = Color(0xFFFFB4AB)
 private val ErrorOnLight = Color(0xFFBA1A1A)

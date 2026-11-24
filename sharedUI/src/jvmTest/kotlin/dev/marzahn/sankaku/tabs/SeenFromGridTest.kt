@@ -12,7 +12,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** Which grid cells show as seen (#182, #262): only posts kept from that grid and seen since they were kept. */
 class SeenFromGridTest {
   private var now = Instant.parse("2026-11-02T12:00:00Z")
   private val clock = object : Clock {
@@ -52,7 +51,6 @@ class SeenFromGridTest {
 
   @Test
   fun aPostKeptFromAnotherSourceIsNotSeenInThisGrid() {
-    // In a tab of its own: an untouched grid would be replaced in place.
     tabs.open(artist, background = true)
     keepFrom(other, "p3", "cc33")
     now += 1.minutes
@@ -87,7 +85,6 @@ class SeenFromGridTest {
     seen.record("p6", "ff66")
     assertTrue(tabs.seenFromGrid(gridOf(artist), "p6", seen))
 
-    // Kept again from the grid: a long-press on the post again.
     now += 1.minutes
     navigator.goTo(artist)
     navigator.openInNewTab(Route.Post("p6", "ff66", artist.tags))
@@ -97,7 +94,6 @@ class SeenFromGridTest {
     seen.record("p6", "ff66")
     assertTrue(tabs.seenFromGrid(gridOf(artist), "p6", seen))
 
-    // Mark unseen, on the queue page.
     now += 1.minutes
     tabs.keepAgain(tabs.tabs.value.single { (it.top as? Route.Post)?.id == "p6" }.id)
     assertFalse(tabs.seenFromGrid(gridOf(artist), "p6", seen))
@@ -123,8 +119,6 @@ class SeenFromGridTest {
 
     assertTrue(tabs.seenFromGrid(gridOf(artist), "p8", seen))
 
-    // A cell reading the mark is told when the post leaves its block, even with the tab order unchanged: the block is
-    // snapshot state.
     var observed = false
     val read = Snapshot.takeSnapshot(readObserver = { observed = true })
     read.enter { kept.block }

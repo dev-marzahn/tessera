@@ -45,6 +45,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +58,19 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import kotlinx.coroutines.flow.collectLatest
+import com.google.fonts.icons.info
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import coil3.ImageLoader
+import coil3.compose.LocalPlatformContext
+import coil3.compose.asPainter
 import com.google.fonts.icons.pause
 import com.google.fonts.icons.play_arrow
 import com.google.fonts.icons.volume_off
@@ -74,45 +89,21 @@ import dev.marzahn.sankaku.ui.components.effectsSpec
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import org.koin.compose.koinInject
 
-/** Whether [post] is a video the app plays (`file_type` `video/…`, discovery step 14: mp4, with an mp4 sample). */
 fun isVideo(post: PostDto): Boolean = post.fileType?.startsWith("video/") == true
 
-/** [post]'s length as the player shows it ([videoTime]); null when the list didn't say. */
 internal fun videoBadgeDuration(post: PostDto): String? = post.videoDuration?.takeIf { it > 0 }?.let(::videoTime)
 
-/**
- * Which file [url] is, whatever its signature: the URL without its query. The details' fetch signs a post's URLs
- * again, and the player must not reopen the same file for that (#180).
- */
 internal fun videoSource(url: String): String = url.substringBefore('?')
 
-/** The URL [PostVideo] plays for [post]: the sample (an mp4, smaller than the file), else the file itself. */
 internal fun videoUrl(post: PostDto): String? = post.sampleUrl ?: post.fileUrl
 
-/**
- * Whether this platform's player can open [post]'s video. AVPlayer, behind the desktop player on macOS, can't open
- * WebM (#192); Android's plays every video the site has.
- */
 internal fun platformPlaysVideo(post: PostDto): Boolean = videoUrl(post)?.let { playsVideoFile(videoSource(it)) } ?: true
 
-/**
- * The name of [source] (see [videoSource]) of [post] in the players' disk cache: the post's md5 and the file's name,
- * whatever the URL's signature, so a video signed again still reads from disk (#189). Never logged.
- */
 internal fun videoCacheKey(post: PostDto, source: String): String =
   if (post.md5.isNotEmpty()) "${post.md5}/${source.substringAfterLast('/')}" else source
 
-/** Flash, which nothing in the app can play. */
 fun isFlash(post: PostDto): Boolean = post.fileExt.equals("swf", ignoreCase = true) || post.fileType?.contains("flash") == true
 
-/**
- * The keys of the video on screen, for the viewer's key handler: the [PostVideo] shown registers its player here.
- * Space plays or pauses and M mutes. V starts scrubbing, as T hands keys to the tag list: then A/D seek by
- * [SEEK_SECONDS] and W/S set the volume, instead of stepping posts, until V or Esc. One of the two at a time: T ends
- * scrubbing, and V takes the keys back from the tag list. On touch the phone viewer's seek
- * row ([VideoSeekRow]), its progress line and a double-tap's seek act on the same player. A drag on either track goes
- * through [drag] and [release].
- */
 @Stable
 class VideoKeys(private val preferences: PlayerPreferences) {
   internal var player by mutableStateOf<VideoPlayback?>(null)
@@ -120,21 +111,19 @@ class VideoKeys(private val preferences: PlayerPreferences) {
   var scrubbing by mutableStateOf(false)
     private set
 
-  /**
-   * Where a drag on the track holds the video, 0 to 1 of its length; null while no drag is under way. The phone
-   * viewer shows the time there in the letterbox (#189).
-   */
   var draggedTo by mutableStateOf<Float?>(null)
     private set
 
   private var resumeAfterDrag = false
 
-  /**
-   * A drag on the track moved to [to] (0 to 1): the video holds and shows the keyframe nearest to it (live scrub,
-   * `.scratch/video-scrub/` option B, #189). The first move pauses it; [release] plays it again if it was playing.
-   */
+  var previewsDrag = false
+
   fun drag(to: Float) {
     val player = player ?: return
+    if (previewsDrag) {
+      draggedTo = to.coerceIn(0f, 1f)
+      return
+    }
     if (draggedTo == null) {
       resumeAfterDrag = player.playWhenReady
       player.pause()
@@ -144,28 +133,20 @@ class VideoKeys(private val preferences: PlayerPreferences) {
     player.seekTo(to)
   }
 
-  /** The drag let go: the video seeks exactly to where it was let go, and plays on if it was playing. */
   fun release() {
     val to = draggedTo ?: return
     draggedTo = null
     val player = player ?: return
+    if (previewsDrag) return player.seekTo(to)
     player.dragging = false
     player.seekTo(to)
     if (resumeAfterDrag) player.play()
   }
 
-  /**
-   * Touch: a hardware volume key. The system sets the media volume as usual (so this never consumes the key); volume
-   * up while a video is shown also lifts the shared mute, as turning a volume up does on desktop.
-   */
   fun onVolumeKey(key: Key) {
     if (player != null && key == Key.VolumeUp && preferences.muted) preferences.toggleMute()
   }
 
-  /**
-   * Seeks the shown video [SEEK_SECONDS] [forward] or back, as A/D do while scrubbing and a double-tap on either half
-   * does on touch; false when no video with a length is shown.
-   */
   fun seek(forward: Boolean): Boolean {
     val player = player ?: return false
     if (player.duration <= 0.0) return false
@@ -174,7 +155,17 @@ class VideoKeys(private val preferences: PlayerPreferences) {
     return true
   }
 
-  /** Handles [key] if a video is shown and it's one of the video's keys. */
+  internal var tapSeek by mutableStateOf<SeekShown?>(null)
+    private set
+
+  internal fun seekFromTap(direction: SeekDirection) {
+    if (seek(forward = direction == SeekDirection.Forward)) tapSeek = SeekShown(direction, (tapSeek?.id ?: 0) + 1)
+  }
+
+  internal fun tapSeekShown(shown: SeekShown) {
+    if (tapSeek == shown) tapSeek = null
+  }
+
   fun onKey(key: Key): Boolean {
     val player = player ?: return false
     return when {
@@ -191,24 +182,41 @@ class VideoKeys(private val preferences: PlayerPreferences) {
     }
   }
 
-  /** Ends scrubbing: T handing the keys to the tag list does, as the two can't both have A/D and W/S. */
   fun stopScrubbing() {
     scrubbing = false
   }
 
-  internal fun register(player: VideoPlayback) {
-    // A drag on the last video ends with it, even if that video's unregister comes after this.
+  private var postId: String? = null
+
+  internal var restored: VideoPlace? = null
+
+  internal fun place(): VideoPlace? {
+    val player = player
+    val postId = postId
+    if (player == null || postId == null || player.duration <= 0.0) return restored
+    return VideoPlace(postId, player.position, paused = !player.playsOnReturn)
+  }
+
+  internal fun restoredPlace(postId: String): VideoPlace? = restored?.takeIf { it.postId == postId }
+
+  internal fun register(player: VideoPlayback, postId: String? = null) {
     this.player?.dragging = false
     draggedTo = null
+    tapSeek = null
     this.player = player
+    if (restored?.postId != postId) restored = null
+    this.postId = postId
   }
 
   internal fun unregister(player: VideoPlayback) {
     if (this.player !== player) return
     player.dragging = false
     this.player = null
+    postId = null
+    restored = null
     scrubbing = false
     draggedTo = null
+    tapSeek = null
   }
 
   private companion object {
@@ -216,24 +224,18 @@ class VideoKeys(private val preferences: PlayerPreferences) {
   }
 }
 
-/** How far A/D (while scrubbing) and a double-tap on touch seek, as YouTube does. */
 internal const val SEEK_SECONDS = 5.0
 
-/** The viewer's [VideoKeys], for the [PostVideo] it shows; null where nothing handles video keys. */
 val LocalVideoKeys = staticCompositionLocalOf<VideoKeys?> { null }
 
-/** Where the video is, in seconds, as its track shows it: where a drag holds it, else where it plays. */
 private fun VideoPlayback.shownTime(keys: VideoKeys?): Double = (keys?.draggedTo ?: position) * duration
 
-/** Pauses a video that plays or is about to (still buffering, #524), else plays it. */
 private fun VideoPlayback.togglePlay() = if (playWhenReady) pause() else play()
 
-/** The play button's icon and name: Pause while it plays or waits to (#524). */
 @Composable
 private fun PlayPauseButton(player: VideoPlayback, keyLabel: String?) {
   val name = if (player.playWhenReady) "Pause" else "Play"
   val label = keyLabel?.let { "$name ($it)" } ?: name
-  // Its name and key on hover too (#521); a touch screen shows none.
   ButtonHint(label) {
     IconButton(onClick = player::togglePlay) {
       Icon(if (player.playWhenReady) pause else play_arrow, contentDescription = label)
@@ -241,16 +243,12 @@ private fun PlayPauseButton(player: VideoPlayback, keyLabel: String?) {
   }
 }
 
-/** What a screen reader calls the spinner over a video waiting for data (#524). */
 internal const val VideoBufferingDescription = "Loading the video"
 
-/** What a screen reader calls a video's track (#524). */
 internal const val SeekTrackDescription = "Seek"
 
-/** What a screen reader calls the desktop's volume slider (#524). */
 internal const val VolumeSliderDescription = "Volume"
 
-/** "01:05", or "1:02:05" from an hour. */
 internal fun videoTime(seconds: Double): String {
   val total = seconds.coerceAtLeast(0.0).toInt()
   val (h, m, s) = Triple(total / 3600, total / 60 % 60, total % 60)
@@ -258,19 +256,6 @@ internal fun videoTime(seconds: Double): String {
   return if (h > 0) "$h:${two(m)}:${two(s)}" else "${two(m)}:${two(s)}"
 }
 
-/**
- * Plays [post]'s sample (an mp4, smaller than the file) through the platform's player (AVPlayer on macOS): at once,
- * looping, at the saved volume ([PlayerPreferences]). On desktop the controls show while the pointer is over the
- * video, while it's paused and while scrubbing; on touch they're the phone viewer's chrome ([VideoSeekRow]) instead.
- * Under it, the preview stays as the placeholder until the first frame. [onFirstFrame] runs once it plays.
- *
- * It loads as soon as it's composed but shows and plays only once [play] (the viewer has settled), so the open
- * transition and the download overlap (#180). Once shown, it stays drawn while [shown], paused unless [play]: a
- * closing viewer keeps its frame instead of dropping back to the preview (#283). It opens each file once: the
- * details' fetch signs the post's URLs again, and reopening for that restarted the video and showed the preview over
- * it. Only a failure reopens it, with the newest URL, where it was. [bookPage] plays it silent with no controls, as a
- * book's page (#381), whatever the saved volume.
- */
 @Composable
 fun PostVideo(
   post: PostDto,
@@ -293,20 +278,17 @@ fun PostVideo(
   val keys = LocalVideoKeys.current
   val latestUrl by rememberUpdatedState(url)
   val playing by rememberUpdatedState(play)
-  // Retry (#192) opens the file again with the newest URL, from where it was.
+  val restored = remember(player, source) { keys?.restoredPlace(post.id) }
+  var keepPaused by remember(player, source) { mutableStateOf(restored?.paused == true) }
   var attempt by remember(player, source) { mutableIntStateOf(0) }
-  var resumeAt by remember(player, source) { mutableFloatStateOf(0f) }
-  // The URL last opened: a failure with a newer URL waiting reopens by itself, so only one without shows (#192).
+  var resumeAt by remember(player, source) { mutableFloatStateOf(restored?.at ?: 0f) }
   var opened by remember(player, source) { mutableStateOf("") }
   LaunchedEffect(player, source, attempt) {
     player.volume = volume
     val cacheKey = videoCacheKey(post, source)
     opened = latestUrl
-    player.open(opened, cacheKey, playing)
-    // Where the video should be once an open succeeds: a Retry's position, kept until a seek has landed, so a reopen
-    // after another failure still goes there rather than to the failed media's 0.
+    player.open(opened, cacheKey, playing && !keepPaused)
     var pendingSeek: Float? = resumeAt.takeIf { it > 0f }
-    // In its own coroutine, so a newer URL that comes while this open stalls still reopens below.
     val resume = pendingSeek?.let { to ->
       launch {
         snapshotFlow { player.duration > 0.0 || player.failed }.first { it }
@@ -316,28 +298,32 @@ fun PostVideo(
         }
       }
     }
-    // A signed URL runs out: once the player fails and a newer URL has come, it reopens with that one, where it was.
     snapshotFlow { player.failed && latestUrl != opened }.collect { failed ->
       if (!failed) return@collect
       resume?.cancel()
       val at = pendingSeek ?: player.position
       pendingSeek = at
       opened = latestUrl
-      // open clears the length and the failure at once, so neither is the old media's.
-      player.open(opened, cacheKey, playing)
+      player.open(opened, cacheKey, playing && !keepPaused)
       snapshotFlow { player.duration > 0.0 || player.failed }.first { it }
-      // Failed again: the next newer URL gets its turn through the flow above, still bound for the same place.
       if (!player.failed) {
         player.seekTo(at)
         pendingSeek = null
       }
     }
   }
-  LaunchedEffect(player, play) { if (play) player.play() else player.pause() }
+  var wasPlayed by remember(player, source) { mutableStateOf(false) }
+  LaunchedEffect(player, play) {
+    if (play) wasPlayed = true else if (wasPlayed) keepPaused = false
+    if (play && !keepPaused) player.play() else player.pause()
+  }
+  LaunchedEffect(player, source) {
+    snapshotFlow { player.playWhenReady }.first { it }
+    keepPaused = false
+  }
   LaunchedEffect(volume) { player.volume = volume }
-  // Only a shown video takes keys and the seek row: while the viewer opens, nothing on screen is playing yet.
   DisposableEffect(keys, player, play) {
-    if (play) keys?.register(player)
+    if (play) keys?.register(player, post.id)
     onDispose { keys?.unregister(player) }
   }
   val hover = remember { MutableInteractionSource() }
@@ -345,20 +331,16 @@ fun PostVideo(
   val scrubbing = keys?.scrubbing == true
   Box(modifier.hoverable(hover)) {
     if (shown && player.hasMedia) VideoPlaybackSurface(player, Modifier.fillMaxSize())
-    // A failed open says so over the preview, with Retry, instead of controls frozen at "00:00 / 00:00" (#192).
     val failed = player.failed && latestUrl == opened
     if (play && failed) {
       VideoFailed(
         onRetry = {
-          // A failed open can reset the position: then the last place it was kept stays.
           if (player.position > 0f) resumeAt = player.position
           attempt++
         },
         modifier = Modifier.align(Alignment.Center),
       )
     }
-    // Waiting for data looks like a pause without it (#524); the play button reads Pause meanwhile.
-    // On the seek row's dark disc, so it shows over a light frame as over a dark one.
     if (play && !failed && player.buffering) {
       Box(
         Modifier
@@ -375,7 +357,6 @@ fun PostVideo(
       visible = play && !bookPage && !platformIsTouch && !failed && (hovered || scrubbing || (player.hasMedia && !player.playWhenReady)),
       enter = fadeIn(effectsSpec()),
       exit = fadeOut(effectsSpec()),
-      // The panel's whole bottom edge: the post counter sits top left.
       modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
     ) {
       VideoControls(player, keys, preferences, scrubbing)
@@ -383,10 +364,20 @@ fun PostVideo(
   }
 }
 
-/**
- * [player]'s track: it follows a drag through [keys] (a keyframe while dragging, exact on release; #189), or seeks
- * straight away where no viewer handles video keys.
- */
+@Immutable
+internal data class VideoPlace(val postId: String, val at: Float, val paused: Boolean)
+
+internal fun videoPlaceSaver(keys: VideoKeys): Saver<VideoKeys, Any> = listSaver(
+  save = { it.place()?.let { place -> listOf(place.postId, place.at, place.paused) }.orEmpty() },
+  restore = { saved ->
+    keys.also {
+      if (saved.size == 3) it.restored = VideoPlace(saved[0] as String, saved[1] as Float, saved[2] as Boolean)
+    }
+  },
+)
+
+internal const val VIEWER_VIDEO_KEY = "viewer-video"
+
 @Composable
 private fun VideoTrack(player: VideoPlayback, keys: VideoKeys?, modifier: Modifier, colors: SliderColors = SliderDefaults.colors()) {
   MediaSlider(
@@ -439,22 +430,23 @@ private fun VideoControls(player: VideoPlayback, keys: VideoKeys?, preferences: 
   }
 }
 
-/**
- * Touch: the phone viewer's seek row (`.scratch/android-shell/` option 3, row 9), part of its chrome: play or pause,
- * the time, the track, the length and the shared mute, on a dark pill over the letterbox. Volume is the hardware
- * keys, so there's no volume slider. Drawn dark whatever the theme, as it always lies over the black around the video.
- */
 @Composable
-fun VideoSeekRow(keys: VideoKeys, modifier: Modifier = Modifier, preferences: PlayerPreferences = koinInject()) {
+fun VideoSeekRow(
+  keys: VideoKeys,
+  modifier: Modifier = Modifier,
+  preferences: PlayerPreferences = koinInject(),
+  flush: Boolean = false,
+  onDetails: (() -> Unit)? = null,
+  onTrackPlaced: (LayoutCoordinates) -> Unit = {},
+) {
   val player = keys.player ?: return
   SankakuTheme(isDark = true) {
     Surface(
-      shape = CircleShape,
+      shape = if (flush) RectangleShape else CircleShape,
       color = VideoScrim,
       contentColor = Color.White,
       modifier = modifier.height(VIDEO_SEEK_ROW_HEIGHT),
     ) {
-      // No padding: the icons' own 12 dp insets line them up with the sheet's content edges.
       Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -464,9 +456,8 @@ fun VideoSeekRow(keys: VideoKeys, modifier: Modifier = Modifier, preferences: Pl
         VideoTrack(
           player,
           keys,
-          // The mockup's light track over the black, as the progress line draws it.
           colors = SliderDefaults.colors(inactiveTrackColor = Color.White.copy(alpha = UNPLAYED_ALPHA)),
-          modifier = Modifier.weight(1f),
+          modifier = Modifier.weight(1f).onGloballyPositioned(onTrackPlaced),
         )
         Text(videoTime(player.duration), style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace))
         IconButton(onClick = preferences::toggleMute) {
@@ -475,41 +466,74 @@ fun VideoSeekRow(keys: VideoKeys, modifier: Modifier = Modifier, preferences: Pl
             contentDescription = if (preferences.muted) "Unmute" else "Mute",
           )
         }
+        if (onDetails != null) {
+          IconButton(onClick = onDetails) { Icon(info, contentDescription = VideoDetailsDescription) }
+        }
       }
     }
   }
 }
 
-/**
- * Touch: while the seek row's track is dragged, where the video will land, large, over the letterbox ("01:23", "of
- * 02:07"), as the video itself shows the frame there (`.scratch/video-scrub/` option B, #189). Nothing otherwise.
- */
+internal const val VideoDetailsDescription = "Details"
+
 @Composable
-fun VideoDragTime(keys: VideoKeys, modifier: Modifier = Modifier) {
-  val player = keys.player ?: return
-  val at = keys.draggedTo ?: return
+fun VideoScrubPreview(keys: VideoKeys, post: PostDto, shown: Boolean, modifier: Modifier = Modifier) {
+  val url = videoUrl(post) ?: return
+  val source = videoSource(url)
+  val player = LocalVideoPlayback.current()
+  LaunchedEffect(player, source) {
+    player.volume = 0f
+    player.open(url, videoCacheKey(post, source), play = false)
+    player.dragging = true
+  }
+  LaunchedEffect(player) {
+    snapshotFlow { keys.draggedTo }.collectLatest { at ->
+      if (at == null) return@collectLatest
+      snapshotFlow { player.duration > 0.0 }.first { it }
+      player.seekTo(at)
+    }
+  }
+  val ratio = aspectRatio(post)
+  val frame = if (ratio >= PREVIEW_WIDTH / PREVIEW_HEIGHT) {
+    Modifier.width(PREVIEW_WIDTH).aspectRatio(ratio)
+  } else {
+    Modifier.height(PREVIEW_HEIGHT).aspectRatio(ratio)
+  }
+  val at = keys.draggedTo ?: player.position
+  val duration = keys.player?.duration ?: player.duration
+  val context = LocalPlatformContext.current
+  val imageLoader = koinInject<ImageLoader>()
+  val placeholder = remember(post.md5) { decodedInMemory(imageLoader, post.md5) }
   val shadow = Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 6f)
-  Column(modifier.height(VIDEO_DRAG_TIME_HEIGHT), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+  Column(
+    modifier.graphicsLayer { alpha = if (shown) 1f else 0f },
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Box(
+      frame
+        .clip(RoundedCornerShape(8.dp))
+        .background(Color.Black)
+        .border(2.dp, Color.White, RoundedCornerShape(8.dp)),
+    ) {
+      if (placeholder != null && !player.firstFrameShown) {
+        Image(placeholder.asPainter(context), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+      }
+      if (player.hasMedia) VideoPlaybackSurface(player, Modifier.fillMaxSize().padding(2.dp))
+    }
     Text(
-      videoTime(at * player.duration),
+      videoTime(at * duration),
       color = Color.White,
-      style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace, shadow = shadow),
-    )
-    Text(
-      "of ${videoTime(player.duration)}",
-      color = Color.White.copy(alpha = 0.75f),
-      style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace, shadow = shadow),
+      style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace, shadow = shadow),
     )
   }
 }
 
-/** [VideoDragTime]'s height, for the viewer to place it by. */
-val VIDEO_DRAG_TIME_HEIGHT = 64.dp
+private val PREVIEW_WIDTH = 160.dp
+private val PREVIEW_HEIGHT = 120.dp
 
-/** [VideoSeekRow]'s height, a 48 dp touch target, for the viewer to place it by. */
 val VIDEO_SEEK_ROW_HEIGHT = 48.dp
 
-/** Touch: the 2 dp progress line that stays while the phone viewer's chrome, and with it the seek row, is hidden. */
 @Composable
 fun VideoProgressLine(keys: VideoKeys, modifier: Modifier = Modifier) {
   val player = keys.player ?: return
@@ -527,10 +551,6 @@ fun VideoProgressLine(keys: VideoKeys, modifier: Modifier = Modifier) {
   }
 }
 
-/**
- * Which way a double-tap seeks, with how its ripple looks: on the video's right edge with » and "+5 s" forward, on
- * its left with « and "−5 s" back. [ForwardRipple]'s shape is the right half of an ellipse twice the ripple's width.
- */
 internal enum class SeekDirection(val glyph: String, val sign: String, val alignment: Alignment, val shape: Shape) {
   Back("«", "−", Alignment.CenterStart, GenericShape { size, _ -> addOval(Rect(-size.width, 0f, size.width, size.height)) }),
   Forward("»", "+", Alignment.CenterEnd, GenericShape { size, _ -> addOval(Rect(0f, 0f, size.width * 2, size.height)) }),
@@ -539,22 +559,15 @@ internal enum class SeekDirection(val glyph: String, val sign: String, val align
   val label: String get() = "$sign${SEEK_SECONDS.toInt()} s"
 
   companion object {
-    /** The right half of a box [width] wide seeks forward, the left half back. */
     fun at(x: Float, width: Float): SeekDirection = if (x >= width / 2f) Forward else Back
   }
 }
 
-/** A double-tap's seek while it shows; [id] tells one double-tap from the next, so each restarts the timer. */
 @Immutable
 internal data class SeekShown(val direction: SeekDirection, val id: Int)
 
-/**
- * The feedback for a double-tap seek (`.scratch/android-viewer/` direction A, row 4): a light half-ellipse on the
- * tapped side of the video with the direction's arrow and "+5 s" or "−5 s", fading out after a moment.
- */
 @Composable
 internal fun SeekRipple(seek: SeekShown?, modifier: Modifier = Modifier) {
-  // The last seek stays drawn while it fades out; it's kept after composition, never written during it.
   val last = remember { mutableStateOf<SeekShown?>(null) }
   SideEffect { if (seek != null) last.value = seek }
   val shown = (seek ?: last.value)?.direction ?: return
@@ -577,14 +590,10 @@ internal fun SeekRipple(seek: SeekShown?, modifier: Modifier = Modifier) {
   }
 }
 
-/** The dark behind what's drawn over a video: the phone's seek row and the buffering spinner's disc. */
 private val VideoScrim = Color.Black.copy(alpha = 0.55f)
 
-/** The unplayed part of a track or the progress line over the black around a video (the mockups' white at 35%). */
 private const val UNPLAYED_ALPHA = 0.35f
 
-/** How long a double-tap's seek stays shown after the last tap. */
 internal const val SEEK_SHOWN_MS = 700L
 
-/** The ripple's width as a share of the video's (112 of 412 dp in the mockup). */
 private const val RIPPLE_SHARE = 0.27f

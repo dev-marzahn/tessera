@@ -31,7 +31,6 @@ class OriginalFilesTest {
   private val usable = listed.copy(fileUrl = "https://s.sankakucomplex.com/data/01/23/x.png?e=$future&m=a")
   private val freshUrl = "https://s.sankakucomplex.com/data/01/23/x.png?e=${future + 60}&m=fresh"
 
-  /** The list post with [freshUrl], as the keyset `id:` refetch returns it. */
   private val refetchPage = Fixtures.page(null, "p1").replace("https://s.sankakucomplex.com/data/01/23/x.png?e=1&m=a", freshUrl)
 
   @Test
@@ -105,7 +104,6 @@ class OriginalFilesTest {
 
     assertEquals(500, error.status)
     assertEquals(0, sink.size)
-    // The message never holds the signed URL.
     assertTrue("sankakucomplex" !in error.message.orEmpty())
   }
 

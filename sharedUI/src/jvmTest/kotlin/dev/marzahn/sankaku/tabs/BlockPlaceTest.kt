@@ -4,18 +4,17 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.api.Feed
 import dev.marzahn.sankaku.queue.QueueKind
 import dev.marzahn.sankaku.ui.components.CountPillText
+import dev.marzahn.sankaku.ui.components.ShortSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** #501: where an item stands in its block, and what the pill and TalkBack say of it. */
 class BlockPlaceTest {
   private val tabs = TabsController()
 
   private fun post(id: String) = Route.Post(id, md5 = null, originTags = emptyList(), label = id, rating = "s")
 
   init {
-    // Browse, then Landscape with p1, p2 and p3 kept, then Cat with none.
     tabs.open(Route.Grid(listOf("landscape")), background = false)
     tabs.openInBlock(listOf(post("p1")))
     tabs.openInBlock(listOf(post("p2")))
@@ -46,7 +45,6 @@ class BlockPlaceTest {
   fun aClosedSourcesKeptPostsAreNamedByIt() {
     tabs.close(all().single { it.title == "Landscape" }.id)
 
-    // Named as the source was; TalkBack adds that it's closed (the pill's room is short).
     assertEquals(BlockPlace.Kept("Landscape", 2, 3, QueueKind.KeptPost, closed = true), place("p2"))
     assertEquals("Queue, Landscape, closed, kept post 2 of 3, item 3 of 5", pillText(place("p2"), 3, 5, feed = null, card = null).spoken)
   }
@@ -61,7 +59,6 @@ class BlockPlaceTest {
 
     val feedIndex = list.indexOfFirst { it.title == "Following" }
     assertEquals(BlockPlace.Head("Following", 1), blockPlace(list, feedIndex))
-    // Its pane says how many follow, as a source's does.
     assertEquals(
       "Queue, feed Following, after 1 item, 1 kept item follows",
       queueItemDescription(countedPosition(list, feedIndex), countedItems(list), list[feedIndex], null, blockPlace(list, feedIndex)),
@@ -79,22 +76,36 @@ class BlockPlaceTest {
       CountPillText("Landscape", "3 kept", "Queue, Landscape, 3 kept items follow, item 2 of 6"),
       pillText(place("Landscape"), position = 2, count = 6, feed = null, card = null),
     )
-    // Nothing else changes: a source with no kept posts, and a feed, which isn't counted.
     assertEquals(CountPillText(null, "6 / 6", "Queue, item 6 of 6"), pillText(null, 6, 6, feed = null, card = null))
     assertEquals(CountPillText(null, "Following", "Queue, Following, after 6 items"), pillText(null, 6, 6, feed = "Following", card = null))
+  }
+
+  @Test
+  fun aBlockNamedBySeveralTagsHasAShortFormForThePill() {
+    tabs.open(Route.Grid(listOf("order:popularity", "lighthouse", "starry_sky")), background = false)
+    tabs.openInBlock(listOf(post("l1")))
+    val short = ShortSource("Lighthouse", 1)
+
+    assertEquals("Lighthouse Starry Sky", place("l1")?.source)
+    assertEquals(short, pillText(place("l1"), 1, 8, feed = null, card = null).short)
+    assertEquals(short, pillText(place("Lighthouse Starry Sky"), 1, 8, feed = null, card = null).short)
+    tabs.close(all().single { it.title == "Lighthouse Starry Sky" }.id)
+    assertEquals(short, pillText(place("l1"), 1, 8, feed = null, card = null).short)
+    assertEquals(null, pillText(place("p1"), 1, 8, feed = null, card = null).short)
+    assertEquals(ShortSource("Books · Lighthouse", 1), shortTitle(Route.Books(listOf("lighthouse", "night"))))
+    assertEquals(ShortSource("Found on Lighthouse", 1), shortTitle(Route.Grid(listOf("lighthouse", "night")), prefix = "Found on "))
   }
 
   @Test
   fun onABlocksLastItemThePillSaysWhereMovingOnGoes() {
     val last = place("p3")
 
-    assertEquals("Last from Landscape · next: Cat", blockEndLine(last, "Cat"))
+    assertEquals("Next: Cat", blockEndLine(last, "Cat"))
     assertEquals(
       "Queue, Landscape, kept post 3 of 3, item 5 of 6, last, next Cat",
       pillText(last, 5, 6, feed = null, card = null, next = "Cat").spoken,
     )
-    assertEquals("Last from Landscape · next: End of the queue", blockEndLine(last, END_PANE))
-    // Not on any other item, and not with nothing to move on to.
+    assertEquals("Next: End of the queue", blockEndLine(last, END_PANE))
     assertNull(blockEndLine(place("p2"), "p3"))
     assertNull(blockEndLine(place("Landscape"), "p1"))
     assertNull(blockEndLine(last, null))
@@ -103,8 +114,7 @@ class BlockPlaceTest {
   @Test
   fun onACardThePillNamesItWithTheCountNotTheItemBehindIt() {
     assertEquals(CountPillText("End", "6", "Queue, end, after 6 items"), pillText(null, 6, 6, feed = "Following", card = UpNextCard.End))
-    val offer = UpNextCard.Pickup(TabId("old"), "Old", "", null)
-    assertEquals(CountPillText("Up next", "6", "Queue, up next, after 6 items"), pillText(place("p3"), 5, 6, feed = null, card = offer))
+    assertEquals(CountPillText("End", "6", "Queue, end, after 6 items"), pillText(place("p3"), 5, 6, feed = null, card = UpNextCard.End))
   }
 
   @Test

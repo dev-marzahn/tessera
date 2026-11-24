@@ -8,10 +8,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * #184: closing a source keeps its kept posts as a block "from artist_x (closed)", opening a source on that search puts it
- * back in front of them, and blocks move whole.
- */
 class ClosedSourceBlockTest {
   private val file = InMemoryTextFile(null)
   private val store = FileTabStateStore(file)
@@ -26,7 +22,6 @@ class ClosedSourceBlockTest {
 
   private fun tab(title: String) = tabs.tabs.value.single { it.title == title }
 
-  // Browse, then artist_x with p1 and p2 kept, then other with p3 kept.
   private fun twoBlocks() {
     tabs.open(artist, background = false)
     keep("p1")
@@ -50,7 +45,6 @@ class ClosedSourceBlockTest {
     assertEquals(listOf("artist_x"), tab("p1").closedSource)
     assertEquals(listOf("artist_x"), tab("p2").closedSource)
     assertNull(tab("p3").closedSource)
-    // They keep their block, so they stay together, and the closed source's name is what the row shows.
     assertEquals(head.id, tab("p1").head)
     assertEquals("from Artist X (closed)", closedBlockTitle(tab("p1").closedSource!!))
   }
@@ -115,7 +109,6 @@ class ClosedSourceBlockTest {
     twoBlocks()
     tabs.close(tab("Artist X").id)
 
-    // From a tag, a search or a link in a new tab: the same search, and a different order is still the same source.
     tabs.open(Route.Grid(listOf("order:popularity", "artist_x")), background = true)
 
     val head = tabs.tabs.value[1]
@@ -132,7 +125,6 @@ class ClosedSourceBlockTest {
     twoBlocks()
     tabs.close(tab("Artist X").id)
 
-    // A search from a post opens in front of a block, here the closed one's.
     tabs.activate(tab("p3").id)
     tabs.search(artist)
 
@@ -150,7 +142,6 @@ class ClosedSourceBlockTest {
 
     tabs.search(artist)
 
-    // Browse is still there, untouched, and artist_x stands in front of its kept posts.
     assertEquals(listOf("Browse", "Artist X", "p1", "p2", "Other", "p3"), titles())
     assertEquals(tab("Artist X").id, tab("p2").block)
   }
@@ -224,8 +215,6 @@ class ClosedSourceBlockTest {
     assertNull(tab("p3").closedSource)
   }
 
-  // ---- blocks move together
-
   @Test
   fun aClosedBlockMovesWholeFromItsRow() {
     twoBlocks()
@@ -233,7 +222,6 @@ class ClosedSourceBlockTest {
     tabs.close(head)
     assertEquals(listOf("Browse", "p1", "p2", "Other", "p3"), titles())
 
-    // The row stands for the head's id.
     assertEquals(2, tabs.moveInQueue(head, down = true))
 
     assertEquals(listOf("Browse", "Other", "p3", "p1", "p2"), titles())
@@ -262,17 +250,14 @@ class ClosedSourceBlockTest {
     twoBlocks()
     tabs.close(tab("Artist X").id)
 
-    // Within the block.
     assertEquals(1, tabs.moveInQueue(tab("p1").id, down = true))
     assertEquals(listOf("Browse", "p2", "p1", "Other", "p3"), titles())
     assertEquals(listOf("artist_x"), tab("p1").closedSource)
 
-    // Out of it at the end: a detached post has no source, closed or not.
     assertEquals(0, tabs.moveInQueue(tab("p1").id, down = true))
     assertNull(tab("p1").block)
     assertNull(tab("p1").closedSource)
     assertEquals(listOf("Browse", "p2", "p1", "Other", "p3"), titles())
-    // The rest is still the closed block.
     assertEquals(listOf("artist_x"), tab("p2").closedSource)
   }
 

@@ -41,7 +41,6 @@ import kotlin.test.assertTrue
 class PostStatsTest {
   private val post = PostDto(id = "1", md5 = "m", rating = "s", status = "active", favCount = 1284, voteCount = 1234, totalScore = 5000)
 
-  /** The vote pane is one line high (the group's 48 dp) however narrow the row, as on a phone with large text (#70). */
   @Test
   fun theVoteCountsStayOnOneLineWhenTheRowIsNarrow() = runComposeUiTest {
     setContent {
@@ -55,10 +54,6 @@ class PostStatsTest {
     assertEquals(48.dp, onNodeWithContentDescription("Average 4.1 from 1234 votes").getUnclippedBoundsInRoot().height)
   }
 
-  /**
-   * The counts end as far from the pane's end as the first star starts from its cell's start (a fifth of the stars'
-   * width), at full cell width and when the stars give way (#104).
-   */
   @Test
   fun theCountsKeepTheFirstStarsInsetFromTheEnd() = runComposeUiTest {
     var width by mutableStateOf(240.dp)
@@ -80,10 +75,6 @@ class PostStatsTest {
     }
   }
 
-  /**
-   * #525, option C: the phone sheet's row on a 360 dp phone (340 dp inside its padding, ⋮ after it) keeps five full
-   * 40 dp stars and the row's 48 dp at 100% and 200% text; ♡ shows no count, and the counts line has them all.
-   */
   @Test
   fun thePhoneSheetKeepsFiveFullStarsAtAnyTextSize() {
     for (scale in listOf(1f, 2f)) runComposeUiTest {
@@ -105,13 +96,11 @@ class PostStatsTest {
       assertEquals(48.dp, pane.height, "at $scale")
       val toggle = onNodeWithContentDescription("Favourite, 1.2k (F)").getUnclippedBoundsInRoot()
       assertTrue(toggle.right <= 340.dp - 52.dp, "at $scale: $toggle")
-      // ♡'s count is on the counts line, not in the toggle; the line has the average and votes too.
       for (text in listOf("4.1", "1.2k votes", "1.2k")) onNodeWithText(text, useUnmergedTree = true).assertExists()
       assertTrue(onNodeWithText("1.2k", useUnmergedTree = true).getUnclippedBoundsInRoot().top >= pane.bottom, "at $scale")
     }
   }
 
-  /** The stars come first and the favourite toggle ends the group, each with its key under it (#81). */
   @Test
   fun theFavouriteToggleEndsTheGroupWithItsKeyUnderIt() = runComposeUiTest {
     setContent {
@@ -131,10 +120,6 @@ class PostStatsTest {
     assertTrue(favouriteKey.left >= toggle.left && favouriteKey.right <= toggle.right, "F sits under the toggle")
   }
 
-  /**
-   * Left-handed (#528), the row mirrors: ⋮ at the start edge, then the favourite, then the stars at the end. TalkBack's
-   * order follows: ⋮, the favourite, the stars.
-   */
   @Test
   fun mirroredTheMenuAndTheFavouriteComeBeforeTheStars() = runComposeUiTest {
     var toggled = 0
@@ -159,17 +144,12 @@ class PostStatsTest {
     assertTrue(stars.left > toggle.right, "the stars follow the favourite")
     assertEquals(320.dp, stars.right)
 
-    // Both still work where they've moved to.
     onNodeWithContentDescription("Favourite, 1.2k (F)").performClick()
     onNodeWithContentDescription("Average 4.1 from 1234 votes").performSemanticsAction(SemanticsActions.SetProgress) { it(4f) }
     assertEquals(1, toggled)
     assertEquals(4, voted)
   }
 
-  /**
-   * Mirrored (#528), a failed favourite or vote still shakes its control back with the reject haptic (feedback C), the
-   * favourite in its leading shapes now.
-   */
   @Test
   fun mirroredARejectedFavouriteOrVoteStillShakesBack() = runComposeUiTest {
     val felt = mutableListOf<HapticFeedbackType>()
@@ -208,14 +188,11 @@ class PostStatsTest {
     mainClock.advanceTimeBy(2_000)
     assertEquals(favouriteAtRest, favourite.getBoundsInRoot().left, "and comes back")
 
-    // The pane's semantics sit outside its shake's layer (mirrored or not), so its bounds stay; the haptic is the
-    // rejection's answer reaching it.
     voteRejected = 1
     mainClock.advanceTimeBy(50)
     assertEquals(listOf(HapticFeedbackType.Reject, HapticFeedbackType.Reject), felt)
   }
 
-  /** Not mirrored, ⋮ ends the row after the favourite, as it always has (#178). */
   @Test
   fun unmirroredTheMenuEndsTheRow() = runComposeUiTest {
     setContent {

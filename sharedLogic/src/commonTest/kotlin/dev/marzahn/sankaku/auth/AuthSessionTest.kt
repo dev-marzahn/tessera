@@ -42,7 +42,6 @@ class AuthSessionTest {
   private val HttpRequestData.isRefresh get() = url.host == API_HOST && url.encodedPath == "/auth/token"
   private val HttpRequestData.bearer get() = headers[HttpHeaders.Authorization]
 
-  /** `/users/me` accepts only `new-access`; a refresh returns the `new-*` pair. */
   private fun refreshingHarness(store: TokenStore = InMemoryTokenStore(storedTokens())) = Harness(store) { request ->
     when {
       request.isRefresh -> json(Fixtures.tokens())
@@ -63,7 +62,6 @@ class AuthSessionTest {
     assertEquals("new-access", h.store.load()?.accessToken)
   }
 
-  /** Sankaku's 401 for a rejected access token: a comma straight after the scheme, which Ktor can't parse (#470). */
   private fun MockRequestHandleScope.sankaku401(): HttpResponseData = respond(
     """{"success":false,"code":"snackbar__common_unauthorized"}""",
     HttpStatusCode.Unauthorized,
@@ -108,7 +106,7 @@ class AuthSessionTest {
   fun the401FromAnImageHostCausesNoRefresh() = runTest {
     val h = refreshingHarness(InMemoryTokenStore(storedTokens(access = "new-access")))
     h.session.restore()
-    h.users.me() // the plugin now holds a token it could attach
+    h.users.me()
 
     val response = h.mainClient.get("https://s.sankakucomplex.com/data/01/23/x.png?e=1")
 
@@ -292,7 +290,6 @@ class AuthSessionTest {
     }
   }
 
-  /** Only the recorded refusal (discovery step 8) means a wrong password; any other answer is Sankaku's (#493). */
   @Test
   fun aLoginAnswerOtherThanTheRefusalIsAnError() = runTest {
     val cases: List<Triple<String, suspend MockRequestHandleScope.() -> HttpResponseData, (ApiError) -> Unit>> = listOf(
@@ -363,10 +360,8 @@ class AuthSessionTest {
   }
 }
 
-/** The header of `sankakuapi.com`'s 401 for a rejected access token, as #470 recorded it. */
 private const val SANKAKU_WWW_AUTHENTICATE = """Bearer, error="snackbar__common_unauthorized""""
 
-/** The login host's answer to a wrong password, as discovery step 8 recorded it (`docs/api.md`). */
 private const val WRONG_PASSWORD = """{"success":false,"error":"invalid login or password"}"""
 
 private fun OutgoingContent.toByteArrayText(): String = when (this) {

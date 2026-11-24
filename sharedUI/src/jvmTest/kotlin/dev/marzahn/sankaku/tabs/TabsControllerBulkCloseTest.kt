@@ -6,7 +6,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** #132: the tab list's bulk closes are one change with one Undo, which puts every tab back where it stood. */
 class TabsControllerBulkCloseTest {
   private val tabs = TabsController()
 
@@ -14,7 +13,6 @@ class TabsControllerBulkCloseTest {
 
   private fun post(id: String) = Route.Post(id, md5 = null, originTags = emptyList(), label = id)
 
-  /** Opens a post tab for each of [ids], in order, after the Browse tab. */
   private fun openPosts(vararg ids: String) = ids.forEach { tabs.open(post(it), background = true) }
 
   private fun activate(title: String) = tabs.activate(tabs.tabs.value.first { it.title == title }.id)
@@ -142,7 +140,6 @@ class TabsControllerBulkCloseTest {
     activate("e")
     val before = titles()
     val batch = tabs.closeAll(tabs.tabs.value.filter { it.title in setOf("a", "c") }.map { it.id })!!
-    // Browse, b, d, e: "d" stands at 2.
     tabs.close(tabs.tabs.value.first { it.title == "d" }.id)
 
     tabs.reopen(batch)

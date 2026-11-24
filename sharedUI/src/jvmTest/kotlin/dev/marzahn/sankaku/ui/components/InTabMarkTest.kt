@@ -68,9 +68,6 @@ class InTabMarkTest {
 
   @Test
   fun aSeenKeptCellAtThePhonesSmallestSizeFitsBothMarks() = runComposeUiTest {
-    // #468: Post size goes down to 80 dp on a phone. `CellOverlay`'s bottom-left corner holds the seen badge and the
-    // chip in the 68 dp inside the cell's 6 dp padding; the chip drops its icon there, so "Kept" isn't cut off.
-    // (Desktop's "In tab" never has to fit: its cells are 160 dp and up.)
     setContent {
       SankakuTheme {
         Row(Modifier.width(68.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -80,8 +77,6 @@ class InTabMarkTest {
       }
     }
 
-    // The Row squeezes the text to whatever is left, so its bounds always fit: what matters is that the whole word
-    // was laid out in them.
     val layouts = mutableListOf<TextLayoutResult>()
     onNodeWithText("Kept", useUnmergedTree = true)
       .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
@@ -90,7 +85,6 @@ class InTabMarkTest {
 
   @Test
   fun theChipKeepsItsIconWhereThereIsRoom() {
-    // A cell at the phone's default 110 dp gives the chip 70 dp beside the seen badge (110 - 2 × 6 - 24 - 4).
     assertTrue(inTabChipShowsIcon(70.dp, already = false))
     assertFalse(inTabChipShowsIcon(40.dp, already = false))
     assertFalse(inTabChipShowsIcon(96.dp, already = true))

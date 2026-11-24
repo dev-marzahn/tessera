@@ -33,10 +33,6 @@ import com.google.fonts.icons.tab
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * The M0 compatibility check: every expressive component on one screen. Run with
- * `./gradlew :desktopApp:run -Dsankaku.sample=true`.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SampleScreen() {

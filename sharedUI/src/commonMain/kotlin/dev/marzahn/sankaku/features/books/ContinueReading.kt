@@ -78,14 +78,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/**
- * The Continue reading shelf's books (#503): Sankaku's own list of the books the account has a place in
- * ([BooksRepository.reading], the most recently saved first), signed in only. It asks only while [shown] (REVIEW.md:
- * a screen out of sight doesn't load): when shown, whenever Sankaku takes a place ([ReadingProgress.landed]), when the
- * rating lock changes, and on [refresh]. A failed ask keeps what it showed; one that failed for want of a connection
- * is asked again once back online ([retryIfUnreachable]). Signed out there's no shelf: the places kept on the device
- * have no title or cover to show.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ContinueReadingViewModel(
   private val repository: BooksRepository,
@@ -95,7 +87,6 @@ class ContinueReadingViewModel(
 ) : ViewModel() {
   private val _books = MutableStateFlow<List<BookDto>>(emptyList())
 
-  /** The books with a place, finished ones too: the shelf leaves those out by what's saved here ([shelfBooks]). */
   val books: StateFlow<List<BookDto>> = _books.asStateFlow()
 
   private val asks = MutableStateFlow(0)
@@ -103,7 +94,6 @@ class ContinueReadingViewModel(
   private var unreachable = false
 
   init {
-    // Another account, or none, even while not shown: what was listed was the last one's (#503 review).
     viewModelScope.launch {
       session.state
         .filter { it !is AuthState.Restoring }
@@ -131,29 +121,23 @@ class ContinueReadingViewModel(
     }
   }
 
-  /** Whether the shelf is on screen: it asks only then, and again each time it comes back. */
   fun shown(on: Boolean) {
     shown.value = on
   }
 
-  /** Asks for the shelf again: the list's refresh. */
   fun refresh() {
     asks.value++
   }
 
-  /** Back online: asks again if the last ask couldn't reach Sankaku. */
   fun retryIfUnreachable() {
     if (unreachable) refresh()
   }
 }
 
-/** The shelf's books: those started and not finished, by what's saved ([readingOf]), in Sankaku's order. */
 internal fun shelfBooks(books: List<BookDto>, readingOf: (BookDto) -> SavedReading?): List<BookDto> =
   books.filter { book -> readingOf(book)?.finished == false }
 
-/** The shelf as the reader's results (#382): ← → and swipes move along it, and closing shrinks into its cover. */
 internal class ShelfResults(val row: LazyListState, private val isLocked: () -> Boolean) : BookResults() {
-  /** What the shelf shows; held still while the reader is open from it, so result `i` stays the book it was. */
   var books: List<BookDto> by mutableStateOf(emptyList())
 
   override val count: Int get() = books.size
@@ -172,18 +156,12 @@ internal class ShelfResults(val row: LazyListState, private val isLocked: () -> 
   }
 }
 
-/** The shelf's row state and its [ShelfResults], kept with the screen. */
 @Composable
 internal fun rememberShelfResults(locked: () -> Boolean): ShelfResults {
   val row = rememberLazyListState()
   return remember(row) { ShelfResults(row, locked) }
 }
 
-/**
- * "Continue reading" (#503): a row of covers, each with its progress bar, title and "Page 13 / 32", the most recently
- * read first. A tap opens the book at its saved page, with the shelf as its results; a long-press (desktop: a middle or
- * Cmd/Ctrl-click) keeps it, as a row does.
- */
 @Composable
 internal fun ContinueReadingShelf(
   results: ShelfResults,
@@ -241,7 +219,6 @@ private fun ShelfBook(
       },
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
-    // The reader grows from the cover and shrinks back into it (#382), standing in for it meanwhile.
     Box(coverModifier.size(SHELF_COVER_WIDTH, SHELF_COVER_WIDTH * 1.5f).alpha(if (coverHidden) 0f else 1f)) {
       BookPicture(book.coverPost, locked, Modifier.matchParentSize())
       reading?.let { CoverProgress(it, Modifier.matchParentSize()) }
@@ -253,16 +230,6 @@ private fun ShelfBook(
   }
 }
 
-/**
- * [top] over [body], [top] scrolling away as [body] scrolls up and back as it comes back to its top, as if it were the
- * body's first item (#503: the shelf over the Books rows, which keep their own indices for the cursor and the reader).
- * [body] gets the height [top] leaves. When [top] first takes room while [bodyAtTop] is false, it starts scrolled away,
- * so a shelf that comes in late doesn't push the rows down under the reader's eyes.
- *
- * A body already at its top gets no scroll from a mouse wheel turned up, so nothing would bring [top] back on desktop:
- * a wheel turned up there brings it back. A drag or fling past the top does through the nested scroll, and the caller
- * brings it back with [ScrollAway.reveal] when it puts the body back at its top itself (a refresh).
- */
 @Composable
 internal fun ScrollAwayTop(
   bodyAtTop: () -> Boolean,
@@ -273,7 +240,6 @@ internal fun ScrollAwayTop(
 ) {
   val scope = rememberCoroutineScope()
   val atTop by rememberUpdatedState(bodyAtTop)
-  // A move: the spatial spring.
   val spec by rememberUpdatedState(spatialSpec<Float>())
   Layout(
     content = {
@@ -294,7 +260,6 @@ internal fun ScrollAwayTop(
       .clipToBounds(),
   ) { measurables, constraints ->
     val topPlaceable = measurables[0].measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
-    // An empty top has nothing scrolled away; one that comes in starts scrolled away unless the body is at its top.
     if (topPlaceable.height == 0) {
       state.hidden = 0f
     } else if (state.height == 0) {
@@ -312,21 +277,17 @@ internal fun ScrollAwayTop(
   }
 }
 
-/** How much of the top is scrolled away: a scroll up takes it first, and what a scroll down leaves over gives it back. */
 @Stable
 internal class ScrollAway : NestedScrollConnection {
-  // Measured, not state: written as the layout measures.
   var height = 0
   var hidden by mutableFloatStateOf(0f)
 
   private val revealing = MutatorMutex()
 
-  /** Shows the whole top at once, as the body jumps back to its top (a refresh). */
   suspend fun show() {
     revealing.mutate { hidden = 0f }
   }
 
-  /** Brings the whole top back on [spec]; a newer reveal replaces a running one. */
   suspend fun reveal(spec: AnimationSpec<Float>) {
     if (hidden <= 0f) return
     revealing.mutate { animate(hidden, 0f, animationSpec = spec) { value, _ -> hidden = value } }

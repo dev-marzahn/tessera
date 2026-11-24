@@ -46,10 +46,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
-/**
- * Clear everything (#164) wipes the seen store and the copies of `tabs.json` too (#174), the videos played (#180)
- * and the books' places kept on the device (#384).
- */
 class ClearEverythingTest {
   private val scope = CoroutineScope(SupervisorJob())
 
@@ -78,7 +74,6 @@ class ClearEverythingTest {
     val readingsFile = InMemoryTextFile()
     val readings = ReadingProgress(BooksApi(client), session, connectivity, readingsFile, scope)
     readings.save("b1", BookPlace(sequence = 4, page = 5, pages = 9))
-    // Written in the background.
     withTimeout(5_000) { while (readingsFile.read() == null) delay(10) }
     var videosCleared = false
     val marksFile = InMemoryTextFile()
@@ -98,12 +93,10 @@ class ClearEverythingTest {
 
     clear.run()
 
-    // Following's marks (#314) go with the seen posts.
     assertNull(marks.get(Feed.Following))
     assertNull(marksFile.read())
     assertEquals(0, seen.size)
     assertEquals(0, SeenStore(seenFile).size)
-    // Signed out, where each book was left was kept on this device only (#384).
     assertNull(readings.savedOf(BookDto(id = "b1"), signedIn = false))
     assertNull(readingsFile.read())
     assertEquals("{}", tabsFile.read())

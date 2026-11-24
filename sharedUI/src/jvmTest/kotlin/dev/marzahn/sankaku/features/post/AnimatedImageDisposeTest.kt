@@ -8,18 +8,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import okio.Path.Companion.toOkioPath
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.test.Test
 
 @OptIn(ExperimentalTestApi::class)
 class AnimatedImageDisposeTest {
-  /**
-   * Flipping tabs quickly disposes GIFs while a frame is still decoding off the main thread. The codec must outlive
-   * that decode: freeing it under the decode crashed the whole JVM in `SkWuffsCodec::decodeFrame`.
-   */
   @Test
   fun disposingMidDecodeDoesNotFreeTheCodecUnderIt() = runComposeUiTest {
-    val gif = gif(width = 1500, height = 1500, frames = 2)
+    val gif = File.createTempFile("dispose", ".gif").apply { deleteOnExit(); writeBytes(gif(width = 1500, height = 1500, frames = 2)) }.toOkioPath()
     var shown by mutableStateOf(false)
     setContent {
       if (shown) AnimatedImage(gif, Modifier.size(100.dp)) {}
@@ -33,7 +31,6 @@ class AnimatedImageDisposeTest {
   }
 }
 
-/** A GIF of [frames] full frames with a 256-colour table, LZW-coded as 9-bit literals with a clear every 250. */
 private fun gif(width: Int, height: Int, frames: Int): ByteArray {
   val out = ByteArrayOutputStream()
   fun short(value: Int) = out.apply { write(value and 0xFF); write(value shr 8 and 0xFF) }

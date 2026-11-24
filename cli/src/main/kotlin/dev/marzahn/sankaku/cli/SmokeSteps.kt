@@ -45,17 +45,12 @@ import kotlin.time.Instant
 
 private class StepFailure(message: String) : Exception(message)
 
-/**
- * The Phase 0 flow on the app's own `:sharedLogic` code, then the discovery steps through [probe].
- * Steps after a failed prerequisite are skipped, not failed.
- */
 class SmokeSteps(
   internal val env: Map<String, String>,
   internal val recordings: Recordings,
   private val report: Report,
   private val ledger: FeedLedger,
   private val slow: Boolean,
-  /** The browser the clients claim to be: desktop's by default, the Android build's with `--android` (#204, #475). */
   internal val fingerprint: BrowserFingerprint = BrowserFingerprint.Current,
 ) {
   internal val log = RequestLog()
@@ -67,7 +62,6 @@ class SmokeSteps(
   internal val session = AuthSession(AuthApi(authClient), store)
   internal val mainClient = createMainClient(engine, log, limiter, connectivity, session, fingerprint)
 
-  /** Android Chrome's fingerprint, which the phone claimed before #475, for discovery steps that compare the two. */
   internal val androidClient by lazy { createAuthClient(engine, log, limiter, connectivity, BrowserFingerprint(BrowserPlatform.Android)) }
   internal val posts = PostsApi(mainClient)
   private val users = UsersApi(mainClient)
@@ -81,7 +75,6 @@ class SmokeSteps(
 
   private var anonPosts: List<PostDto> = emptyList()
 
-  /** The first post the smoke run read, for steps in other files. */
   internal val firstPostId: String? get() = anonPosts.firstOrNull()?.id
   private var post: PostDto? = null
   private var userName: String? = null
@@ -91,7 +84,6 @@ class SmokeSteps(
     session.restore()
 
     step("1 anonymous keyset") {
-      // Signed out, some posts are hidden (`redirect_to_signup`, no URLs), as the app's grid shows; skip those.
       anonPosts = posts.keyset(listOf("rating:s"), limit = 10).data.filterNot { it.redirectToSignup }.take(2)
       val first = anonPosts.firstOrNull() ?: fail("no posts")
       urlNote(first)
@@ -124,8 +116,6 @@ class SmokeSteps(
       ""
     }
     step("5 signed-in keyset (POSTS)", requires = if (hasSession) Unit else null, skipNote = noSession) {
-      // The server can filter a whole page away and still give `next` (seen 2026-10-30 on the test account), so this
-      // follows the cursor and the page number as KeysetPagingSource does.
       var page = posts.keyset(listOf("rating:s"), limit = 10)
       var skipped = 0
       while (page.data.isEmpty() && page.meta.next != null && skipped < KeysetPagingSource.MAX_EMPTY_PAGES) {
@@ -157,7 +147,6 @@ class SmokeSteps(
       preRefreshToken = before.refreshToken
       val after = session.refresh(before) ?: fail("refresh failed")
       if (after.refreshToken == before.refreshToken) fail("refresh token not rotated")
-      // Drop the main client's cached token, so step 9 sends the new one.
       session.onTokensChanged()
       "refresh token rotated"
     }
@@ -169,12 +158,10 @@ class SmokeSteps(
       val found = tags.autocomplete("blue_ha")
       if (found.none { it.tagName == "blue_hair" }) fail("blue_hair not suggested")
       if (tags.autocomplete("-blue_ha").any { !it.tagName.startsWith("-") }) fail("exclusion dropped")
-      // The search bar badges each suggestion's age rating, so the codes must be ones it knows.
       val ratings = found.mapNotNull { it.rating }.toSortedSet()
       if (ratings.any { it !in setOf("s", "q", "e") }) fail("unexpected rating codes $ratings")
       "suggestions=${found.size}, ratings=$ratings"
     }
-    // The app's follow and unfollow, checked through `is_following` on the full post; undone in the same step.
     val followPost = anonPosts.firstOrNull()?.takeIf { session.isSignedIn.value && env["SANKAKU_TRY_FOLLOW"] != "false" }
     step("11 follow, then unfollow a tag", requires = followPost, skipNote = "not signed in or SANKAKU_TRY_FOLLOW=false") { p ->
       val tag = posts.full(p.id).tags.filter { !it.isFollowing && it.id != null }.maxByOrNull { it.postCount ?: 0 }
@@ -186,7 +173,6 @@ class SmokeSteps(
       if (posts.full(p.id).tags.any { it.id == tag.id && it.isFollowing }) fail("still followed: unfollow it by hand")
       ""
     }
-    // The post details' Recommended strip: the app's own call, as is and with the signed-out lock's `rating:s`.
     step("12 recommended posts", requires = anonPosts.firstOrNull()) { p ->
       val plain = posts.recommended(p.id)
       if (plain.isEmpty()) fail("no recommendations")
@@ -197,11 +183,7 @@ class SmokeSteps(
       if (safe.isNotEmpty() && ratings != sortedSetOf("s")) fail("rating:s let through $ratings")
       "posts=${plain.size}, preview_url=$withPreview, file_url=${yesNo(plain.any { it.fileUrl != null })}; with rating:s posts=${safe.size}, ratings=$ratings"
     }
-    // The details' Parent and Children strips (#342): the app's own calls, `parent:<id>` for the children and `id:`
-    // for the parent, from the newest post with a parent.
     step("13 parent and children (parent:<id>)") {
-      // A child's parent can be deleted (on 2026-11-06 both children among the newest 100 had a 404 parent), so this
-      // reads up to 3 pages and takes the first child whose parent is still there.
       val list = mutableListOf<PostDto>()
       var next: String? = null
       var found: Pair<PostDto, PostDto>? = null
@@ -230,8 +212,6 @@ class SmokeSteps(
         "file_url=${yesNo(children.all { it.fileUrl != null })}, preview_url=${yesNo(children.all { it.previewUrl != null })}; " +
         "with rating:s posts=${safe.size}"
     }
-    // The heart on the sheet's thumbnails (#342) starts from the list's own `is_favorited`: this checks a
-    // recommendation carries it, by favouriting one and asking again. Undone in the same step.
     val recommendedFavourite = anonPosts.firstOrNull()?.takeIf { hasSession && env["SANKAKU_TRY_FAVOURITE"] != "false" }
     step("14 is_favorited on recommendations", requires = recommendedFavourite, skipNote = "not signed in or SANKAKU_TRY_FAVOURITE=false") { p ->
       val target = posts.recommended(p.id).firstOrNull { !it.isFavorited && !it.redirectToSignup } ?: fail("no unfavourited recommendation")
@@ -244,9 +224,6 @@ class SmokeSteps(
         "unfavourited: is_favorited=${yesNo(undone?.isFavorited == true)}"
     }
 
-    // The tag menu's Blacklist tag… (#6): the app's own calls. A hide rule on a common tag, the same search with it
-    // (empty, so the server applies it at once), and the rule removed again in the same step; the rule's id is never
-    // printed. Discovery step d22 checks the same calls through probe, and that the account's rules are as they were.
     val blacklistTry = Unit.takeIf { hasSession && env["SANKAKU_TRY_BLACKLIST"] != "false" }
     step("15 blacklist a tag, then remove the rule", requires = blacklistTry, skipNote = "not signed in or SANKAKU_TRY_BLACKLIST=false") {
       val before = blacklist.usedRules() ?: fail("no count.used_rules")
@@ -262,7 +239,6 @@ class SmokeSteps(
       if (removedTo != before || after != before) fail("used_rules $removedTo after the DELETE, $after listed, $before before")
       "used_rules before=$before, with the rule=${rule.usedRules}, after=$after; posts with the rule=$shownWith of $shownBefore"
     }
-    // A tag's page (#486): the app's own call, for a tag with books and a wiki, and for a key with parentheses.
     step("16 tag and wiki") {
       val page = tags.tagAndWiki("scenery")
       if (page.tag.searchName != "scenery") fail("another tag came back")
@@ -324,7 +300,6 @@ class SmokeSteps(
   )
 
 
-  /** Following's first pages as step 16 read them, with the cursor after each; steps 17 and 18 build on them. */
   private class FollowFeed(
     val posts: List<JsonObject>,
     val cursors: List<String>,
@@ -335,11 +310,6 @@ class SmokeSteps(
   private var followFeed: FollowFeed? = null
   private val nowSeconds get() = Clock.System.now().epochSeconds
 
-  /**
-   * Following's order (stage 3's "N new / Continue / caught up" marks): by `created_at`, newest first, or by when the
-   * followed tag was added? Reads [FEED_PAGES] pages of 40, and compares the top with the one an earlier run saved to
-   * see whether posts turn up below the newest one later (late-tagged or late-approved posts).
-   */
   private suspend fun discoveryStep16() {
     var detail = ""
     discover("d16 Following's order", "d16-following-order", requires = session.currentBearerTokens()?.accessToken, "not signed in", detail = { detail }) { token ->
@@ -366,7 +336,6 @@ class SmokeSteps(
       val created = posts.mapNotNull { it.createdAt() }
       val ids = posts.mapNotNull { it.str("id") }
       val change = posts.mapNotNull { it.str("change")?.toLongOrNull() }
-      // The same walk over the plain list, to see whether Following sorts differently from it.
       var plainNext: String? = null
       val plainCreated = mutableListOf<Long>()
       for (n in 1..FEED_PAGES) {
@@ -375,10 +344,8 @@ class SmokeSteps(
         plainNext = page.next ?: break
       }
       val now = nowSeconds
-      // Not strictly: one plain-list post in about 450 sat a few minutes to an hour below an older one (2026-11-01).
       fun nearlyNewestFirst(list: List<Long>) = list.isNotEmpty() && list.descendingBreaks() * 50 <= list.size
       detail = listOf(
-        // Shown, not recorded: how many pages Following has depends on the account.
         "${posts.size} posts over ${cursors.size + if (cursorOnEveryPage) 0 else 1} pages, a next cursor on every page: ${yesNo(cursorOnEveryPage)}",
         "created_at out of order: Following ${created.descendingBreaks()} adjacent, ${created.inversions()} pairs; " +
           "plain list ${plainCreated.descendingBreaks()} adjacent of ${plainCreated.size}",
@@ -395,15 +362,9 @@ class SmokeSteps(
     }
   }
 
-  /**
-   * Compares Following's top with the snapshot an earlier run saved: posts that are new in the span it covered are
-   * either at the top (newer than its newest post) or late arrivals, which land below it. A snapshot older than
-   * [SNAPSHOT_REFRESH_SECONDS] is replaced by this run's.
-   */
   private suspend fun snapshotNote(posts: List<JsonObject>, now: Long, token: String): String {
     val created = posts.mapNotNull { it.createdAt() }
     val hashes = posts.mapNotNull { it.str("id") }.map(::digest)
-    // Unknown when the list can't be read; a cancelled run still stops.
     val follows = try {
       FollowingsSteps(this).allIds(token).map(::digest).toSet()
     } catch (e: CancellationException) {
@@ -424,14 +385,9 @@ class SmokeSteps(
     return note
   }
 
-  // The ids of the tags a list post carries (a list post has only 5 of them).
   private fun JsonObject.tagIds(): List<String> =
     (this["tags"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { it.str("id") }
 
-  /**
-   * How a keyset cursor behaves: what it is made of, whether a changed or made-up one is rejected, whether it holds a
-   * position in time rather than in one query, and (replaying cursors saved by earlier runs) how long it stays valid.
-   */
   private suspend fun discoveryStep17() {
     val bearer = session.currentBearerTokens()?.accessToken
     val feed = followFeed?.takeIf { it.cursors.isNotEmpty() }
@@ -471,7 +427,6 @@ class SmokeSteps(
     replayCursors(bearer)
   }
 
-  /** Replays the cursors earlier runs saved, then saves a new one per kind that has none in the last 90 minutes. */
   private suspend fun replayCursors(bearer: String?) {
     if (bearer == null) return
     val now = nowSeconds
@@ -490,7 +445,6 @@ class SmokeSteps(
     if (older.isEmpty()) {
       report.add("d17 cursor replay", StepResult(true, "", "", "no cursor saved by an earlier run yet; one is saved now", skipped = true))
     }
-    // In a step, so a network error here is a failed row and not the end of the run.
     step("d17 save cursors for a later replay") {
       val saved = listOfNotNull(
         followFeed?.takeIf { it.cursors.isNotEmpty() }?.let {
@@ -503,7 +457,6 @@ class SmokeSteps(
     }
   }
 
-  /** Keeps a cursor for a later run: [cursor] as given, or the one after [walk] pages. Returns whether one was saved. */
   private suspend fun capture(
     kind: String,
     tags: String,
@@ -530,13 +483,11 @@ class SmokeSteps(
     return true
   }
 
-  /** An artist tag, and a Following post that has it: the tag with the most posts among the next few posts' tags. */
   private class ArtistTarget(val tag: String, val postId: String, val created: Long)
 
   private var artist: ArtistTarget? = null
   private var artistLooked = false
 
-  /** The first of a few Following posts, from the one [anchorIndex] picks, that has an artist tag. */
   private suspend fun artistTarget(bearer: String?): ArtistTarget? {
     if (artistLooked || bearer == null) return artist
     artistLooked = true
@@ -544,7 +495,6 @@ class SmokeSteps(
     for (post in feed.posts.drop(anchorIndex(feed.posts)).take(ARTIST_CANDIDATES)) {
       val id = post.str("id") ?: continue
       val created = post.createdAt() ?: continue
-      // A failed lookup is a post without an artist, not the end of the run.
       val tag = try {
         posts.full(id).tags.filter { it.type == 1 }.maxByOrNull { it.postCount ?: 0 }?.searchName
       } catch (e: CancellationException) {
@@ -557,10 +507,6 @@ class SmokeSteps(
     return null
   }
 
-  /**
-   * A post deep in Following that has an older post in the same UTC hour, so a `date:` bound inside the hour can be
-   * told from one at the hour's start.
-   */
   private fun anchorIndex(posts: List<JsonObject>): Int {
     val created = posts.map { it.createdAt() ?: 0 }
     val first = minOf(20, posts.size - 2)
@@ -569,10 +515,6 @@ class SmokeSteps(
     } ?: minOf(100, posts.size - 1)
   }
 
-  /**
-   * Jumping deep into a grid without a cursor: `id:<` and `id_range:` bounds, and `date:` ranges with Following and
-   * an artist tag. The anchor is a post deep in Following; the steps check that a range around it finds it.
-   */
   private suspend fun discoveryStep18() {
     val bearer = session.currentBearerTokens()?.accessToken
     val feed = followFeed?.takeIf { it.posts.size >= 3 }
@@ -585,7 +527,6 @@ class SmokeSteps(
     suspend fun range(tags: String, flag: String?, from: Long, to: Long, limit: Int = 40, page: Int? = null, next: String? = null) =
       keysetProbe("$tags date:${dateBound(from)}..${dateBound(to)}".trim(), bearer, flag, next = next, page = page, limit = limit)
 
-    // Post ids are 11-character strings, not numbers, so there's no number to put after `id:<`.
     val target = artistTarget(bearer)
     val bounds = listOf(
       Triple("id:<id", "d18-id-less-than", "id:<%s"),
@@ -608,7 +549,6 @@ class SmokeSteps(
     discover("d18 date range with Following", "d18-date-range-following", requires = anchor?.takeIf { h0 != null }, reason, detail = { rounding }) {
       val inHour = range("rating:s", "is_following", h0!!, h0 + 3600).page()
       val before = range("rating:s", "is_following", h0 - 3600, h0)
-      // A bound inside the hour acts as the hour's start if `..T` and `..hour(T)` give the same page.
       val atT = range("rating:s", "is_following", h0 - ninetyDays, t).page().ids
       val atHour = range("rating:s", "is_following", h0 - ninetyDays, h0).page().ids
       rounding = "a bound inside an hour acts as the hour's start: ${yesNo(atT.isNotEmpty() && atT == atHour)}"
@@ -633,7 +573,6 @@ class SmokeSteps(
       second to "page 2 is older than page 1 and inside the range: " +
         yesNo(page.created.all { it >= from && it <= (firstPage.created.minOrNull() ?: Long.MAX_VALUE) } && page.ids.none { it in firstPage.ids })
     }
-    // Only the status is recorded; the counts are shown (both were 0 on 2026-11-01, which is the finding).
     var ageCounts = ""
     discover("d18 age filters", "d18-age", requires = Unit, "", detail = { ageCounts }) {
       val newer = keysetProbe("rating:s age:<1year", bearer, limit = 10)
@@ -643,14 +582,9 @@ class SmokeSteps(
     }
   }
 
-  /**
-   * Video, Flash and animated posts: their `file_type`, `file_ext` and URLs in the keyset list, and whether the video
-   * host serves a file to a media player (its own User-Agent, a range request, as AVPlayer and ExoPlayer send).
-   */
   private suspend fun discoveryStep14() {
     val bearer = session.currentBearerTokens()?.accessToken
     var video: JsonObject? = null
-    // No Flash step: `file_type:flash` timed out (408 search-query-timeout) on 2026-10-30, as slow searches do.
     val kinds = listOf("video" to "file_type:video", "animated" to "animated_gif")
     for ((kind, tag) in kinds) {
       discover("d14 $kind posts", "d14-$kind", requires = Unit, "") {
@@ -663,12 +597,10 @@ class SmokeSteps(
         if (kind == "video") video = posts.firstOrNull()
         val types = posts.mapNotNull { it.str("file_type") }.toSortedSet()
         val exts = posts.mapNotNull { it.str("file_ext") }.toSortedSet()
-        // The sample's extension from its path (never the URL itself: it's signed).
         val sample = posts.firstOrNull()?.str("sample_url")?.let { java.net.URI(it).path.substringAfterLast('.', "-") }
         raw to "posts>0: ${yesNo(posts.isNotEmpty())}, file_type=$types, file_ext=$exts, sample=${sample ?: "none"}"
       }
     }
-    // The host is shown, not recorded: a video's `file_url` is on `s.` on some days and on `v.` on others (2026-10-31).
     var videoHost = ""
     discover("d14 video file to a media player", "d14-video-player-fetch", requires = video?.str("file_url"), "needs a video post", detail = { "host=$videoHost" }) { url ->
       val request = java.net.http.HttpRequest.newBuilder(java.net.URI(url))
@@ -684,11 +616,6 @@ class SmokeSteps(
     }
   }
 
-  /**
-   * A video's length for the grid's video badge (#80): whether a keyset list carries `video_duration` and `duration`,
-   * whether they agree, whether they're whole seconds, and what images and GIFs carry there. The range goes to the
-   * detail only, since it changes from run to run.
-   */
   private suspend fun discoveryStep15() {
     val bearer = session.currentBearerTokens()?.accessToken
     val kinds = listOf("video" to "file_type:video", "animated" to "animated_gif", "image" to "file_type:image")
@@ -705,8 +632,6 @@ class SmokeSteps(
         val video = values("video_duration")
         val plain = values("duration")
         val present = video.filterNotNull().filter { it > 0 }
-        // Over the durations there are (with none there's nothing to say), and in the detail only: which of 20 videos
-        // happen to be whole seconds changes from run to run.
         val whole = present.count { it % 1.0 == 0.0 }
         range = if (present.isEmpty()) "" else "video_duration ${present.min()}..${present.max()}, whole seconds: $whole of ${present.size}"
         raw to listOf(
@@ -718,21 +643,14 @@ class SmokeSteps(
     }
   }
 
-  /** "all", "none" or "some": stable from run to run, unlike a count. */
   private fun share(count: Int, of: Int) = when (count) {
     of -> "all"
     0 -> "none"
     else -> "some"
   }
 
-  /**
-   * The home page's For you and Following feeds: the keyset list with `is_recommendation=true` or `is_following=true`.
-   * The web app sends V2 with them; the app needs POSTS alone, so `file_url` stays. For you is also tried with the web
-   * app's `x-sankaku-capabilities` header, and both signed out.
-   */
   private suspend fun discoveryStep13() {
     val bearer = session.currentBearerTokens()?.accessToken
-    // The same list without a flag, to tell a feed from a flag the server ignores. Shown, not recorded: the lists move.
     val plain = mapOf(true to feedProbe(null, bearer).postIds(), false to feedProbe(null, null).postIds())
     val feeds = listOf("for-you" to "is_recommendation", "following" to "is_following")
     for ((feed, flag) in feeds) {
@@ -747,11 +665,8 @@ class SmokeSteps(
     discover("d13 for-you with the capabilities header", "d13-for-you-capabilities", requires = bearer, "not signed in") {
       feedMarker(feedProbe("is_recommendation", it, mapOf("x-sankaku-capabilities" to "recommendation-context-v2")))
     }
-    // For you's second page, asked as the plain list pages (its `next` alone) and as the web app does (`page` too).
-    // `next` alone answered page 1 again, with the same `next` (2026-10-31, #72), so the app sends both.
     discover("d13 for-you second page", "d13-for-you-paging", requires = Unit, "") {
       val first = feedProbe("is_recommendation", bearer)
-      // Without a cursor there's no second page to ask for, and nothing below would be tested.
       val next = first.nextCursor() ?: return@discover first to "no next cursor"
       val byCursor = feedProbe("is_recommendation", bearer, next = next)
       val byPage = feedProbe("is_recommendation", bearer, next = next, page = 2)
@@ -785,18 +700,12 @@ class SmokeSteps(
   private fun sameAsPlain(ids: List<String>, plain: List<String>?) =
     "same posts as without the flag: ${yesNo(ids.isNotEmpty() && ids == plain)}"
 
-  /** Only what stays put from run to run: whether posts came back with `file_url`, and whether there's a next page. */
   private fun feedMarker(raw: RawResponse): Pair<RawResponse, String> {
     val first = raw.firstPost()
     val next = raw.nextCursor()
     return raw to "posts>0: ${yesNo(first != null)}, file_url=${yesNo(first.str("file_url") != null)}, next=${yesNo(next != null)}"
   }
 
-  /**
-   * Tag following, as the web app's tag chip does it: `{following_id, following_name, type: "tag"}` to
-   * `/users/followings`, POST to follow and DELETE to unfollow, and `is_following` on a full post's tags. The follow
-   * is undone in the same step.
-   */
   private suspend fun discoveryStep11() {
     val bearer = session.currentBearerTokens()?.accessToken
     val reason = "needs a signed-in session and a post from step 1"
@@ -807,8 +716,6 @@ class SmokeSteps(
       tag = tags.filter { it.str("is_following") == "false" }.maxByOrNull { it.str("post_count")?.toIntOrNull() ?: 0 }
       raw to "is_following on every tag=${yesNo(tags.isNotEmpty() && tags.all { it["is_following"] != null })}"
     }
-    // No list of the user's follows was found: this answers 400 "The content type field is required." (also with
-    // `content_type=tag`), and `/users/me/followings` answers 200 with no body. The app reads `is_following` instead.
     discover("d11 GET /users/followings", "d11-list-users-followings", requires = bearer, reason) {
       val raw = authClient.probe(HttpMethod.Get, API_BASE, "/users/followings", HeaderSet.V2, bearer = it, query = lang)
       raw to null
@@ -829,11 +736,6 @@ class SmokeSteps(
     }
   }
 
-  /**
-   * Voting: `user_vote` on a full post, then `PUT /posts/{id}/vote {score}` with V2, the post read again, and the
-   * vote taken back with `DELETE` in the same step. Only on a post the account hasn't voted on, so nothing of the
-   * user's is lost.
-   */
   private suspend fun discoveryStep12() {
     val bearer = session.currentBearerTokens()?.accessToken
     var target: PostDto? = null
@@ -857,7 +759,6 @@ class SmokeSteps(
     }
   }
 
-  /** Whether the keyset `id:` query takes several ids. The author-supplied endpoints are added here when known. */
   private suspend fun discoveryStep1() {
     val ids = anonPosts.map { it.id }
     val reason = "needs two posts from step 1"
@@ -882,8 +783,6 @@ class SmokeSteps(
       )
       raw to "posts>0: ${yesNo(raw.dataSize() > 0)}"
     }
-    // A tag opened from a post searches by popularity, and the app sends filter tokens before the content tags (#89):
-    // the first page must be the same as with the tag first.
     discover("d1 opened tag (order:popularity first)", "d1-opened-tag", requires = Unit, "") {
       suspend fun page(tags: String) = authClient.probe(
         HttpMethod.Get, API_BASE, "/v2/posts/keyset", HeaderSet.POSTS,
@@ -946,12 +845,9 @@ class SmokeSteps(
       )
       raw to "posts=${raw.dataSize()}"
     }
-    // #520: the search tag limit and Sankaku's answer past it. Adds tags one at a time, with `rating:s`, until a search
-    // isn't a 200; the marker is how many tags passed and the refusal's status and code (the query isn't kept).
     val token = session.currentBearerTokens()?.accessToken
     discover("d27 tag limit, signed in", "d27-tag-limit-signed-in", requires = token, "not signed in") { tagLimitProbe(it) }
     discover("d27 tag limit, signed out", "d27-tag-limit-signed-out", requires = Unit, "") { tagLimitProbe(null) }
-    // Two ratings at once (G + R18) as one excluded rating; the cheatsheet exempts only `rating:safe` from the limit.
     discover("d1 two ratings (-rating:q)", "d1-rating-exclude", requires = session.currentBearerTokens(), "not signed in") {
       val raw = authClient.probe(
         HttpMethod.Get, API_BASE, "/v2/posts/keyset", HeaderSet.POSTS, bearer = it.accessToken,
@@ -959,10 +855,8 @@ class SmokeSteps(
       )
       val ratings = ((raw.json as? JsonObject)?.get("data") as? JsonArray).orEmpty()
         .mapNotNull { post -> (post as? JsonObject).str("rating") }
-      // Only what doesn't change as posts are uploaded: some posts came back, and none of them is rated q.
       raw to "posts>0: ${yesNo(ratings.isNotEmpty())}, rating q: ${yesNo("q" in ratings)}"
     }
-    // With the app's limit: as of 2026-11-03 a small one (`limit=2`) answers `[]` for a post that has recommendations.
     discover("d1 recommended posts", "d1-recommended", requires = anonPosts.firstOrNull(), reason) { p ->
       val raw = authClient.probe(
         HttpMethod.Get, API_BASE, "/v2/posts", HeaderSet.POSTS,
@@ -977,7 +871,6 @@ class SmokeSteps(
     }
   }
 
-  /** Searches 1, 2, … of [LIMIT_TAGS] until Sankaku refuses one; the refusal (or the last 200) and its marker. */
   private suspend fun tagLimitProbe(bearer: String?): Pair<RawResponse, String> {
     var last: RawResponse? = null
     for (n in 1..LIMIT_TAGS.size) {
@@ -1009,9 +902,6 @@ class SmokeSteps(
     )
     for ((kind, token) in tokens) {
       val reason = "SANKAKU_EXPIRED_ACCESS_TOKEN not set"
-      // #470, #473: the marker is the shape of the 401's WWW-Authenticate, quoted values redacted. Ktor's `Auth` plugin
-      // can't parse `Bearer, error="…"` (a comma straight after the scheme), so the app drops the header
-      // (`ApiUnauthorizedHeader`); `AuthSessionTest` replays it. A change here means that test needs the new shape.
       discover("d3 $kind token: users/me", "d3-$kind-users-me", requires = token, reason) {
         val raw = authClient.probe(HttpMethod.Get, API_BASE, "/users/me", bearer = it, query = lang)
         raw to "WWW-Authenticate=${raw.headers["www-authenticate"]?.replace(Regex("\"[^\"]*\""), "\"…\"") ?: "none"}"
@@ -1036,8 +926,6 @@ class SmokeSteps(
       val first = raw.firstPost()
       raw to (if (first == null) "posts=0" else "file_url=${yesNo(first.str("file_url") != null)}")
     }
-    // `fav:` alone timed out (408) on 2026-10-29. Variants for the M2 favourites grid: narrowed the way the site's
-    // cheatsheet suggests, with the rating the app adds, and on the page-based endpoint.
     val variants = listOf(
       Triple("d4 favourites, narrowed (age:<1year)", "d4-favourites-age", "/v2/posts/keyset" to "age:<1year"),
       Triple("d4 favourites, with rating:s", "d4-favourites-rating", "/v2/posts/keyset" to "rating:s"),
@@ -1053,8 +941,6 @@ class SmokeSteps(
         raw to (if (first == null) "posts=0" else "file_url=${yesNo(first.str("file_url") != null)}")
       }
     }
-    // The search panel's favourites filter (#90): its token goes first, before the content tags. Only what doesn't
-    // change as the account favourites: some posts came back, and whether every one (Only) or none (Hide) is favourited.
     val filters = listOf(
       Triple("d4 only my favourites (fav:<name> first)", "d4-favourites-only", "fav:%s blue_hair"),
       Triple("d4 hide my favourites (-fav:<name>)", "d4-favourites-hide", "-fav:%s"),
@@ -1074,7 +960,6 @@ class SmokeSteps(
     }
   }
 
-  /** Favourite and unfavourite without V2. Restores the original state through the V2 path if needed. */
   private suspend fun discoveryStep5() {
     val bearer = session.currentBearerTokens()?.accessToken
     val target = post?.takeIf { env["SANKAKU_TRY_FAVOURITE"] != "false" && !it.isFavorited }
@@ -1092,18 +977,11 @@ class SmokeSteps(
     }
   }
 
-  /**
-   * The same favourite, vote and follow sent twice, and their undoing twice (#505): a change that waited offline is
-   * sent again even if a call that timed out reached Sankaku, so the second answer must not read as a refusal. Each is
-   * undone in the same step, on a post or tag the account hadn't changed.
-   */
   private suspend fun discoveryStep24() {
     val bearer = session.currentBearerTokens()?.accessToken
-    // Each answer's status and `success`, and a refusal's `code`.
     fun statuses(vararg raws: RawResponse) = raws.joinToString(" ") { raw ->
       "${raw.status}/${raw.json.str("success")}" + if (raw.status in 200..299) "" else " ${raw.json.str("code")}"
     }
-    // Signed out, every step is skipped; a failed read only skips its step.
     val signedIn = anonPosts.firstOrNull()?.takeIf { bearer != null }
     val full = signedIn?.let { runCatching { posts.full(it.id) }.getOrNull() }
     val favouritable = post?.takeIf { bearer != null && env["SANKAKU_TRY_FAVOURITE"] != "false" && !it.isFavorited }
@@ -1177,11 +1055,6 @@ class SmokeSteps(
     }
   }
 
-  /**
-   * Which single-post request returns every tag object: the keyset list carries only 5 `tags[]` but all
-   * `tag_names`. The marker says whether `tags[]` covers `total_tags` and carries `type` and `post_count`; the
-   * counts themselves vary by post, so they go only into the note.
-   */
   private suspend fun discoveryStep10() {
     val bearer = session.currentBearerTokens()?.accessToken
     val reason = "needs a post from step 6"
@@ -1213,7 +1086,6 @@ class SmokeSteps(
     }
   }
 
-  /** Waits until a post's signed URLs have expired, then requests them on both image hosts. */
   private suspend fun discoveryStep7() {
     val first = anonPosts.firstOrNull()
     val urls = listOfNotNull(first?.previewUrl, first?.fileUrl)
@@ -1263,7 +1135,6 @@ class SmokeSteps(
 
   private suspend fun step(name: String, block: suspend (Unit) -> String) = step(name, Unit, block = block)
 
-  /** A discovery step: probes, writes the shape, and compares the observation with `docs/api-recorded.json`. */
   internal suspend fun <T : Any> discover(
     name: String,
     id: String,
@@ -1277,12 +1148,9 @@ class SmokeSteps(
     report.writeShape(name, raw.json)
     val (pass, note) = recordings.check(id, Recorded(raw.status, raw.json.topKeys(), marker))
     if (!pass) fail(note)
-    // [detail] is shown but not recorded: values that differ from run to run. [showHint] is off for a request that
-    // carries a post id, in case an error body ever echoes the query.
     listOf(note, detail(), if (showHint) raw.hint else "").filter { it.isNotEmpty() }.joinToString("; ")
   }
 
-  /** Host and status of the last request since [before], from the [RequestLog]. */
   private fun lastCall(before: Int): Pair<String, String> {
     val entry = log.entries.value.drop(before).lastOrNull() ?: return "" to ""
     return entry.host to (entry.status?.toString() ?: entry.errorClass ?: "error")
@@ -1307,7 +1175,6 @@ class SmokeSteps(
     val RATE_HEADER = Regex("rate|limit|retry")
     const val FEED_PAGES = 5
 
-    /** Common general tags, added one at a time by step d27 until Sankaku refuses the search (#520). */
     val LIMIT_TAGS = listOf(
       "solo", "smile", "long_hair", "looking_at_viewer", "blush", "open_mouth", "short_hair", "standing", "outdoors",
       "sky", "day", "cloud", "tree", "hat", "shirt", "skirt", "jacket", "gloves", "boots", "flower", "grass",
@@ -1321,10 +1188,6 @@ class SmokeSteps(
 
 internal fun fail(note: String): Nothing = throw StepFailure(note)
 
-/**
- * A step's write and its undo: runs [block], then [undo] whatever happened. When [block] fails, its error is the one
- * thrown, with a failed undo added as suppressed, so the step's note names the call that failed first.
- */
 internal suspend fun <R> undoing(undo: suspend () -> Unit, block: suspend () -> R): R {
   val result = try {
     block()
@@ -1345,7 +1208,6 @@ private fun JsonElement?.topKeys(): List<String> = when (this) {
   else -> emptyList()
 }
 
-/** The first post of a keyset page (`{data: [...]}`) or of a page-based list (a bare array). */
 private fun RawResponse.firstPost(): JsonObject? =
   (((json as? JsonObject)?.get("data") ?: json) as? JsonArray)?.firstOrNull() as? JsonObject
 

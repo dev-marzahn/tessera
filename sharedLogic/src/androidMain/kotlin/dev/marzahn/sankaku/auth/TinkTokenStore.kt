@@ -29,21 +29,12 @@ import java.security.ProviderException
 import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 
-/** The key [TinkTokenStore] encrypts with. [delete] throws it away, so the next [aead] makes a new one. */
 interface TokenKey {
-  /** Throws [GeneralSecurityException] or [IOException] when the key can't be read. */
   fun aead(): Aead
 
   fun delete()
 }
 
-/**
- * The tokens as one AEAD-encrypted DataStore value. A key failure (a Keystore key that's gone or unusable, or a value
- * the key can't decrypt) clears the value and the key, so [load] returns null and the user is signed out.
- *
- * `AuthSession` reads the tokens before every request, so they're decrypted once and then served from memory; this
- * store is the only writer of its DataStore.
- */
 class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val key: TokenKey) : TokenStore {
   @Serializable
   private data class Payload(
@@ -67,7 +58,6 @@ class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val 
     cached
   }
 
-  /** If the key or the file fails here, the tokens are kept in memory only: the session lasts until the app stops. */
   override suspend fun save(tokens: StoredTokens): Unit = mutex.withLock {
     cached = tokens
     loaded = true
@@ -86,13 +76,11 @@ class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val 
         try {
           dataStore.edit { it[TOKENS] = Base64.encode(sealed) }
         } catch (_: IOException) {
-          // Kept in memory.
         }
       }
     }
   }
 
-  /** If the value can't be removed, the key is: what's left can't be decrypted, so the next launch is signed out too. */
   override suspend fun clear(): Unit = mutex.withLock {
     cached = null
     loaded = true
@@ -106,7 +94,6 @@ class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val 
   }
 
   private suspend fun read(): StoredTokens? {
-    // A file that can't be read now (not a corrupt one, which DataStore replaces) signs out for this run only.
     val stored = try {
       dataStore.data.first()[TOKENS]
     } catch (_: IOException) {
@@ -136,11 +123,9 @@ class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val 
     try {
       dataStore.edit { it.remove(TOKENS) }
     } catch (_: IOException) {
-      // Unreadable without the key anyway.
     }
   }
 
-  /** [block]'s result, or null when the key fails: it can't be read, or a value can't be decrypted with it. */
   private inline fun <T> orNullOnKeyFailure(block: () -> T): T? = try {
     block()
   } catch (_: GeneralSecurityException) {
@@ -152,12 +137,9 @@ class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val 
   companion object {
     private val TOKENS = stringPreferencesKey("tokens")
 
-    /** Binds the ciphertext to its use, so it can't be passed off as another value encrypted with the same key. */
     private val ASSOCIATED_DATA = "dev.marzahn.tessera/tokens".encodeToByteArray()
 
-    /** The app's one instance: DataStore allows a single one per file. */
     fun create(context: Context): TinkTokenStore = TinkTokenStore(
-      // A file DataStore can't parse holds no usable tokens: it starts empty, so the user is signed out.
       PreferenceDataStoreFactory.create(ReplaceFileCorruptionHandler { emptyPreferences() }) {
         context.preferencesDataStoreFile("tokens")
       },
@@ -166,9 +148,7 @@ class TinkTokenStore(private val dataStore: DataStore<Preferences>, private val 
   }
 }
 
-/** A Tink AES-256-GCM keyset in shared preferences, itself encrypted with a key in the Android Keystore. */
 class KeystoreTokenKey(private val context: Context) : TokenKey {
-  /** The Keystore reports some failures as [ProviderException]; they're passed on as key failures too. */
   override fun aead(): Aead = try {
     AeadConfig.register()
     AndroidKeysetManager.Builder()

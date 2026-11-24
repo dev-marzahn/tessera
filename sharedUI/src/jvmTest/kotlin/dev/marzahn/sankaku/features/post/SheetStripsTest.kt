@@ -32,6 +32,7 @@ import dev.marzahn.sankaku.Navigator
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.Route
@@ -80,12 +81,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #342: the details' Parent and Children strips, and the favourite heart on every strip's thumbnails. The real
- * [PostDetails] with a real [TabsController], [TabsNavigator] and [PostStateStore], over a fake API that counts what
- * it's asked: the parent (`id:`), the children (`parent:<id>`) and the recommendations. Signed out, so each strip asks
- * with the locked `rating:s`. Fixture posts only, no network, and nothing drawn is compared: state and semantics.
- */
 @OptIn(ExperimentalTestApi::class)
 class SheetStripsTest {
   private val tabs = TabsController().apply { open(Route.Grid(listOf("scenery")), background = false) }
@@ -103,7 +98,6 @@ class SheetStripsTest {
     }
   }
 
-  /** The strips' requests, as "<path> <tags>"; the full post's tags (`/posts/<id>`) are left out. */
   private val asked: MutableList<String> = Collections.synchronizedList(mutableListOf())
   private var childCount = 2
 
@@ -117,7 +111,7 @@ class SheetStripsTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
@@ -155,7 +149,6 @@ class SheetStripsTest {
     awaitStrips()
   }
 
-  // The strips' requests answer on Ktor's own dispatcher, which waitForIdle doesn't wait for.
   private fun ComposeUiTest.awaitStrips() {
     waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Recommended").fetchSemanticsNodes().isNotEmpty() }
     waitUntil(timeoutMillis = 5_000) {
@@ -194,7 +187,6 @@ class SheetStripsTest {
 
   @Test
   fun theStripsAskNothingWhileTheDetailsAreClosedAndOnceEachWhenOpened() = runDesktopComposeUiTest {
-    // A closed panel or a sheet at peek: the details are composed, but none of them is on screen.
     var open by mutableStateOf(false)
     setContent {
       SankakuTheme {
@@ -209,7 +201,6 @@ class SheetStripsTest {
     open = true
     awaitStrips()
     awaitLabel("Child post")
-    // Closed and opened again: the strips come from memory.
     open = false
     waitForIdle()
     open = true
@@ -225,7 +216,6 @@ class SheetStripsTest {
     awaitLabel("Recommended post, favourited")
     assertEquals(2, onAllNodesWithContentDescription("Child post").fetchSemanticsNodes().size, "not favourited, no heart")
 
-    // As the viewer's favourite does: an override in the store every grid reads.
     store.beginToggle("${CHILD}1", true, 1)
     store.beginToggle(PARENT, false, 0)
     store.beginToggle(RECOMMENDED, false, 0)
@@ -249,7 +239,6 @@ class SheetStripsTest {
     assertEquals(listOf("new tab $parent"), calls)
     val tabCount = tabs.tabs.value.size
 
-    // In a tab now: greyed with the chip, and a second middle-click opens nothing but says where it is.
     onNodeWithText("In tab", useUnmergedTree = true).assertExists()
     onNodeWithContentDescription("Parent post, favourited").performMouseInput { middleClick() }
     waitForIdle()

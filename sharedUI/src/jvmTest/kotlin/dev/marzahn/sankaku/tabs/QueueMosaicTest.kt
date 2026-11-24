@@ -12,10 +12,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/**
- * #232: a grid's queue-page mosaic and loaded count are saved with its tab in `tabs.json`, as optional fields, so a
- * source restored at launch shows them as before. The md5s are synthetic.
- */
 class QueueMosaicTest {
   private val file = InMemoryTextFile(null)
   private val store = FileTabStateStore(file)

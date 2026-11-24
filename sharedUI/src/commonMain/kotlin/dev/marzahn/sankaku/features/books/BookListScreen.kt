@@ -92,14 +92,6 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-/**
- * The Books screen (#380): Popular or Newest and English only over a list of rows ([BookRow]), one column on a phone
- * and two past [TWO_COLUMNS] on desktop. The top bar's search edits its tags (`searchRoute` keeps it a Books search).
- * A book's row opens it at its saved page in the reader (#503), with the rows as its results (#382: ← → and swipes
- * move between them); a series' row opens its books ([BookSeriesScreen]). Over a plain list, signed in, the Continue
- * reading shelf ([ContinueReadingShelf], #503) sits above the rows and scrolls away with them. Paging, loading, empty and error states, refresh (the top
- * bar's button, Cmd/Ctrl-R, pulling down) and the retry once back online work as a grid's do.
- */
 @Composable
 fun BookListScreen(
   route: Route.Books,
@@ -117,13 +109,9 @@ fun BookListScreen(
   val listState = rememberLazyGridState()
   val lockedNow by rememberUpdatedState(locked)
   val results = remember(items, listState) { PagedBookResults(items, listState) { lockedNow } }
-  // Continue reading (#503), over a plain Books list only: a search is looking for something else.
   val plain = BookSearch.isPlain(route.tags)
   val reading = koinViewModel<ContinueReadingViewModel>(key = "continue-reading")
   val readingBooks by reading.books.collectAsStateWithLifecycle()
-  // Asked for only while a plain list is on screen; a search or a screen out of sight doesn't load it. The reader is an
-  // overlay that leaves this screen resumed: while it's open the shelf is out of sight too, or each page whose place
-  // lands would ask for it again; it's asked once when the reader closes (#532 review).
   val readerOpen = reader.session.collectAsStateWithLifecycle().value != null
   LifecycleResumeEffect(reading, plain, readerOpen) {
     reading.shown(plain && !readerOpen)
@@ -133,7 +121,6 @@ fun BookListScreen(
   val shelfScroll = remember { ScrollAway() }
   val shelfOpen = reader.session.collectAsStateWithLifecycle().value?.results === shelf
   val onShelf = if (plain) shelfBooks(readingBooks, readingOf) else emptyList()
-  // Held still while the reader is open from it: its order changes as places are sent.
   SideEffect { if (!shelfOpen) shelf.books = onShelf }
   RetryWhenBack {
     if (items.loadState.failedUnreachable()) items.retry()
@@ -150,7 +137,6 @@ fun BookListScreen(
         snapshotFlow { items.loadState.refresh }.first { it !is LoadState.Loading }
         listState.scrollToItem(0)
         shelfScroll.show()
-        // Its row may hold another book now, out of sight: Space, E and F must not act on it.
         cursor.hide()
       } finally {
         refresh.setRunning(false)
@@ -160,7 +146,6 @@ fun BookListScreen(
   val keeping = rememberBookKeeping()
   fun open(item: BookListItem, index: Int, inNewTab: Boolean) {
     when (item) {
-      // Kept as a queue item of its own under this search (#385), or read here.
       is BookListItem.Book -> if (inNewTab) keeping.keep(item.book) else reader.open(results, index)
       is BookListItem.Series -> {
         val series = Route.BookSeries(item.series.id, item.series.title, route.tags)
@@ -168,14 +153,12 @@ fun BookListScreen(
       }
     }
   }
-  // A lambda, as the series screen's: Compose keys it on what it captures.
   val listKey = { event: KeyEvent ->
     cursor.onKey(event, items.itemCount) { key, index ->
       val item = items.peek(index) ?: return@onKey false
       when (key) {
         BookKey.Open -> true.also { open(item, index, inNewTab = false) }
         BookKey.Keep -> true.also { open(item, index, inNewTab = true) }
-        // A series has no ♡: F goes on to the shell.
         BookKey.Favourite -> (item as? BookListItem.Book)?.let { actions.toggleFavourite(it.book) } != null
       }
     }
@@ -209,7 +192,6 @@ fun BookListScreen(
   }
 }
 
-/** The Books list's rows, or its loading, empty or failed state, under the shelf. */
 @Composable
 private fun BookListBody(
   load: LoadState,
@@ -283,11 +265,6 @@ private fun BookListBody(
   }
 }
 
-/**
- * A series' books (#380), in the Books list's row style and in series order: with the rating locked only its G ones
- * ([BooksRepository.series]). A row opens its book at its saved page in the reader, with the series' books as its
- * results, so each ends with its next volume (#382, #503).
- */
 @Composable
 fun BookSeriesScreen(
   route: Route.BookSeries,
@@ -301,18 +278,14 @@ fun BookSeriesScreen(
   val signedIn by session.isSignedIn.collectAsStateWithLifecycle()
   val keeping = rememberBookKeeping()
   val readingOf = rememberReadings(signedIn)
-  // Back online, a series that failed for want of a connection loads again, as the list does (#128).
   RetryWhenBack { if ((state as? SeriesState.Failed)?.error is ApiError.Network) viewModel.retry() }
   val loaded = (state as? SeriesState.Loaded)?.series
   val listState = rememberLazyGridState()
   val lockedNow by rememberUpdatedState(locked)
   val results = remember(loaded, listState) { loaded?.let { SeriesBookResults(it.books, it.id, listState) { lockedNow } } }
   val cursor = rememberBookCursor(listState, results, reader)
-  // Lambdas, not local functions: Compose keys a remembered lambda on what it captures, so these see the series once
-  // it has loaded. (A reference to a local function was kept from the first frame, with no series.)
   val open = { index: Int, inNewTab: Boolean ->
     loaded?.books?.getOrNull(index)?.let { book ->
-      // Kept under the Books search this series was opened from (#385).
       if (inNewTab) keeping.keep(book) else results?.let { reader.open(it, index) }
     }
   }
@@ -364,11 +337,6 @@ fun BookSeriesScreen(
   }
 }
 
-/**
- * Both Books screens' frame: the chrome's room on touch, the queue swipe between items, and pulling down to refresh
- * there, around [content] in a column. The screen's keys ([onKey]: the cursor's, #417) are held while no book is open
- * in the [reader], so they come back the moment it closes, and the shell's keys (`/`, Shift+A/D, X, Z) with them.
- */
 @Composable
 private fun BooksFrame(
   refreshing: Boolean,
@@ -392,14 +360,12 @@ private fun BooksFrame(
         .onFocusChanged { if (!it.hasFocus) onFocusLost() }
         .onKeyEvent { !readerOpen && onKey(it) },
     ) {
-      // The reader holds the keys while it's open; closed, the list takes them back.
       if (!readerOpen) KeyFocusHolder()
       content()
     }
   }
 }
 
-/** The rows, one column, or two in a window past [TWO_COLUMNS] (desktop), clear of the pill at the bottom on touch. */
 @Composable
 private fun BookRows(state: LazyGridState, content: LazyGridScope.() -> Unit) {
   BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -408,7 +374,6 @@ private fun BookRows(state: LazyGridState, content: LazyGridScope.() -> Unit) {
     LazyVerticalGrid(
       columns = GridCells.Fixed(columns),
       state = state,
-      // At the top, room for the keyboard cursor's ring (#417); the other edges have more.
       contentPadding = PaddingValues(start = EDGE, end = EDGE, top = CURSOR_REACH, bottom = bottom),
       horizontalArrangement = Arrangement.spacedBy(ROW_GAP),
       verticalArrangement = Arrangement.spacedBy(ROW_GAP),
@@ -418,16 +383,13 @@ private fun BookRows(state: LazyGridState, content: LazyGridScope.() -> Unit) {
   }
 }
 
-/** Two columns past [TWO_COLUMNS], else one (#377 decision 4). */
 internal fun booksColumns(width: Dp): Int = if (width >= TWO_COLUMNS) 2 else 1
 
-/** Popular or Newest, and English only, as the Books search's tags: [onChange] gets the search they make. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BookFilters(tags: List<String>, onChange: (List<String>) -> Unit) {
   val sort = BookSearch.sortOf(tags)
   val english = BookSearch.englishOnly(tags)
-  // Wrapping, so large text on a phone moves English only to a line of its own rather than squeezing it (#525).
   FlowRow(
     Modifier.fillMaxWidth().padding(horizontal = EDGE, vertical = 4.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -459,11 +421,9 @@ private fun SeriesHeading(title: String, count: String?) {
   }
 }
 
-/** A series' count: "6 books", or with G only leaving some out, "1 of 6 books · G only". */
 internal fun seriesCount(shown: Int, total: Int): String =
   if (shown < total) "$shown of ${booksLabel(total)} · G only" else booksLabel(shown)
 
-/** The loading indicator, held back a moment as a grid's is, so a list from the cache doesn't flash it. */
 @Composable
 private fun DelayedLoading() {
   Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -475,7 +435,6 @@ private fun DelayedLoading() {
   }
 }
 
-/** A message in the list's place, centred; on touch it scrolls, so pulling down still refreshes. */
 @Composable
 private fun BooksMessage(content: @Composable () -> Unit) {
   BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -498,7 +457,6 @@ private fun LoadFailed(error: Throwable, onRetry: () -> Unit) {
   }
 }
 
-/** A search that found no books: its tokens as removable chips, and Edit search, as an empty grid has them (#135). */
 @Composable
 private fun EmptyBooks(
   route: Route.Books,
@@ -537,12 +495,10 @@ private fun NoBooksInSeries(locked: Boolean) {
 
 internal const val ENGLISH_ONLY = "English only"
 
-/** Past this width (desktop), the list has two columns (#377 decision 4). */
 internal val TWO_COLUMNS = 1000.dp
 
 private val EDGE = 12.dp
 
-/** The grid's gap on desktop, room for the keyboard cursor's ring (#459); Android has no cursor. */
 private val ROW_GAP = if (platformIsTouch) 8.dp else platformCellGap
 
 private const val LOADING_INDICATOR_DELAY_MS = 300L

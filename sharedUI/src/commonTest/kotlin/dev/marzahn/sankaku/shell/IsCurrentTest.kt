@@ -6,7 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Which sidebar entry is selected: the one whose preset is exactly the current grid's tags. */
 class IsCurrentTest {
   @Test
   fun aPresetGridSelectsItsEntry() {

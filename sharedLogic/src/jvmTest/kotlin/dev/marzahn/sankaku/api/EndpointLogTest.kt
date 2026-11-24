@@ -12,10 +12,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * Calls every endpoint the `*Api.kt` files build and checks the request log keeps none of the ids, md5s, tag names
- * or queries it was given (#540). Lives in jvmTest so reflection can check no public call is left out.
- */
 class EndpointLogTest {
   private val harness = Harness { json("{}", HttpStatusCode.NotFound) }
   private val posts = PostsApi(harness.mainClient)
@@ -78,7 +74,6 @@ class EndpointLogTest {
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
-        // A 404 fails most calls; only the logged request matters here.
       }
       val logged = harness.log.entries.value.drop(before)
       assertTrue(logged.isNotEmpty(), "$name logged no request")
@@ -89,7 +84,6 @@ class EndpointLogTest {
         assertFalse(Regex("[0-9a-f]{32}").containsMatchIn(template), "$name: $template")
       }
     }
-    // The paths themselves did carry the values, so the checks above saw something to strip.
     val sent = harness.requests.map { it.url.encodedPath }
     for (id in listOf(POST_ID, NUMERIC_ID, BOOK_ID, RULE_ID, TAG)) assertTrue(sent.any { id in it }, "no path carried $id")
   }

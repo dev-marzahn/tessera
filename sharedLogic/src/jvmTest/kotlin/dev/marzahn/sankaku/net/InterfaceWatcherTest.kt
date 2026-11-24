@@ -10,11 +10,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * #542: desktop has no network callback, so while Sankaku is unreachable the watcher looks at which interfaces have an
- * address (no request) and, when one gains one, says the network may be back, as Android's callback does. That clears
- * `offline`, which sends the outbox, and asks the shown tab to retry, with no input from the user.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class InterfaceWatcherTest {
   private val connectivity = ConnectivityState()
@@ -28,19 +23,16 @@ class InterfaceWatcherTest {
     runCurrent()
   }
 
-  /** Past the next read and the settling time. */
   private fun TestScope.nextChange() = advanceTimeBy(InterfaceWatcher.POLL_MS + InterfaceWatcher.SETTLE_MS + 1)
 
   @Test
   fun theNetworkComingBackClearsOfflineAndAsksForARetry() = runTest {
     watch()
     offline()
-    // Wi-Fi off: no interface with an address.
     interfaces = emptySet()
     advanceTimeBy(InterfaceWatcher.POLL_MS + 1)
     assertTrue(connectivity.offline.value)
 
-    // Wi-Fi back.
     interfaces = setOf("en0")
     nextChange()
 
@@ -68,7 +60,6 @@ class InterfaceWatcherTest {
     assertEquals(0, connectivity.retryRequests.value)
   }
 
-  // An address rotating or renewing keeps the interface's name in the set: nothing came back.
   @Test
   fun oneOfTwoNetworksGoingAwaySaysNothing() = runTest {
     interfaces = setOf("en0", "en7")
@@ -80,7 +71,6 @@ class InterfaceWatcherTest {
     assertTrue(connectivity.offline.value)
   }
 
-  // A read that fails (an interface vanishing as it's read) isn't "no network": the next read isn't a change.
   @Test
   fun aFailedReadSaysNothing() = runTest {
     watch()
@@ -93,7 +83,6 @@ class InterfaceWatcherTest {
     assertTrue(connectivity.offline.value)
   }
 
-  // A 5xx doesn't set offline (#520, ConnectivityStateTest), so it's the next case. Online, it reads nothing: the watch costs only while Sankaku is unreachable.
   @Test
   fun onlineItReadsNothing() = runTest {
     watch()
@@ -102,7 +91,6 @@ class InterfaceWatcherTest {
     assertEquals(0, reads)
   }
 
-  // One try per return of the network (REVIEW.md): one that still can't connect waits for focus or the next request.
   @Test
   fun aTryThatFailsIsNotRepeated() = runTest {
     watch()
@@ -118,7 +106,6 @@ class InterfaceWatcherTest {
     assertEquals(1, connectivity.retryRequests.value)
   }
 
-  // A later outage starts from the interfaces as they are then, not from the last one's.
   @Test
   fun aLaterOutageStartsFromItsOwnInterfaces() = runTest {
     watch()
@@ -126,7 +113,6 @@ class InterfaceWatcherTest {
     interfaces = setOf("en0", "en7")
     nextChange()
     assertFalse(connectivity.offline.value)
-    // A VPN came up while online; hours on, Sankaku is unreachable with nothing else changing.
     interfaces = setOf("en0", "en7", "utun4")
     advanceTimeBy(60_000)
     offline()

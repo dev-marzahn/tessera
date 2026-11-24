@@ -18,11 +18,6 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/**
- * #385: a Books search is a queue source like a grid's search (one per search), a kept book is a queue item of its own
- * ([QueueKind.KeptBook]) in its search's block, and both are saved and restored. The ADR 0004 rules hold for them as
- * for grids and posts.
- */
 class BooksInQueueTest {
   private var now = Instant.parse("2026-11-06T12:00:00Z")
   private val clock = object : Clock {
@@ -30,7 +25,7 @@ class BooksInQueueTest {
   }
   private val file = InMemoryTextFile(null)
   private val seen = SeenStore(InMemoryTextFile(), clock)
-  private val tabs = TabsController(FileTabStateStore(file), clock = clock, seen = seen)
+  private val tabs = TabsController(FileTabStateStore(file), clock = clock)
   private val navigator = TabsNavigator(tabs)
   private val maid = Route.Books(listOf("maid"))
 
@@ -45,11 +40,9 @@ class BooksInQueueTest {
     navigator.goTo(maid)
     navigator.openInNewTab(book("1"))
 
-    // Opened "now", in front of the current block, as a grid's search is.
     assertEquals(listOf("Books · Maid", "Book 1", "Browse"), titles())
     assertEquals(QueueKind.Source, tab("Books · Maid").kind)
     assertEquals(QueueKind.KeptBook, tab("Book 1").kind)
-    // Under its search, as a kept post is under its grid.
     assertSame(tab("Books · Maid"), tabs.sourceOf(tab("Book 1")))
     assertNotNull(tab("Book 1").keptAt)
   }
@@ -75,10 +68,8 @@ class BooksInQueueTest {
     navigator.goTo(maid)
     navigator.goTo(Route.Grid(listOf("artist_x")))
 
-    // The same Books search, by another order, shows the open one; the grid on "maid" is a source of its own.
     navigator.goTo(Route.Books(listOf("order:date", "maid")))
 
-    // "maid" replaced the untouched Browse in place.
     assertEquals(listOf("Artist X", "Books · Maid", "Maid"), titles())
     assertSame(tab("Books · Maid"), tabs.activeTab)
     assertEquals(1, tabs.tabs.value.count { it.top is Route.Books })
@@ -122,7 +113,6 @@ class BooksInQueueTest {
 
     assertTrue(tabs.seenFromBooks(tab("Books · Maid"), "1", seen))
     assertFalse(tabs.seenFromBooks(tab("Books · Maid"), "2", seen))
-    // A post with the book's id is another thing.
     assertFalse(seen.isSeen("1"))
     assertTrue(tabs.keptBookSeen("1", seen))
     assertEquals(listOf(tab("Book 1").id), tabs.viewedKeptPosts(seen))
@@ -143,7 +133,6 @@ class BooksInQueueTest {
     assertEquals(1, closed?.keptStay)
     assertEquals(listOf(BOOKS_SEARCH, "maid"), tab("Book 1").closedSource)
     assertEquals("from Books · Maid (closed)", closedBlockTitle(tab("Book 1").closedSource!!))
-    // The grid on the same tags takes back nothing: it searches posts.
     assertTrue(tabs.closedBlock(listOf("maid")).isEmpty())
 
     navigator.openInNewTab(Route.Books(listOf("maid", "order:date")))
@@ -155,25 +144,24 @@ class BooksInQueueTest {
   }
 
   @Test
-  fun aBooksSourceFadesWithItsUnseenKeptBooksAndItsSearchRestoresIt() {
+  fun aBooksSourceStaysUntouchedForDaysAndOneAnEarlierVersionFadedComesBackWithItsKeptBooks() {
     navigator.goTo(maid)
     navigator.openInNewTab(book("1"))
     navigator.goTo(Route.Grid(listOf("artist_x")))
+    now += 40.days
+    assertEquals(listOf("Artist X", "Books · Maid", "Book 1", "Browse"), titles())
 
-    now += 4.days
-    tabs.sweep()
+    val oldFile = InMemoryTextFile(null)
+    val faded = SavedFaded(
+      at = 0,
+      tabs = listOf(SavedTab("maid", listOf(maid)), SavedTab("b1", listOf(book("1")), block = "maid", keptAt = 0)),
+    )
+    FileTabStateStore(oldFile).save(SavedTabs(activeIndex = 0, tabs = listOf(SavedTab("x", listOf(Route.Grid(listOf("x"))))), faded = listOf(faded)))
+    val relaunched = TabsController(FileTabStateStore(oldFile), clock = clock)
 
-    // Browse faded too; Artist X is shown, so it never fades.
-    assertEquals(listOf("Artist X"), titles())
-    val faded = tabs.faded.value.single { it.title == "Books · Maid" }
-    assertEquals(1, faded.keptCount)
-    assertFalse(faded.adult)
-
-    navigator.goTo(maid)
-
-    assertEquals(listOf("Browse"), tabs.faded.value.map { it.title })
-    assertEquals(listOf("Artist X", "Books · Maid", "Book 1"), titles())
-    assertSame(tab("Books · Maid"), tabs.activeTab)
+    assertEquals(listOf("X", "Books · Maid", "Book 1"), relaunched.tabs.value.map { it.title })
+    val source = relaunched.tabs.value[1]
+    assertSame(source, relaunched.sourceOf(relaunched.tabs.value[2]))
   }
 
   @Test
@@ -185,7 +173,6 @@ class BooksInQueueTest {
     assertSame(tab("Book 1"), tabs.activeTab)
     assertTrue(tab("Book 1").chromeCovered)
 
-    // Back on it goes to the item before, as on a lone post.
     navigator.goBack()
 
     assertSame(tab("Books · Maid"), tabs.activeTab)
@@ -202,8 +189,6 @@ class BooksInQueueTest {
     assertSame(tab("Books · Maid"), tabs.sourceOf(tab("Book 1")))
   }
 
-  // #479: a series opened in front of the Books list it was tapped in (books were kept from it) is alone in its tab, so
-  // Back closes it and shows the list again; it closed the app on a phone.
   @Test
   fun backOnASeriesOpenedInFrontOfItsBooksListShowsTheListAgain() {
     navigator.goTo(maid)
@@ -214,7 +199,6 @@ class BooksInQueueTest {
     val series = tabs.activeTab
 
     assertEquals(listOf<Any>(route), series.backStack.toList())
-    // What the phone's queue Back acts on: with no opener the system Back closes the app.
     assertSame(list, tabs.openerOf(series))
 
     navigator.goBack()
@@ -223,9 +207,6 @@ class BooksInQueueTest {
     assertEquals(listOf("Books · Maid", "Book 1", "Browse"), titles())
   }
 
-  // #479: a series opened in the background (a long-press on its row) has nothing under it and no item to close back
-  // to, so Back on it acts at the queue's level as on a lone post: the previous item, or the queue page; the tab's own
-  // Back closed the app. Over its list, or as a Books search alone, the tab's own Back stays.
   @Test
   fun aSeriesAloneInItsTabGoesBackLikeALonePost() {
     navigator.goTo(maid)
@@ -236,25 +217,21 @@ class BooksInQueueTest {
     assertNull(tabs.openerOf(series))
     assertTrue(series.backsLikeALonePost)
     assertFalse(list.backsLikeALonePost)
-    // The phone's queue Back on it: the previous item, or on the first item the queue page; never the tab's own Back.
     assertEquals(QueueBack.Previous, queueBack(cardUp = false, lonePost = series.backsLikeALonePost, previous = true))
-    assertEquals(QueueBack.QueuePage, queueBack(cardUp = false, lonePost = series.backsLikeALonePost, previous = false))
+    assertEquals(QueueBack.Tab, queueBack(cardUp = false, lonePost = series.backsLikeALonePost, previous = false))
 
-    // Back (desktop, and the top bar's ←) goes to the previous item too.
     tabs.activate(series.id)
     val before = tabs.tabs.value[tabs.tabs.value.indexOf(series) - 1]
     navigator.goBack()
 
     assertSame(before, tabs.activeTab)
 
-    // A series over its list is popped by the tab's own Back.
     tabs.activate(list.id)
     navigator.goTo(Route.BookSeries("s2", "Another series", listOf("maid")))
 
     assertFalse(list.backsLikeALonePost)
   }
 
-  // #479: from a kept book's sheet the series opens in front of the book, and Back goes back to the book.
   @Test
   fun backOnASeriesOpenedFromAKeptBookShowsTheBookAgain() {
     navigator.goTo(maid)
@@ -294,7 +271,6 @@ class BooksInQueueTest {
     assertSame(books, tabs.activeTab)
     assertEquals(1, tabs.tabs.value.count { it.backStack.any { r -> r is Route.Books } })
 
-    // Searched again from the series, it goes back down to the search under it, not a copy over it.
     navigator.goTo(maid)
 
     assertEquals(listOf<Any>(maid), books.backStack.toList())
@@ -315,7 +291,6 @@ class BooksInQueueTest {
     assertEquals(BOOK_TITLE, kept.title)
     assertEquals("Kept book · from Books · Maid", kindLabel(kept, tabs.sourceOf(kept)))
     assertEquals("Kept book from Books · Maid", queueSubtitle(kept, current = false, seen = false, rating = null, from = "Books · Maid"))
-    // A book whose rating isn't known is blurred and hidden as a post's is.
     assertTrue(isAdult(kept, null))
     assertFalse(isAdult(tab("Books · Maid"), null))
   }

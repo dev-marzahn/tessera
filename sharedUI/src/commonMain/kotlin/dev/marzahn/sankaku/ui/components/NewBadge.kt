@@ -10,14 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
-/** The test tag of [NewBadge]. */
 const val NEW_BADGE_TAG = "new-badge"
 
-/**
- * "New" on a Following cell whose post turned up late, below posts already read (#539): the posts above "You're caught
- * up" are new by where they are, a late one needs saying. Primary on its container, a pill as the "In tab" chip is;
- * silent here, the cell's description says "New".
- */
 @Composable
 fun NewBadge(modifier: Modifier = Modifier) {
   Surface(

@@ -43,7 +43,6 @@ class TagFollowsTest {
 
   @Test
   fun aTagFollowedHereIsListedFirstBeforeSankakusListHasIt() = runTest {
-    // #539: the followed tags page reads Sankaku's list; a follow made in this run shows there at once regardless.
     val h = Harness { json("""{ "success": true }""") }
     val follows = TagFollows(h.tags)
     val listed = listOf(TagDto(name = "Tree", tagName = "tree", id = "t9", isFollowing = true))
@@ -51,7 +50,6 @@ class TagFollowsTest {
     follows.toggle(tag).getOrThrow()
 
     assertEquals(listOf("t1", "t9"), follows.withChanges(listed).map { it.id })
-    // Once Sankaku lists it, it isn't there twice.
     assertEquals(listOf("t1", "t9"), follows.withChanges(listOf(tag.copy(isFollowing = true)) + listed).map { it.id })
   }
 
@@ -64,9 +62,7 @@ class TagFollowsTest {
     follows.toggle(tag).getOrThrow()
 
     assertEquals(emptyList(), follows.withChanges(emptyList()))
-    // While the page still shows its row, it stays there to follow back.
     assertEquals(listOf("t1"), follows.withChanges(emptyList(), keep = setOf("t1")).map { it.id })
-    // Still in a list read before the unfollow reached Sankaku: it stays, shown unfollowed, to follow back.
     val listed = listOf(tag.copy(isFollowing = true))
     assertEquals(listed, follows.withChanges(listed))
     assertFalse(follows.isFollowing(listed.single()))
@@ -106,7 +102,6 @@ class TagFollowsTest {
 
   @Test
   fun aFollowOfATagAlreadyFollowedCountsAsDone() = runTest {
-    // A follow sent again (from the outbox, after one that timed out reached Sankaku) is answered so (step d24).
     val h = Harness {
       json("""{"success":false,"code":"user__content-already-followed","errorId":"x"}""", HttpStatusCode.BadRequest)
     }

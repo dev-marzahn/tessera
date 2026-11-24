@@ -38,7 +38,6 @@ class PostTitleTest {
 
   @Test
   fun theNewTagTypesAreGeneralInTheirOrder() {
-    // As a list's post carries them: no tag of type General, the mockup's "Comic · 2boys · Speech bubble".
     val tags = listOf(
       tag("High resolution", TagType.Automatic),
       tag("Comic", TagType.Medium),
@@ -130,7 +129,6 @@ class PostTitleTest {
 
   @Test
   fun neverTheId() {
-    // A post with no tags at all has no title: the UI shows "Untitled post", not "Post <id>".
     assertNull(PostTitle.of(PostDto(id = "12345", md5 = "m", rating = "s", status = "active")))
   }
 }

@@ -5,7 +5,6 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** A desktop that can't browse, or a launch that fails, comes back as a result, not a crash (#358). */
 class OpenUrlJvmTest {
   @Test
   fun noBrowseSupportFails() {

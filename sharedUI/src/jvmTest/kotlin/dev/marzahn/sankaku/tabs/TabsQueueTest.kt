@@ -16,7 +16,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** Tabs as queue items (#174): their kind, one source per search, touched and kept-at. */
 class TabsQueueTest {
   private var now = Instant.parse("2026-11-01T12:00:00Z")
   private val clock = object : Clock {
@@ -40,7 +39,6 @@ class TabsQueueTest {
 
   @Test
   fun aScreenThatIsNeitherIsOther() {
-    // Books and Settings have no routes yet (Route is sealed: a new one must choose its kind in `queueKind`).
     assertEquals(QueueKind.Other, queueKind(null))
   }
 
@@ -69,7 +67,6 @@ class TabsQueueTest {
 
     assertEquals(count, tabs.tabs.value.size)
     assertEquals(source.id, tabs.active.value)
-    // It opens as it is: same order, same back stack.
     assertEquals(listOf<Route>(byPopularity), source.backStack.toList())
   }
 
@@ -93,7 +90,6 @@ class TabsQueueTest {
 
     assertEquals(tabs.tabs.value.indexOf(tabOf(byPopularity)) + 1, position)
     assertEquals(2, tabs.tabs.value.size)
-    // Background: the active tab stays.
     assertEquals(QueueKind.Source, tabs.activeTab.kind)
     assertEquals(listOf<Route>(Route.Grid(emptyList())), tabs.activeTab.backStack.toList())
   }
@@ -143,13 +139,11 @@ class TabsQueueTest {
     tabs.open(following, background = true)
     val count = tabs.tabs.value.size
 
-    // Later, now and a search in place all go to the feed already in the queue (#185).
     assertSame(tabOf(following), tabs.open(following, background = true))
     assertSame(tabOf(following), tabs.open(following, background = false))
     assertEquals(count, tabs.tabs.value.size)
     assertEquals(tabOf(following).id, tabs.active.value)
 
-    // The sidebar's Following, from another tab, goes to it too instead of replacing that tab's grid.
     tabs.activate(tabs.tabs.value.first { it.top != following }.id)
     navigator.goTo(following)
     assertEquals(count, tabs.tabs.value.size)
@@ -230,7 +224,6 @@ class TabsQueueTest {
     assertEquals(first, kept.keptAt)
 
     now += 10.minutes
-    // "Already tab N": the post is kept again where it is.
     assertEquals(tabs.tabs.value.indexOf(kept) + 1, navigator.openInNewTab(post))
 
     assertEquals(now, kept.keptAt)
@@ -251,7 +244,6 @@ class TabsQueueTest {
     assertTrue(kept.seenSinceKept(seen))
     assertTrue(tabs.keptPostSeen("p1", seen))
 
-    // Asked before the open, which keeps it again: "Kept again".
     now += 1.minutes
     val wasSeen = tabs.keptPostSeen("p1", seen)
     navigator.openInNewTab(post)
@@ -259,7 +251,6 @@ class TabsQueueTest {
     assertTrue(wasSeen)
     assertFalse(kept.seenSinceKept(seen))
     assertFalse(tabs.keptPostSeen("p1", seen))
-    // The store still holds it as seen; only the grid's mark (#262) and the queue page's "seen" end.
     assertTrue(seen.isSeen("p1", "m1"))
   }
 
@@ -271,7 +262,6 @@ class TabsQueueTest {
     navigator.openInNewTab(post)
     val kept = tabs.tabs.value.single { it.top == post }
     now += 10.minutes
-    // An exact copy under another id, by md5.
     seen.record("p2", "m1")
     assertTrue(kept.seenSinceKept(seen))
 
@@ -279,7 +269,6 @@ class TabsQueueTest {
     tabs.keepAgain(kept.id)
 
     assertFalse(kept.seenSinceKept(seen))
-    // Another kind of tab is never "seen since kept".
     assertFalse(tabs.activeTab.seenSinceKept(seen))
   }
 
@@ -295,7 +284,6 @@ class TabsQueueTest {
     assertEquals(now, tab.keptAt)
   }
 
-  /** #181: a post tapped open is a lone post, kept from then, in the block of the tab it was opened from. */
   @Test
   fun aLonePostIsKeptFromItsSource() {
     navigator.goTo(artist)

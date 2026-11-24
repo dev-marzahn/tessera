@@ -41,12 +41,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * #527: a long-press on the phone viewer's picture favourites, and leaves its other gestures as they were. The page
- * here is [PhoneViewer]'s, cut down: a [HorizontalPager] (the swipe between posts) inside a vertical `draggable` (the
- * sheet's drag up and the close's drag down), each page's picture taking [pictureTaps] as a video's does (tap,
- * long-press, a double-tap's seek), or zoomimage's taps as a still image's zoomable sample does.
- */
 @OptIn(ExperimentalTestApi::class, ExperimentalFoundationApi::class)
 class PictureLongPressTest {
   private var taps = 0
@@ -54,7 +48,6 @@ class PictureLongPressTest {
   private var seeks = 0
   private var dragged = 0f
 
-  /** The haptics requested, as the phone viewer's long-press requests them ([favouriteWithHaptic]). */
   private val haptics = mutableListOf<HapticFeedbackType>()
   private val recordingHaptics = object : HapticFeedback {
     override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
@@ -66,7 +59,6 @@ class PictureLongPressTest {
   private lateinit var zoomState: ZoomState
 
   private fun ComposeUiTest.start(zoomable: Boolean) {
-    // zoomimage checks that it runs on the UI thread, which on desktop is AWT's; a test's composition runs on its own.
     if (zoomable) setMainThreadChecker { true }
     setContent {
       pager = rememberPagerState { 2 }
@@ -112,20 +104,14 @@ class PictureLongPressTest {
     assertEquals(seeks, this.seeks, "seeks")
   }
 
-  /**
-   * #578: the haptic is requested the moment the long-press completes, with the finger still down, not on its release
-   * or a later event: lifting as soon as the burst shows must still give it. Then nothing more on the release.
-   */
   private fun ComposeUiTest.assertHapticAsTheLongPressCompletes() {
     var timeout = 0L
     picture().performTouchInput {
       timeout = viewConfiguration.longPressTimeoutMillis
       down(center)
     }
-    // Just past the platform's long-press timeout, the finger still down.
     mainClock.advanceTimeBy(timeout + 50)
     waitForIdle()
-    // Confirm, the grid's long-press tick: Samsung's ToggleOn was too soft to feel through a lifting finger.
     assertEquals(listOf(HapticFeedbackType.Confirm), haptics, "haptic with the finger still down")
     assertCounts(longPresses = 1)
     picture().performTouchInput { up() }
@@ -159,7 +145,6 @@ class PictureLongPressTest {
   fun aTapOnAVideoStillTogglesTheChrome() = runComposeUiTest {
     start(zoomable = false)
     picture().performTouchInput { click() }
-    // A tap waits out a double-tap's window.
     mainClock.advanceTimeBy(1_000)
     waitForIdle()
     assertCounts(taps = 1)
@@ -195,10 +180,6 @@ class PictureLongPressTest {
     assertCounts()
   }
 
-  /**
-   * A lone post's picture takes [queueSwipe] in place of the pager, claiming sideways moves (its swipe itself is
-   * [dev.marzahn.sankaku.tabs.QueueSwipeTest]'s): a slow one is neither a long-press nor a tap.
-   */
   @Test
   fun aLonePostsQueueSwipeIsNoLongPress() = runComposeUiTest {
     setContent {

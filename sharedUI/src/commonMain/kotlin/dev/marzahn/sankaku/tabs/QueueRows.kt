@@ -4,15 +4,9 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.isBooks
 import dev.marzahn.sankaku.features.grid.Rating
 import dev.marzahn.sankaku.queue.QueueKind
+import kotlin.time.Instant
 
-/** A row of the queue page's list, above Recently closed (#177). */
 internal sealed interface QueueRow {
-  /**
-   * A queue item at its [position] in the queue (from 0), as the pill counts it ([countedPosition]). [indented] is a
-   * kept post under the block head above it, and [from] names that head for TalkBack ("artist_x", or "artist_x
-   * (closed)"). [adult] is an item rated R15 or R18, or a post whose rating isn't known: its thumbnails blur, and G only
-   * hides it. [line] is its part of the line drawn from a head down through its kept posts (#234), null when it has none.
-   */
   class Item(
     val tab: TabState,
     val position: Int,
@@ -20,58 +14,114 @@ internal sealed interface QueueRow {
     val adult: Boolean,
     val from: String? = null,
     val line: BlockLine? = null,
-  ) : QueueRow
+    val fold: Fold? = null,
+    val lastKept: Instant? = null,
+    val number: Int? = null,
+    val headsBlock: Boolean = !indented,
+  ) : QueueRow {
+    val shownNumber: Int? get() = number.takeIf { headsBlock }
 
-  /**
-   * "from artist_x (closed)" over the kept posts a closed source left (#184), which are [Item]s indented under it. It
-   * stands for the block's old head, [head]: moving it ([TabsController.moveInQueue]) moves the whole block.
-   */
-  class ClosedBlock(val head: TabId, val title: String, val count: Int) : QueueRow
+    fun copy(
+      indented: Boolean = this.indented,
+      from: String? = this.from,
+      line: BlockLine? = this.line,
+      fold: Fold? = this.fold,
+      lastKept: Instant? = this.lastKept,
+    ) = Item(tab, position, indented, adult, from, line, fold, lastKept, number, headsBlock)
+  }
 
-  /** "Closed … · Undo" where the last close stood. */
+  class ClosedBlock(
+    val head: TabId,
+    val title: String,
+    val count: Int,
+    val fold: Fold? = null,
+    val lastKept: Instant? = null,
+    val number: Int? = null,
+  ) : QueueRow {
+    fun copy(fold: Fold? = this.fold, lastKept: Instant? = this.lastKept) = ClosedBlock(head, title, count, fold, lastKept, number)
+  }
+
   class Inline(val closed: ClosedTab) : QueueRow
 
-  /** "Hidden by G only · N": the items G only leaves out. */
   class HiddenByGOnly(val count: Int) : QueueRow
 }
 
-/**
- * A row's part of the thin line from a block's head down through its listed kept posts (#234): it starts under the
- * [Head] (a source's row with kept posts listed under it; a [QueueRow.ClosedBlock] always starts one), runs [Through]
- * each kept post but the last, and stops at the [End].
- */
 internal enum class BlockLine { Head, Through, End }
 
-/**
- * The queue page's rows: the items in queue order, each block's kept posts indented under its head (a closed source's,
- * under its "from … (closed)" row). A feed is listed where it stands, with its kept posts under it, as a source is
- * (#327): its row says "Feed" and has no position. While [gOnly], R15 and R18 items ([isAdult]) are left out and
- * counted. With a [query] only the matching items show ([matchesFind]). [inline]'s row goes before the first item at
- * or past where it stood. [post] is what's known of a tab's post.
- */
+internal class Fold(val head: TabId, val kept: Int, val seen: Int, val pictures: List<Route>, val open: Boolean, val later: Int = 0) {
+  val notSeen: Int get() = (kept - later - seen).coerceAtLeast(0)
+
+  val parts: List<String>
+    get() = listOfNotNull(
+      later.takeIf { it > 0 }?.let { "${grouped(it)} later" },
+      seen.takeIf { it > 0 }?.let { "${grouped(it)} seen" },
+      notSeen.takeIf { it > 0 }?.let { "${grouped(it)} not seen" },
+    )
+
+  val label: String get() = parts.joinToString(" · ")
+}
+
+internal enum class QueueFilter {
+  All,
+  Kept,
+
+  Later,
+  New,
+  Started,
+  ;
+
+  fun lists(head: TabState): Boolean = when (this) {
+    All, Kept, Later -> true
+    New -> isNewSource(head)
+    Started -> isStartedSource(head)
+  }
+}
+
+internal fun lastKeptByBlock(tabs: List<TabState>): Map<TabId, Instant> {
+  val out = mutableMapOf<TabId, Instant>()
+  for (tab in tabs) {
+    val block = tab.block ?: continue
+    if (block == tab.id || !tab.kind.isKept) continue
+    val at = tab.keptAt ?: Instant.fromEpochSeconds(0)
+    out[block] = out[block]?.let { maxOf(it, at) } ?: at
+  }
+  return out
+}
+
+internal fun isStartedSource(tab: TabState): Boolean = hasPreview(tab.top) && !isNewSource(tab)
+
 internal fun queueRows(
   tabs: List<TabState>,
   closed: List<ClosedTab>,
   inline: ClosedTab?,
   query: String?,
   gOnly: Boolean,
+  filter: QueueFilter = QueueFilter.All,
+  open: Set<TabId>? = null,
+  seen: (TabState) -> Boolean = { false },
   post: (TabState) -> TabPost?,
 ): List<QueueRow> {
-  // [closed] holds its current index: tabs reopened since may have moved it.
   val inlineAt = inline?.let { closed.first { c -> c == it }.index } ?: 0
   val main = mutableListOf<QueueRow>()
+  val lastKept = if (filter == QueueFilter.Kept) {
+    lastKeptByBlock(tabs.filterNot { gOnly && it.kind.isKept && isAdult(it, post(it)) })
+  } else {
+    emptyMap()
+  }
+  val laterBlocks = if (filter == QueueFilter.Later) {
+    laterPosts(tabs, gOnly, post).mapTo(mutableSetOf()) { it.block ?: it.id }
+  } else {
+    emptySet()
+  }
   var unplaced = inline
   var hidden = 0
-  // How many counted items stand before the one walked ([countedPosition]): a feed isn't one.
   var counted = 0
-  // Whether the head of the block being walked was listed (else its posts aren't indented). A feed's block is its kept
-  // posts (#265).
+  val numbers = queueNumbers(tabs)
   var headListed = false
-  // The kept posts a closed source left (#184) are a block under a row of its own, listed with its first listed post.
   var closedRow: QueueRow.ClosedBlock? = null
   var closedRowListed = false
-  // What the listed head of the block being walked is called, for its kept posts' "Kept from …" (#234).
   var headName: String? = null
+  var blockHead: TabState? = null
   for ((index, tab) in tabs.withIndex()) {
     val position = counted
     if (tab.kind != QueueKind.Feed) counted++
@@ -82,27 +132,42 @@ internal fun queueRows(
       val previous = tabs.getOrNull(index - 1)
       if (previous?.closedSource == null || previous.block != tab.block) {
         val count = tabs.drop(index).takeWhile { it.closedSource != null && it.block == tab.block }.size
-        closedRow = QueueRow.ClosedBlock(tab.head, closedBlockTitle(closedSource, tab.tagNames), count)
+        closedRow = QueueRow.ClosedBlock(tab.head, closedBlockTitle(closedSource, tab.tagNames), count, number = numbers[index])
         closedRowListed = false
       }
     } else {
       member = tab.block != null && index > 0 && tabs[index - 1].head == tab.block
       if (!member) headListed = false
     }
+    if (!member) blockHead = tab
+    val number = numbers[index]
     val known = post(tab)
     val adult = isAdult(tab, known)
     if (gOnly && adult) {
       hidden++
       continue
     }
+    if (filter == QueueFilter.Kept) {
+      val block = if (closedSource != null) tab.block else blockHead?.id
+      if (block == null || block !in lastKept) continue
+    } else if (filter == QueueFilter.Later) {
+      val block = if (closedSource != null) tab.block else blockHead?.id
+      val laterHere = tab.kind.isKept && tab.later
+      if ((block == null || block !in laterBlocks) && !laterHere) continue
+      if (member && !laterHere) continue
+    } else if (filter != QueueFilter.All) {
+      val head = if (closedSource != null) null else blockHead
+      if (head == null || !filter.lists(head)) continue
+    }
     if (query != null && !matchesFind(query, tab, known)) continue
     val indented = closedSource != null || (member && headListed)
     val from = when {
       closedSource != null -> closedSourceName(closedSource, tab.tagNames)
       indented -> headName
+      member && query != null -> blockHead?.title
       else -> null
     }
-    val item = QueueRow.Item(tab, position, indented = indented, adult = adult, from = from)
+    val item = QueueRow.Item(tab, position, indented = indented, adult = adult, from = from, number = number, headsBlock = !member)
     if (!member) {
       headListed = true
       headName = tab.title
@@ -118,14 +183,120 @@ internal fun queueRows(
     main += item
   }
   if (unplaced != null) main += QueueRow.Inline(unplaced)
-  if (hidden > 0) main += QueueRow.HiddenByGOnly(hidden)
-  return withBlockLines(main)
+  val listed = when {
+    filter == QueueFilter.Kept -> newestKeptFirst(main, lastKept)
+    query != null -> sourcesFirst(main)
+    else -> main
+  }
+  if (hidden > 0) listed += QueueRow.HiddenByGOnly(hidden)
+  return withBlockLines(if (open == null) listed else folded(listed, open, seen))
 }
 
-/**
- * Each item's part of its block's line ([BlockLine]): a head with a kept post listed next starts it, and a kept post
- * carries it on while the next listed row is one too. The inline Undo row draws none and doesn't end a block.
- */
+internal fun queueNumbers(tabs: List<TabState>): List<Int?> {
+  var blocks = 0
+  var feedBlock = false
+  return tabs.mapIndexed { index, tab ->
+    val previous = tabs.getOrNull(index - 1)
+    when {
+      tab.closedSource != null -> {
+        if (previous?.closedSource == null || previous.block != tab.block) blocks++
+        feedBlock = false
+        blocks
+      }
+      tab.block != null && previous?.head == tab.block -> blocks.takeUnless { feedBlock }
+      else -> {
+        feedBlock = tab.kind == QueueKind.Feed
+        if (!feedBlock) blocks++
+        blocks.takeUnless { feedBlock }
+      }
+    }
+  }
+}
+
+internal fun numberedBlocks(tabs: List<TabState>): Int = queueNumbers(tabs).lastOrNull { it != null } ?: 0
+
+private fun newestKeptFirst(rows: List<QueueRow>, lastKept: Map<TabId, Instant>): MutableList<QueueRow> {
+  val lead = mutableListOf<QueueRow>()
+  val blocks = mutableListOf<Pair<Instant, MutableList<QueueRow>>>()
+  for (row in rows) {
+    val head = when (row) {
+      is QueueRow.ClosedBlock -> row.head
+      is QueueRow.Item -> row.tab.head.takeUnless { row.indented }
+      else -> null
+    }
+    if (head == null) {
+      (blocks.lastOrNull()?.second ?: lead) += row
+      continue
+    }
+    val at = lastKept[head] ?: Instant.fromEpochSeconds(0)
+    val carried = when (row) {
+      is QueueRow.ClosedBlock -> row.copy(lastKept = at)
+      is QueueRow.Item -> row.copy(lastKept = at)
+      else -> row
+    }
+    blocks += at to mutableListOf(carried)
+  }
+  return (lead + blocks.sortedByDescending { it.first }.flatMap { it.second }).toMutableList()
+}
+
+private fun sourcesFirst(rows: List<QueueRow>): MutableList<QueueRow> {
+  val (sources, rest) = rows.partition { it is QueueRow.Item && !it.indented && !it.tab.kind.isKept }
+  val headsUp = sources.mapTo(mutableSetOf()) { (it as QueueRow.Item).tab.id }
+  val after = rest.map { row ->
+    if (row is QueueRow.Item && row.indented && row.tab.closedSource == null && row.tab.block in headsUp) row.copy(indented = false) else row
+  }
+  return (sources + after).toMutableList()
+}
+
+private fun folded(rows: List<QueueRow>, open: Set<TabId>, seen: (TabState) -> Boolean): List<QueueRow> {
+  val out = ArrayList<QueueRow>(rows.size)
+  var at = 0
+  while (at < rows.size) {
+    val row = rows[at]
+    val head = when (row) {
+      is QueueRow.ClosedBlock -> row.head
+      is QueueRow.Item -> row.tab.id.takeUnless { row.indented }
+      else -> null
+    }
+    if (head == null) {
+      out += row
+      at++
+      continue
+    }
+    var end = at + 1
+    val kept = mutableListOf<QueueRow.Item>()
+    while (end < rows.size) {
+      val next = rows[end]
+      if (next is QueueRow.Item && next.indented) kept += next else if (next !is QueueRow.Inline) break
+      end++
+    }
+    if (kept.isEmpty()) {
+      out += row
+      at++
+      continue
+    }
+    val fold = Fold(
+      head,
+      kept = kept.size,
+      seen = kept.count { it.tab.kind.isKept && !it.tab.later && seen(it.tab) },
+      pictures = kept.take(FOLD_PICTURES).mapNotNull { it.tab.top },
+      open = head in open,
+      later = kept.count { it.tab.kind.isKept && it.tab.later },
+    )
+    out += when (row) {
+      is QueueRow.ClosedBlock -> row.copy(fold = fold)
+      is QueueRow.Item -> row.copy(fold = fold)
+      else -> row
+    }
+    val under = rows.subList(at + 1, end)
+    out += if (fold.open) under else under.filterIsInstance<QueueRow.Inline>()
+    at = end
+  }
+  return out
+}
+
+private const val FOLD_PICTURES = 3
+
 private fun withBlockLines(rows: List<QueueRow>): List<QueueRow> {
   val kept = rows.map { it is QueueRow.Item && it.indented }
   val listed = rows.indices.filter { rows[it] !is QueueRow.Inline }
@@ -138,24 +309,14 @@ private fun withBlockLines(rows: List<QueueRow>): List<QueueRow> {
       nextKept[index] -> BlockLine.Head
       else -> null
     }
-    if (line == null) row else QueueRow.Item(row.tab, row.position, row.indented, row.adult, row.from, line)
+    if (line == null) row else row.copy(line = line)
   }
 }
 
-/**
- * A Recently closed row (#250): the entry, and the member whose thumbnail it shows, [shown] (a post's preview, a grid's
- * mosaic). [adult] is whether that member is R15 or R18 ([isAdult]), so its picture blurs as a queue row's does.
- */
 internal class ClosedRow(val closed: ClosedTab, val shown: ClosedTab.Member, val adult: Boolean)
 
-/** Recently closed as listed ([rows], the most recent first) and how many entries G only leaves out ([hidden]). */
 internal data class ClosedRows(val rows: List<ClosedRow>, val hidden: Int)
 
-/**
- * Recently closed's [ClosedRows]. An entry shows its first member's thumbnail (a batch's, or the first of what Clear
- * viewed cleared). While [gOnly], an R15 or R18 entry is left out as on the queue page, and a batch shows its first G
- * member, or is left out if it has none. [post] is what's known of a post route's post.
- */
 internal fun closedRows(closed: List<ClosedTab>, gOnly: Boolean, post: (Route.Post) -> TabPost?): ClosedRows {
   var hidden = 0
   val rows = closed.asReversed().mapNotNull { entry ->
@@ -171,65 +332,93 @@ internal fun closedRows(closed: List<ClosedTab>, gOnly: Boolean, post: (Route.Po
   return ClosedRows(rows, hidden)
 }
 
-/** The post ids [closed] shows, for what's known of them ([TabPosts]). */
 internal fun closedPosts(closed: List<ClosedTab>): Set<String> =
   closed.flatMapTo(mutableSetOf()) { entry -> entry.members.mapNotNull { (it.top as? Route.Post)?.id } }
 
-/**
- * Whether [tab] is an R15 or R18 item: a post rated so (by its route, else by [post]), or whose rating isn't known, so
- * a post opened from a parent link or saved before #177 is blurred and hidden until it's known; a grid whose search
- * lets no G post through (`rating:e`). Any other grid is G: with G only on, it searches G only (#164).
- */
 internal fun isAdult(tab: TabState, post: TabPost?): Boolean = isAdult(tab.top) { post }
 
-/** [isAdult] for a [top] route, open or closed. */
 internal fun isAdult(top: Route?, post: (Route.Post) -> TabPost?): Boolean = when (top) {
   is Route.Post -> postRating(top, post(top)) != Rating.G
   is Route.Grid -> Rating.G !in searchRatings(top.tags)
   is Route.Books -> Rating.G !in searchRatings(top.tags)
   is Route.BookSeries -> Rating.G !in searchRatings(top.tags)
-  // A kept book by the rating its row had (#385); one not known counts as R15 or R18, as a post's does.
   is Route.Book -> Rating.ofCode(top.rating) != Rating.G
   null -> false
 }
 
-/** A post tab's rating: its route's, else what [post] (a loaded copy) says; null when neither knows, or not a post. */
 internal fun postRating(tab: TabState, post: TabPost?): Rating? = (tab.top as? Route.Post)?.let { postRating(it, post) }
 
 private fun postRating(top: Route.Post, post: TabPost?): Rating? = Rating.ofCode(top.rating ?: post?.rating)
 
-/** The ratings a search lets through: every rating tag narrows them (`rating:q`, `-rating:s`). */
 internal fun searchRatings(tags: List<String>): Set<Rating> =
   tags.fold(Rating.entries.toSet()) { ratings, tag -> Rating.of(tag)?.let(ratings::intersect) ?: ratings }
 
-/**
- * A row's second line: the item's kind, then "place kept" for a source scrolled into its grid (else how many posts it
- * has loaded), "from Landscape" for a search changed on that grid and opened as a new item ([TabState.refinedFrom]), "seen" for a kept post [seen] since it was kept, its [rating] if it's R15 or R18, and "current". Given
- * the source a kept post is listed under ([QueueRow.Item.from]), it says "Kept from artist_x": what TalkBack reads,
- * since the indent and the line show it on screen (#234).
- */
+internal fun sourceLine(tab: TabState, progress: SourceProgress?, current: Boolean, rating: Rating?): String {
+  val parts = mutableListOf<String>()
+  val tags = (tab.top as? Route.Grid)?.tags.orEmpty()
+  parts += orderLead(tags)
+  parts += notesButOrder(tags)
+  val position = progress?.position
+  val size = progress?.size
+  when {
+    position != null && size != null -> parts += "${grouped(position)} of ${sizeWords(size, alone = false)}"
+    position != null || tab.place != null -> {
+      size?.let { parts += sizeWords(it, alone = true) }
+      parts += "place kept"
+    }
+    size != null -> parts += sizeWords(size, alone = true)
+    else -> tab.mosaic?.posts?.takeIf { it > 0 }?.let { parts += "${grouped(it)} posts" }
+  }
+  originText(tab)?.let { parts += it }
+  if (rating != null && rating != Rating.G) parts += rating.badge
+  if (current) parts += "current"
+  return parts.joinToString(" · ")
+}
+
+internal fun originText(tab: TabState): String? =
+  tab.refinedFrom?.let { "from $it" } ?: tab.foundOn?.takeIf { tab.backStack.size == 1 }?.let { foundRowText(it, tab.tagNames) }
+
+internal fun sizeWords(size: SourceSize, alone: Boolean): String {
+  val (count, number) = when (size) {
+    is SourceSize.About -> size.posts to "about ${grouped(size.posts)}"
+    is SourceSize.Counted -> size.posts to "${grouped(size.posts)}${if (size.more) "+" else ""}"
+  }
+  val exact = size is SourceSize.Counted && !size.more
+  return when {
+    !alone -> number
+    exact && count == 0 -> "no posts"
+    exact && count == 1 -> "1 post"
+    else -> "$number posts"
+  }
+}
+
+internal fun progressFraction(progress: SourceProgress?): Float? {
+  val position = progress?.position ?: return null
+  val total = when (val size = progress.size ?: return null) {
+    is SourceSize.About -> size.posts
+    is SourceSize.Counted -> if (size.more) return null else size.posts
+  }
+  if (total <= 0) return null
+  return (position.toFloat() / total).coerceIn(0f, 1f)
+}
+
+internal fun grouped(n: Int): String = n.toString().reversed().chunked(3).joinToString(",").reversed()
+
 internal fun queueSubtitle(tab: TabState, current: Boolean, seen: Boolean, rating: Rating?, from: String? = null): String {
   val parts = mutableListOf<String>()
   when (tab.kind) {
     QueueKind.Source -> {
-      // A Books search (#385) or a grid.
       parts += if (tab.top?.isBooks == true) BOOKS_TITLE else "Grid"
-      // The filters the title leaves out (#233): "Grid · popular".
       (tab.top as? Route.Grid)?.let { parts += filterNotes(it.tags) }
-      // As saved for a source not shown since launch (#232), so it reads as it did before the relaunch.
       val loaded = tab.mosaic?.posts?.takeIf { it > 0 }
       if (tab.place != null) parts += "place kept" else if (loaded != null) parts += "$loaded posts"
-      // A search changed on a grid, opened as a new item (#509): "from Landscape".
-      tab.refinedFrom?.let { parts += "from $it" }
+      originText(tab)?.let { parts += it }
     }
     QueueKind.Feed -> parts += "Feed"
-    QueueKind.KeptPost -> {
-      parts += if (from != null) "Kept from $from" else "Kept"
-      if (seen) parts += "seen"
-    }
-    QueueKind.KeptBook -> {
-      parts += if (from != null) "Kept book from $from" else "Kept book"
-      if (seen) parts += "seen"
+    QueueKind.KeptPost, QueueKind.KeptBook -> {
+      val kept = if (tab.kind == QueueKind.KeptBook) "Kept book" else "Kept"
+      parts += if (from != null) "$kept from $from" else kept
+      if (tab.later) parts += "later" else if (seen) parts += "seen"
     }
     QueueKind.Other -> parts += "Item"
   }

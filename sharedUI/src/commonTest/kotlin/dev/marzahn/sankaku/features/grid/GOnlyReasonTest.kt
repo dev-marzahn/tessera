@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** Why a search shows only G posts, in words (#523). */
 class GOnlyReasonTest {
   @Test
   fun signedOutComesFirstWhateverTheSwitchSays() {
@@ -40,11 +39,9 @@ class GOnlyReasonTest {
   @Test
   fun theOwnEmptyStatesAreOnlyForTheBareFeedAndFavourites() {
     assertEquals(EmptyFeed.Following, EmptyFeed.of(listOf("feed:following"), me = "me", ratingLocked = false))
-    // The locked rating is added to every search; it doesn't make it a search of its own.
     assertEquals(EmptyFeed.Following, EmptyFeed.of(listOf("rating:s", "feed:following"), me = "me", ratingLocked = true))
     assertEquals(EmptyFeed.Favourites, EmptyFeed.of(listOf("fav:me"), me = "me", ratingLocked = false))
     assertEquals(EmptyFeed.Favourites, EmptyFeed.of(listOf("fav:me", "rating:s"), me = "me", ratingLocked = true))
-    // Another user's favourites, a narrowed feed, or a rating the user chose: a search, with its chips.
     assertNull(EmptyFeed.of(listOf("fav:someone"), me = "me", ratingLocked = false))
     assertNull(EmptyFeed.of(listOf("fav:me"), me = null, ratingLocked = true))
     assertNull(EmptyFeed.of(listOf("feed:following", "scenery"), me = "me", ratingLocked = false))

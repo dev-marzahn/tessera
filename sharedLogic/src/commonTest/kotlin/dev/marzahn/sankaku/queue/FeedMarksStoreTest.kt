@@ -16,7 +16,6 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
-/** The feed marks' store (#314): kept between runs, For you's dropped after 3 days, cleared on demand and on sign-out. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FeedMarksStoreTest {
   private class MovableClock(var now: Instant = Instant.parse("2026-11-12T12:00:00Z")) : Clock {
@@ -39,7 +38,6 @@ class FeedMarksStoreTest {
 
   @Test
   fun thePostsReachedAreKeptAndAFileFromBeforeThemStillLoads() {
-    // #539: the posts reached and their spans; a file written before them has neither, and reads as having none.
     val reached = FeedReached(mapOf("p1" to 10L, "p2" to 9L), listOf(TimeSpan(9, 10, read = 11, context = "rating:s|1a")))
     FeedMarksStore(file, clock).set(Feed.Following, marks("p1").copy(reached = reached))
     assertEquals(reached, FeedMarksStore(file, clock).get(Feed.Following)?.reached)

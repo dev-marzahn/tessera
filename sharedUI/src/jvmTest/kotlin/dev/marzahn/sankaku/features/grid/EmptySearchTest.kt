@@ -10,7 +10,6 @@ import dev.marzahn.sankaku.api.dto.TagSuggestion
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** An empty search lists its tokens to remove, the unknown tag first and named, and offers Edit search (#135). */
 @OptIn(ExperimentalTestApi::class)
 class EmptySearchTest {
   private val removed = mutableListOf<String>()

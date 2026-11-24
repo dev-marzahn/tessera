@@ -29,11 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/**
- * A connected button group (M3 expressive): members [ConnectedLeadingPane] and [ConnectedTrailingToggle], 2 dp apart,
- * so their inner corners read as one group. Each member's `rejected` count is a failed toggle's answer ([rejected]):
- * each time it goes up the member shakes with an error outline in its own shape.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ConnectedGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
@@ -45,12 +40,6 @@ fun ConnectedGroup(modifier: Modifier = Modifier, content: @Composable RowScope.
   )
 }
 
-/**
- * The group's leading member when it isn't one button (a row of stars). [checked] does what a checked
- * [ConnectedTrailingToggle] does: the same container and content colours, and the same spring from the leading shape
- * to M3's connected checked shape (a pill). [mirrored] (a left-handed row, #528) puts it at the group's end: it takes
- * the trailing member's shape, its outer corners on the right; its content keeps its order.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ConnectedLeadingPane(
@@ -71,16 +60,10 @@ fun ConnectedLeadingPane(
     contentColor = if (checked) colors.checkedContentColor else colors.contentColor,
     modifier = modifier.rejected(rejected, shape).heightIn(min = ConnectedHeight),
   ) {
-    // The same at both ends, so content inset alike at its start and end sits balanced (#104).
     Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, content = content)
   }
 }
 
-/**
- * The group's trailing member as a tonal toggle: on, it fills with the secondary container. Its shape morphs on press
- * and when checked, as M3's connected toggles do. [mirrored] (a left-handed row, #528) puts it at the group's start:
- * it takes the leading member's shapes, its outer corners on the left; its content keeps its order.
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ConnectedTrailingToggle(
@@ -89,7 +72,6 @@ fun ConnectedTrailingToggle(
   modifier: Modifier = Modifier,
   rejected: Int = 0,
   mirrored: Boolean = false,
-  /** Only an icon inside (the phone's ♡ without its count, #525): the same room on both sides of it. */
   iconOnly: Boolean = false,
   content: @Composable RowScope.() -> Unit,
 ) {
@@ -105,7 +87,6 @@ fun ConnectedTrailingToggle(
   )
 }
 
-/** [from] on its way to [to] by [fraction], corner by corner, as M3's toggle buttons morph between their shapes. */
 private fun morphedShape(from: Shape, to: CornerBasedShape, fraction: Float): Shape {
   if (from !is CornerBasedShape) return from
   return object : Shape {

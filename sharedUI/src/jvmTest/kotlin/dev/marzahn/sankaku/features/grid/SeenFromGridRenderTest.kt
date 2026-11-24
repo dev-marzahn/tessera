@@ -55,12 +55,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/**
- * #262 drawn, with synthetic fixture pictures (never a real post): three cells of one grid, each with the cell's own
- * seen mark (dimming, badge, chip and TalkBack description) and `seen` from [TabsController.seenFromGrid]. A post kept
- * from the grid and viewed is marked; one viewed but not kept isn't, nor is one kept from another source. Then Kept
- * again and Mark unseen take the mark away. With `EVIDENCE_DIR` set, each frame is saved there as a PNG for the PR.
- */
 @OptIn(ExperimentalTestApi::class)
 class SeenFromGridRenderTest {
   private var now = Instant.parse("2026-11-02T12:00:00Z")
@@ -73,7 +67,6 @@ class SeenFromGridRenderTest {
   private val scenery = Route.Grid(listOf("scenery"))
   private val sky = Route.Grid(listOf("sky"))
 
-  // Named by a character tag, as a cell's description is.
   private fun post(id: String, name: String) =
     PostDto(id = id, md5 = "$id$id", rating = "s", status = "active", tags = listOf(TagDto(name, type = TagType.Character.id)))
 
@@ -81,7 +74,6 @@ class SeenFromGridRenderTest {
   private val viewedOnly = post("b", "Fixture B")
   private val keptElsewhere = post("c", "Fixture C")
 
-  /** A 256 px picture of coloured stripes and a square, so the dimming shows. */
   private fun fixture(first: Int, second: Int): Bitmap {
     val bitmap = Bitmap().apply { allocN32Pixels(256, 256) }
     Canvas(bitmap).apply {
@@ -104,10 +96,8 @@ class SeenFromGridRenderTest {
 
   private fun keptTab(post: PostDto) = tabs.tabs.value.single { (it.top as? Route.Post)?.id == post.id }
 
-  /** One cell as the grid draws it: the picture dimmed when seen, the overlay's badge and chip, its description. */
   @Composable
   private fun Cell(post: PostDto, label: String, grid: Route.Grid) {
-    // The grid's own wiring (GridScreen calls it too), with the tab the grid is shown in.
     val isSeen = seenMark(grid, tabs.tabs.value.single { it.top == grid }, tabs, seen)(post)
     val openInTab = post.id in tabs.openPosts(tabs.tabs.value)
     val description = cellDescription(post, openInTab = openInTab, seen = isSeen, touch = true)
@@ -117,7 +107,6 @@ class SeenFromGridRenderTest {
           .semantics(mergeDescendants = true) { contentDescription = description },
       ) {
         Image(pictures.getValue(post.id), null, Modifier.fillMaxSize().seenImage(isSeen), contentScale = ContentScale.Crop)
-        // As in the grid, the overlay says nothing of its own: the cell's description says it all.
         CellOverlay(
           favourited = false, unfavourited = false, hovered = false, onToggleFavourite = {},
           modifier = Modifier.clearAndSetSemantics {}, openInTab = openInTab, seen = isSeen,
@@ -173,19 +162,16 @@ class SeenFromGridRenderTest {
     render("Grid: scenery")
     onNodeWithTag("cell-a").assertContentDescriptionEquals("Fixture A. Kept")
 
-    // Seen while the grid is shown (the viewer closing): the store's revision redraws it.
     now += 1.minutes
     seen.record(keptHere.id, keptHere.md5)
     waitForIdle()
     onNodeWithTag("cell-a").assertContentDescriptionEquals("Fixture A. Seen. Kept")
 
-    // Kept again: the kept time, snapshot state, redraws it.
     now += 1.minutes
     tabs.keepAgain(keptTab(keptHere).id)
     waitForIdle()
     onNodeWithTag("cell-a").assertContentDescriptionEquals("Fixture A. Kept")
 
-    // Seen again, then closed: the tabs redraw it, and a post no longer kept isn't marked.
     now += 1.minutes
     seen.record(keptHere.id, keptHere.md5)
     waitForIdle()
@@ -203,7 +189,6 @@ class SeenFromGridRenderTest {
     var underneath: Boolean? = null
     setContent {
       onTop = seenMark(scenery, source, tabs, seen)(keptHere)
-      // A grid route that isn't the one on top of the tab (a search gone elsewhere in place) marks nothing.
       underneath = seenMark(Route.Grid(listOf("other")), source, tabs, seen)(keptHere)
     }
     waitForIdle()
@@ -216,7 +201,6 @@ class SeenFromGridRenderTest {
   fun keptAgainTakesTheMarkAway() = runDesktopComposeUiTest(width = 1300, height = 700) {
     setUp()
     now += 1.minutes
-    // A long-press on the cell again: "Kept again".
     navigator.goTo(scenery)
     navigator.openInNewTab(Route.Post(keptHere.id, keptHere.md5, scenery.tags))
     render("Grid: scenery, after Kept again on the first post", "seen-kept-again.png")
@@ -228,7 +212,6 @@ class SeenFromGridRenderTest {
   fun markUnseenTakesTheMarkAway() = runDesktopComposeUiTest(width = 1300, height = 700) {
     setUp()
     now += 1.minutes
-    // The queue page's Mark unseen on the kept post.
     tabs.keepAgain(keptTab(keptHere).id)
     render("Grid: scenery, after Mark unseen on the first post", "seen-mark-unseen.png")
 

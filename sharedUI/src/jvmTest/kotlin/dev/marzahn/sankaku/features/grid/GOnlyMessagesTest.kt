@@ -17,7 +17,6 @@ import dev.marzahn.sankaku.data.RecentSearches
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The words that say why only G posts show, and the feeds' own empty states (#523). */
 @OptIn(ExperimentalTestApi::class)
 class GOnlyMessagesTest {
   private var actions = 0
@@ -111,10 +110,8 @@ class GOnlyMessagesTest {
       EmptyFeedContent(EmptyFeed.Favourites, reason = GOnlyReason.Switch, onReasonAction = { actions++ }, onBrowse = {})
     }
 
-    // G only may be hiding R15/R18 favourites, so it doesn't claim there are none (#533 review).
     onNodeWithText("No G favourites to show").assertIsDisplayed()
     onNodeWithText("No favourites yet").assertDoesNotExist()
-    // Desktop: a click on ♡, or F.
     onNodeWithText("Click ♡ on a post, or press F", substring = true).assertIsDisplayed()
     onNodeWithText("Turn off").performClick()
     assertEquals(1, actions)
@@ -177,7 +174,6 @@ class GOnlyMessagesTest {
   fun aPastedRatingWithATagAfterItKeepsItsNoticeUntilTheNextTyping() = runComposeUiTest {
     showPanel(signedIn = true, safeOnly = true)
 
-    // One edit, as a paste is: the comma ends the rating and "smi" stays typed.
     field.performTextInput("rating:q,smi")
     waitForIdle()
     onNodeWithText("Ratings stay G while G only is on").assertIsDisplayed()
@@ -203,7 +199,6 @@ class GOnlyMessagesTest {
     waitForIdle()
     field.performTextClearance()
     waitForIdle()
-    // The same text typed again is new typing.
     field.performTextInput("foo")
     waitForIdle()
 

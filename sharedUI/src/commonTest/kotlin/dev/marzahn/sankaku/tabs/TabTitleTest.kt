@@ -7,7 +7,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** A post tab is titled by the name it was opened with, or "Untitled post"; never by its id (#138). */
 class TabTitleTest {
   @Test
   fun aPostTabShowsItsName() {
@@ -32,7 +31,6 @@ class TabTitleTest {
 
   @Test
   fun aSourceIsNamedByItsContentTagsNotItsFilterTokens() {
-    // #233's acceptance criterion: the order is in the subtitle, not the title.
     assertEquals("Artist X", tabTitle(Route.Grid(listOf("order:popularity", "artist_x"))))
     assertEquals(listOf("popular"), filterNotes(listOf("order:popularity", "artist_x")))
     assertEquals("Pipoyami", tabTitle(Route.Grid(listOf("pipoyami", "order:popularity"))))
@@ -44,18 +42,15 @@ class TabTitleTest {
 
   @Test
   fun aSourceUsesItsTagChipsNames() {
-    // #246's acceptance criteria: the chip's "K-Suwabe", and a key with no name.
     val names = mapOf("k-suwabe" to "K-Suwabe", "smile" to "Smiling")
     assertEquals("K-Suwabe", tabTitle(Route.Grid(listOf("k-suwabe", "order:popularity")), names = names::get))
     assertEquals("Jien (Nikke)", tabTitle(Route.Grid(listOf("jien_(nikke)")), names = names::get))
-    // Looked up by the lowercase key without the `-`, which stays in the title.
     assertEquals("K-Suwabe -Smiling", tabTitle(Route.Grid(listOf("K-suwabe", "-smile")), names = names::get))
     assertEquals("from K-Suwabe (closed)", closedBlockTitle(listOf("k-suwabe"), names::get))
   }
 
   @Test
   fun everyFilterPrefixIsLeftOutOfATitle() {
-    // Each prefix [SearchTags.FILTER_PREFIXES] registers, so a new filter is left out without a second list.
     for (prefix in SearchTags.FILTER_PREFIXES) {
       assertEquals("Cat", tabTitle(Route.Grid(listOf("${prefix}x", "cat"))), prefix)
       assertEquals("Cat", tabTitle(Route.Grid(listOf("-${prefix}x", "cat"))), prefix)
@@ -73,7 +68,6 @@ class TabTitleTest {
     assertEquals("Browse", tabTitle(Route.Grid(listOf("rating:g"))))
     assertEquals("Browse", tabTitle(Route.Grid(listOf("order:unknown"))))
     assertEquals("Browse", tabTitle(Route.Grid(emptyList())))
-    // A title of filters only already names them, so the subtitle doesn't repeat them.
     assertEquals(emptyList(), filterNotes(listOf("order:popularity")))
   }
 

@@ -8,6 +8,7 @@ import androidx.compose.runtime.key
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.rememberUpdatedState
 import com.google.fonts.icons.arrow_back
+import dev.marzahn.sankaku.ui.components.QueueMark
 import dev.marzahn.sankaku.platformIsTouch
 import dev.marzahn.sankaku.ui.components.FullScreenSearchBar
 import dev.marzahn.sankaku.ui.components.FullScreenSearchState
@@ -130,16 +131,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-/** The wait after the last keystroke before asking for suggestions. */
 internal const val SUGGEST_DELAY_MS = 350L
 private val BarHeight = 56.dp
 private val TouchBarHeight = 48.dp
 
-/**
- * The search at rest: the [ratings] it lets through as stacked badges (none for every rating), then one line of its
- * other tags, `+N` for those that don't fit. Tags in [known] show their name and their type's colour. A click or `/`
- * opens the [SearchPanel].
- */
 @Composable
 fun SearchSummary(
   tags: List<String>,
@@ -147,18 +142,13 @@ fun SearchSummary(
   known: Map<String, TagSuggestion>,
   onOpen: () -> Unit,
   modifier: Modifier = Modifier,
-  /** The signed-in user's name, so their favourites tag shows as the filter it is, not as their name. */
   me: String? = null,
-  /** Signed out, so the search is locked to G: TalkBack says why. */
   signedOut: Boolean = false,
 ) {
-  // Android sizes the line as the approved shell mockup does (48 dp, a 20 dp icon) and has no key badge; the tags
-  // stay badges, as on desktop.
   Surface(
     onClick = onOpen,
     shape = CircleShape,
     color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    // At least that, taller with large text rather than cutting the tags off (#525).
     modifier = modifier.heightIn(min = if (platformIsTouch) TouchBarHeight else BarHeight),
   ) {
     Row(
@@ -173,10 +163,8 @@ fun SearchSummary(
         modifier = if (platformIsTouch) Modifier.size(20.dp) else Modifier,
       )
       if (ratings.isNotEmpty()) {
-        // As text, not a description: merged into the bar, a description would stand in for the bar's own text.
         val described = ratingsDescription(ratings, signedOut)
         val spoken = AnnotatedString(described)
-        // On hover too (#521): "G" alone doesn't say it's the rating, or why it's locked.
         ButtonHint(described) {
           RatingStack(ratings, size = RatingBadgeSize.Tag, modifier = Modifier.clearAndSetSemantics { text = spoken })
         }
@@ -213,18 +201,9 @@ private fun SummaryChip(text: String, muted: Boolean = false) {
   }
 }
 
-/**
- * One tag of a search at rest: a filter as its chip shows it (stars, "Popularity", "Only my favourites" for [me]'s
- * favourites tag, "Favourites" for any other `fav:` tag), anything else as a [TagBadge].
- */
 @Composable
 private fun SearchTag(tag: String, known: Map<String, TagSuggestion>, me: String?) = SearchToken(tag, known, me)
 
-/**
- * A token of a search as the search line shows it ([SearchTag]), with a ✕ that calls [onRemove]: the empty grid's
- * chips (#135). A rating token shows its badges. A [flagged] tag is one the site doesn't know. On [touch] only the ✕
- * removes it ([TouchRemovable]); on desktop a click anywhere on it does.
- */
 @Composable
 internal fun RemovableSearchToken(
   tag: String,
@@ -253,11 +232,6 @@ private fun SearchToken(
   }
 }
 
-/**
- * Touch (#525): [pill] at its drawn size, with only its ✕ removing, through a 48 dp target named [removeLabel] that
- * starts where the pill's ✕ end does ([CrossZone]: the gap before the ✕, the ✕ and the padding after it) and runs on
- * past the pill into room kept after it. A tap on the name, however short, does nothing.
- */
 @Composable
 internal fun TouchRemovable(removeLabel: String, onRemove: () -> Unit, pill: @Composable () -> Unit) {
   Box(Modifier.heightIn(min = RemoveTarget).padding(end = RemoveTarget - CrossZone), contentAlignment = Alignment.CenterStart) {
@@ -265,7 +239,6 @@ internal fun TouchRemovable(removeLabel: String, onRemove: () -> Unit, pill: @Co
     Box(
       Modifier
         .align(Alignment.CenterEnd)
-        // Out past the pill's end into the room kept after it.
         .offset(x = RemoveTarget - CrossZone)
         .size(RemoveTarget)
         .clickable(role = Role.Button, onClick = onRemove, indication = null, interactionSource = null)
@@ -276,10 +249,8 @@ internal fun TouchRemovable(removeLabel: String, onRemove: () -> Unit, pill: @Co
 
 private val RemoveTarget = 48.dp
 
-/** A removable pill's ✕ end: the 8 dp gap before the 16 dp ✕ and the 4 dp after it (TagBadge's and SearchTokenPill's). */
 private val CrossZone = 28.dp
 
-/** [SearchToken]'s pill: a ✕ at its end when [removable], named [removeLabel] (none when a target outside names it). */
 @Composable
 private fun SearchTokenPill(
   tag: String,
@@ -296,11 +267,8 @@ private fun SearchTokenPill(
   } else {
     null
   }
-  // The own favourites tag as the chip's choice; any other (or with the name not known yet) as the tab title shows it,
-  // so no user's name is on the search line.
   val favourites = Favourites.of(tag, me)?.label ?: Favourites.shortLabel(tag)
   val choice = Filter.optionFor(tag)
-  // The search line shows ratings as badges beside the tags, so only the empty grid's chips get here with one.
   val ratings = Rating.of(tag)
   val label: @Composable () -> Unit = when {
     favourites != null -> { { Text(favourites, style = MaterialTheme.typography.labelLarge) } }
@@ -309,8 +277,6 @@ private fun SearchTokenPill(
     choice.first == Filter.Threshold -> { { Stars(choice.second) } }
     else -> { { Text(choice.second.label, style = MaterialTheme.typography.labelLarge) } }
   }
-  // Clickable through the modifier, as TagBadge is, so the chip keeps its height rather than growing to 48 dp. Taller
-  // with large text, as a TagBadge is (#525).
   Surface(
     shape = CircleShape,
     color = MaterialTheme.colorScheme.secondaryContainer,
@@ -327,7 +293,6 @@ private fun SearchTokenPill(
   }
 }
 
-/** What a screen reader calls [tag]'s chip: its label, never the user's name in a favourites tag. */
 private fun tokenName(tag: String, known: Map<String, TagSuggestion>, me: String?): String =
   Favourites.of(tag, me)?.label
     ?: Favourites.shortLabel(tag)
@@ -335,15 +300,12 @@ private fun tokenName(tag: String, known: Map<String, TagSuggestion>, me: String
     ?: Filter.optionFor(tag)?.second?.label
     ?: knownLabel(tag, known)
 
-/** [tag] as its badge reads: the known name (with any `-`), else the search key as it is. */
 private fun knownLabel(tag: String, known: Map<String, TagSuggestion>): String =
   known[tag.removePrefix("-").lowercase()]?.let { (if (tag.startsWith("-")) "-" else "") + it.displayName } ?: tag
 
-/** A minimum score's stars and a "+", as its chip and the top bar show it. */
 @Composable
 private fun Stars(option: FilterOption) {
   val minimum = option.tag.substringAfter(':').toIntOrNull() ?: 0
-  // "≥" first, centred on the stars' line, so the label reads "at least ★★★".
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
     Text("≥", style = MaterialTheme.typography.labelLarge.centredOnLine())
     Row {
@@ -352,7 +314,6 @@ private fun Stars(option: FilterOption) {
   }
 }
 
-/** [TagBadge] for [tag]: its name, colour and hover hint when [known] has it, else the search key as it is. */
 @Composable
 private fun KnownTagBadge(
   tag: String,
@@ -365,17 +326,12 @@ private fun KnownTagBadge(
   TagBadge(AnnotatedString(knownLabel(tag, known)), found?.category, found?.hint(), onClick = onClick, flagged = flagged, trailing = trailing)
 }
 
-/** The type and post count, and the search key when the name differs from it. */
 private fun TagSuggestion.hint(): String {
   val key = tagName.removePrefix("-")
   return listOfNotNull(category.name, posts?.let { "${compactCount(it)} posts" }, key.takeIf { it != displayName })
     .joinToString(" · ")
 }
 
-/**
- * Places the last of [content]'s items that fit in a row, led by [overflow] with the number left out. The end is
- * kept because the search puts its filter tokens first, so the content tags stay in view (#89).
- */
 @Composable
 private fun OverflowRow(
   overflow: @Composable (hidden: Int) -> Unit,
@@ -391,7 +347,6 @@ private fun OverflowRow(
     while (shown < items.size && width(shown + 1) <= constraints.maxWidth) shown++
     var badge = if (shown < items.size) subcompose("overflow-${items.size - shown}") { overflow(items.size - shown) }
       .single().measure(loose) else null
-    // Make room for the badge by dropping items from the start.
     while (badge != null && shown > 0 && width(shown) + gap + badge.width > constraints.maxWidth) {
       shown--
       badge = subcompose("overflow-${items.size - shown}") { overflow(items.size - shown) }.single().measure(loose)
@@ -412,7 +367,6 @@ private fun OverflowRow(
   }
 }
 
-/** Option-W (-1) or Option-S (+1), Alt on Windows and Linux, as the suggestions' left-hand ↑/↓ (#443); else null. */
 internal fun highlightStep(event: KeyEvent): Int? = when {
   !event.isAltPressed || event.isCommand || event.isShiftPressed -> null
   event.key == Key.W -> -1
@@ -420,29 +374,17 @@ internal fun highlightStep(event: KeyEvent): Int? = when {
   else -> null
 }
 
-/**
- * The highlight [by] one row from [highlighted] in a list of [count] rows, cycling through the input (-1): ↓ from the
- * last row goes to the input, ↑ from the input to the last row. With no rows it stays.
- */
 internal fun steppedHighlight(highlighted: Int, count: Int, by: Int): Int = when {
   count == 0 -> highlighted
   by > 0 -> if (highlighted >= count - 1) -1 else highlighted + 1
   else -> if (highlighted < 0) count - 1 else highlighted - 1
 }
 
-/** What the list under the chips shows. */
 private sealed interface Entry {
   data class Tag(val suggestion: TagSuggestion) : Entry
   data class Recent(val tags: List<String>) : Entry
 }
 
-/**
- * The open search: the draft's tags as chips with the input after them, a menu per [Filter], and a list of tag
- * suggestions (or recent searches while the input is empty), with the key hints under the panel. Names are typed as
- * they read, spaces and all ("blue hair" asks for `blue_hair`). Picking a suggestion, a comma, or a pasted search makes
- * chips; nothing is searched until Enter or Search, which call [onSubmit] (adding what's typed first). [onClose] drops
- * the draft.
- */
 @Composable
 fun SearchPanel(
   initial: List<String>,
@@ -455,10 +397,9 @@ fun SearchPanel(
   modifier: Modifier = Modifier,
   known: Map<String, TagSuggestion> = emptyMap(),
   me: String? = null,
-  /** The locked chip's Sign in, signed out (#523). */
   onSignIn: () -> Unit = {},
-  /** The locked chip's Turn off, with G only on; null while a debug run holds it on. */
   onTurnOffGOnly: (() -> Unit)? = null,
+  inQueue: (String) -> Int? = { null },
 ) {
   val editor = rememberSearchEditor(
     initial, signedIn, me, safeOnly, recent, suggest, onSubmit, highlightFirst = true, onSignIn, onTurnOffGOnly,
@@ -467,22 +408,16 @@ fun SearchPanel(
   val recentSearches by recent.searches.collectAsStateWithLifecycle()
   val focus = remember { FocusRequester() }
   val entries = editor.entries(recentSearches, tagInfo)
-  // The input's line (the field, or a draft chip's ✕) has the focus: the panel's typing keys apply, not the chips'.
   var inputFocused by remember { mutableStateOf(false) }
-  // Option-W/S was just handled: the character it types comes next and is dropped.
   var dropTyped by remember { mutableStateOf(false) }
 
   LaunchedEffect(Unit) {
-    // After the first frame: the panel enters with an animation, and focus can't land before it's placed.
     withFrameNanos {}
     focus.requestFocus()
   }
 
   Column(
     modifier = modifier.onPreviewKeyEvent { event ->
-      // Option-W/S (Alt on Windows and Linux) are the left hand's ↑/↓ (#443). The character Option types (∑, ß) comes
-      // after the key down as a typed event with no key of its own: it's dropped, so it never reaches the field.
-      // AWT sends it between the key's down and up; any key up ends the wait, whether a character came or not.
       if (event.type == KeyEventType.Unknown && dropTyped) return@onPreviewKeyEvent true.also { dropTyped = false }
       if (event.type == KeyEventType.KeyUp) dropTyped = false
       val altStep = if (inputFocused) highlightStep(event) else null
@@ -495,11 +430,7 @@ fun SearchPanel(
       }
       if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
       if (event.key == Shortcuts.Back.key) return@onPreviewKeyEvent true.also { onClose() }
-      // On the filter chips their own keys apply: Tab and A/D move, Space and Enter open a chip's menu.
       if (!inputFocused) return@onPreviewKeyEvent false
-      // One highlight (-1 is the input itself). ↓/↑ cycle through the rows and back to the input, and so does Shift-Tab
-      // while typing. Tab and Enter take the highlighted row, or what's typed; Enter searches only with nothing to
-      // take, or with Cmd/Ctrl held.
       if (event.key == Key.Tab && event.isShiftPressed) {
         if (!editor.typing || entries.isEmpty()) return@onPreviewKeyEvent false
         editor.highlighted = steppedHighlight(editor.highlighted, entries.size, -1)
@@ -528,7 +459,6 @@ fun SearchPanel(
       true
     },
   ) {
-    // One sheet like a command palette: the query, the list, then the filters and Search in a footer band.
     Surface(
       shape = MaterialTheme.shapes.extraLarge,
       color = MaterialTheme.colorScheme.surfaceBright,
@@ -540,7 +470,6 @@ fun SearchPanel(
           tagInfo,
           editor.input,
           focus,
-          // The click took focus from the input, and with it the panel's keys (↵ searched no more).
           onRemove = {
             editor.remove(it)
             focus.requestFocus()
@@ -559,6 +488,7 @@ fun SearchPanel(
           me = editor.draft.me,
           onPick = editor::pick,
           notice = editor.notice,
+          inQueue = inQueue,
           modifier = Modifier.padding(8.dp).heightIn(max = 360.dp),
         )
         Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -575,15 +505,6 @@ fun SearchPanel(
   }
 }
 
-/**
- * The search on a touch screen (Android): M3's full-screen search bar, grown out of the top bar's search line
- * ([state]'s anchor) while [open]. Its input is the draft's chips, then the text field, on one line that scrolls
- * sideways; under it the suggestions (or recent searches), then the filters and Search in a band above the keyboard.
- * No suggestion is highlighted: a tap adds one. The keyboard's action key adds a typed tag that is a suggestion's name
- * and searches, adds other typed text without searching, and with nothing typed runs the draft (#506); Search, a
- * recent search and the action key run a search through [onSubmit]. Back and the arrow call
- * [onClose] and drop the draft: each opening starts again from [initial].
- */
 @Composable
 fun FullScreenSearch(
   state: FullScreenSearchState,
@@ -597,13 +518,10 @@ fun FullScreenSearch(
   onClose: () -> Unit,
   known: Map<String, TagSuggestion> = emptyMap(),
   me: String? = null,
-  /** The locked chip's Sign in, signed out (#523). */
   onSignIn: () -> Unit = {},
-  /** The locked chip's Turn off, with G only on; null while a debug run holds it on. */
   onTurnOffGOnly: (() -> Unit)? = null,
+  inQueue: (String) -> Int? = { null },
 ) {
-  // A new draft for every opening: the closed one shows while the bar shrinks away, then makes way for a fresh one
-  // (at once if the search is opened again before the bar has finished shrinking).
   var drafts by remember { mutableIntStateOf(0) }
   var stale by remember { mutableStateOf(false) }
   LaunchedEffect(open) {
@@ -617,9 +535,6 @@ fun FullScreenSearch(
       stale = false
     }
   }
-  // Also keyed on the search: while closed the screen's route can change (Back, a tag's search, another tab), and the
-  // next opening starts from the new one. While open the route doesn't change; Search closes before navigating.
-  // No row is highlighted (#73): with no arrow keys to move it, a highlight only confuses.
   val editor = key(drafts, initial) {
     rememberSearchEditor(
       initial, signedIn, me, safeOnly, recent, suggest, onSubmit, highlightFirst = false, onSignIn, onTurnOffGOnly,
@@ -652,6 +567,7 @@ fun FullScreenSearch(
       me = editor.draft.me,
       onPick = editor::pick,
       notice = editor.notice,
+      inQueue = inQueue,
       modifier = Modifier.weight(1f).padding(8.dp),
     )
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
@@ -660,7 +576,6 @@ fun FullScreenSearch(
   }
 }
 
-/** The full-screen search's input: back, then the draft's chips and the text field on one line that scrolls sideways. */
 @Composable
 private fun TouchSearchInput(
   editor: SearchEditor,
@@ -670,7 +585,6 @@ private fun TouchSearchInput(
   onClose: () -> Unit,
 ) {
   val scroll = rememberScrollState()
-  // The end of the line (the text field) stays in view as chips are added and text is typed.
   LaunchedEffect(scroll.maxValue) { scroll.scrollTo(scroll.maxValue) }
   Row(verticalAlignment = Alignment.CenterVertically) {
     ButtonHint("Close search (${Shortcuts.Back.label})") {
@@ -681,7 +595,6 @@ private fun TouchSearchInput(
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      // Only a chip's ✕ removes it, in a 48 dp target (#525): it was the whole 28 dp pill, 8 dp from the next.
       editor.draft.chips.forEach { chip ->
         TouchRemovable("Remove $chip", onRemove = { editor.remove(chip) }) {
           KnownTagBadge(chip, known, trailing = { Icon(close, contentDescription = null, modifier = Modifier.size(16.dp)) })
@@ -690,14 +603,12 @@ private fun TouchSearchInput(
       BasicTextField(
         state = editor.input,
         lineLimits = TextFieldLineLimits.SingleLine,
-        // The action key searches (#506, SearchEditor.touchAct). Tags aren't words: no autocorrect, no capitals.
         keyboardOptions =
           KeyboardOptions(
             capitalization = KeyboardCapitalization.None,
             autoCorrectEnabled = false,
             imeAction = ImeAction.Search,
           ),
-        // The default action hides the keyboard.
         onKeyboardAction = { performDefaultAction -> onAction(performDefaultAction) },
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -725,7 +636,6 @@ private fun TouchSearchInput(
   }
 }
 
-/** Fades in while suggestions load; its space stays, so the input doesn't jump. */
 @Composable
 private fun LoadingSlot(loading: Boolean, modifier: Modifier = Modifier) {
   val shown by animateFloatAsState(if (loading) 1f else 0f, effectsSpec())
@@ -734,13 +644,6 @@ private fun LoadingSlot(loading: Boolean, modifier: Modifier = Modifier) {
   }
 }
 
-/**
- * The open search's state, the same for the desktop panel and Android's full-screen search: the draft, what's typed,
- * the suggestions for it and the highlighted row. Typing asks [suggest] only (after a pause); a search runs only
- * through [submit], [act] or [touchAct] with nothing typed, a typed tag's [touchAct], or a recent search, each of
- * which records it in [recent] and calls
- * [onSubmit].
- */
 @Composable
 private fun rememberSearchEditor(
   initial: List<String>,
@@ -754,7 +657,6 @@ private fun rememberSearchEditor(
   onSignIn: () -> Unit,
   onTurnOffGOnly: (() -> Unit)?,
 ): SearchEditor {
-  // Null exactly when the rating isn't locked (`ratingLocked`).
   val reason by rememberUpdatedState(gOnlyReason(signedIn, safeOnly, canTurnOff = onTurnOffGOnly != null))
   val gOnly by rememberUpdatedState(safeOnly)
   val latestSubmit by rememberUpdatedState(onSubmit)
@@ -775,7 +677,6 @@ private fun rememberSearchEditor(
     }
   }
   LaunchedEffect(editor) { editor.suggestWhileTyping { latestSuggest(it) } }
-  // A sign-in or restore finishing while the search is open: the same draft, read again with the user's name.
   LaunchedEffect(editor, me) { editor.withMe(me) }
   return editor
 }
@@ -784,31 +685,24 @@ private fun rememberSearchEditor(
 private class SearchEditor(
   initial: List<String>,
   me: String?,
-  /** Whether arriving suggestions highlight the first, like a combobox; only where arrow keys can move it. */
   private val highlightFirst: Boolean,
-  /** Why the rating is locked to G; null when it isn't. */
   private val reason: () -> GOnlyReason?,
-  /** The reason's Sign in or Turn off. */
   val onReasonAction: () -> Unit,
-  /** Whether G only is on (the sidebar switch, or the `safeOnly` debug flag). */
   private val gOnly: () -> Boolean,
   private val run: (List<String>) -> Unit,
 ) {
   var draft by mutableStateOf(unlocked(SearchDraft.of(initial, me)))
     private set
 
-  /** Why a rating just typed was dropped (#523); cleared by the next typing. */
   var notice by mutableStateOf<String?>(null)
     private set
 
-  // The text a comma left in the input, which isn't new typing.
   private var noticeLeft: String? = null
   val input = TextFieldState()
   private var found by mutableStateOf<List<TagSuggestion>>(emptyList())
   private var status by mutableStateOf(SuggestStatus.Idle)
   var highlighted by mutableIntStateOf(-1)
 
-  /** Tags picked from suggestions, so their chips keep the colour even when the known tags don't have them. */
   val picked = mutableStateMapOf<String, TagSuggestion>()
 
   val typing: Boolean get() = input.text.isNotBlank()
@@ -816,13 +710,8 @@ private class SearchEditor(
   val shownStatus: SuggestStatus get() = if (typing) status else SuggestStatus.Idle
   val lockReason: GOnlyReason? get() = reason()
 
-  // With G only on, R15 and R18 tags aren't offered (#247); typing one in full still adds it.
   private val offered: List<TagSuggestion> get() = offeredSuggestions(found, gOnly())
 
-  /**
-   * Suggestions while typing, else [recentSearches]; with G only on, not those naming an R15 or R18 tag in [known]
-   * (#523).
-   */
   fun entries(recentSearches: List<List<String>>, known: Map<String, TagSuggestion>): List<Entry> =
     if (typing) {
       offered.filterNot { it.tagName in draft.chips }.map { Entry.Tag(it) }
@@ -830,23 +719,17 @@ private class SearchEditor(
       shownRecentSearches(recentSearches, known, gOnly()).map(Entry::Recent)
     }
 
-  /**
-   * A locked rating is G whatever the search had, so the draft doesn't keep another one. When it drops one the user
-   * just [typed], [notice] says why.
-   */
   private fun unlocked(draft: SearchDraft, typed: Boolean = false): SearchDraft {
     val why = reason() ?: return draft
     if (typed && (draft.ratings.any { it != Rating.G } || draft.chips.any(Rating::isRatingTag))) notice = why.droppedRating
     return draft.withRatings(emptySet())
   }
 
-  /** Runs the draft, with whatever is still typed added first. */
   fun submit() {
     draft = unlocked(draft.add(asKey(input.text.toString())), typed = true)
     run(draft.tags)
   }
 
-  /** Adds what's typed as a tag, exactly (spaces as underscores), without searching. */
   fun addTyped() {
     draft = unlocked(draft.add(asKey(input.text.toString())), typed = true)
     input.clearText()
@@ -865,7 +748,6 @@ private class SearchEditor(
     }
   }
 
-  /** Enter on desktop: takes the highlighted row, else adds what's typed, else searches. */
   fun act(entries: List<Entry>) {
     val target = entries.getOrNull(highlighted)
     when {
@@ -875,14 +757,7 @@ private class SearchEditor(
     }
   }
 
-  /**
-   * The keyboard's action key on a touch screen, where no row is highlighted (#506): what's typed that is a suggested
-   * tag's name is a finished tag, added and searched; other typed text is added as typed, for a draft still being
-   * built; with nothing typed the draft runs. False when there's nothing to do (no text, no draft).
-   */
   fun touchAct(): Boolean {
-    // A suggestion for "-cat" is `-cat` already (TagsApi), so the sign matches too. While suggestions load, the ones
-    // shown are for the text before, so nothing counts as matched yet.
     val typed = asKey(input.text.toString())
     val match = if (loading) null else offered.firstOrNull { it.tagName.equals(typed, ignoreCase = true) }
     when {
@@ -913,12 +788,10 @@ private class SearchEditor(
     draft = draft.withFavourites(favourites)
   }
 
-  /** Keeps the draft when the user's name changes, so their `fav:` tag becomes (or stops being) the filter. */
   fun withMe(me: String?) {
     if (me != draft.me) draft = unlocked(draft.withMe(me))
   }
 
-  /** Backspace in an empty input: removes the last chip; false when there's nothing to remove that way. */
   fun removeLast(): Boolean {
     if (input.text.isNotEmpty() || draft.chips.isEmpty()) return false
     draft = draft.remove(draft.chips.last())
@@ -929,22 +802,15 @@ private class SearchEditor(
     var previous = ""
     snapshotFlow { input.text.toString() }.distinctUntilChanged().collectLatest { text ->
       highlighted = -1
-      // Typing again moves on from a dropped rating's notice; the input emptying after a tag is added doesn't, nor
-      // does what a comma left typed after the rating it dropped.
       if (text.isNotBlank() && text != noticeLeft) notice = null
-      // Once the input empties, what the comma left is gone: the same text typed later is new typing.
       if (text.isBlank()) noticeLeft = null
       val added = inserted(previous, text)
       val grew = text.length - previous.length
       previous = text
-      // A paste or a comma empties the input; suggestions loading for the text before no longer apply.
       fun cleared() {
         found = emptyList()
         status = SuggestStatus.Idle
       }
-      // A paste of a whole search splits into tags, as the site writes searches; a typed space stays, since names are
-      // typed as they read ("blue hair"). On desktop that's several characters at once, a space among them; a touch
-      // keyboard puts in a word with its space by glide typing or a suggestion, so there it's several words (#506).
       val pasted = if (highlightFirst) grew > 1 && added.any(Char::isWhitespace) else isPastedSearch(added)
       if (pasted) {
         draft = unlocked(draft.add(text), typed = true)
@@ -952,7 +818,6 @@ private class SearchEditor(
         cleared()
         return@collectLatest
       }
-      // A comma ends a tag as typed.
       val end = text.lastIndexOf(',')
       if (end >= 0) {
         text.substring(0, end).split(',').forEach { draft = unlocked(draft.add(asKey(it)), typed = true) }
@@ -970,11 +835,9 @@ private class SearchEditor(
       delay(SUGGEST_DELAY_MS)
       status = try {
         found = suggest(key)
-        // On desktop the top suggestion is highlighted, so Tab and Enter take it.
         highlighted = if (highlightFirst && offered.any { it.tagName !in draft.chips }) 0 else -1
         when {
           offered.isNotEmpty() -> SuggestStatus.Idle
-          // There were tags, but G only took them all: not a typo (#523).
           found.isNotEmpty() -> SuggestStatus.HiddenByGOnly
           else -> SuggestStatus.NoMatch
         }
@@ -990,7 +853,6 @@ private class SearchEditor(
 
 private enum class SuggestStatus { Idle, Loading, NoMatch, HiddenByGOnly, Failed }
 
-/** The suggestions the panel lists: all of [found], or with [gOnly] on all but the tags rated R15 or R18. */
 internal fun offeredSuggestions(found: List<TagSuggestion>, gOnly: Boolean): List<TagSuggestion> =
   if (gOnly) found.filterNot { Rating.ofCode(it.rating) in NOT_G } else found
 
@@ -998,7 +860,6 @@ private val NOT_G = setOf(Rating.R15, Rating.R18)
 
 private val SPACES = Regex("\\s+")
 
-/** The text [after] has in place of [before]'s: what lies between their common start and their common end. */
 private fun inserted(before: String, after: String): String {
   val start = before.commonPrefixWith(after).length
   val maxSuffix = minOf(before.length, after.length) - start
@@ -1006,10 +867,8 @@ private fun inserted(before: String, after: String): String {
   return after.substring(start, after.length - common)
 }
 
-/** Whether [added] at once is a pasted search: two words or more. One word with its space is the keyboard's (#506). */
 private fun isPastedSearch(added: String): Boolean = added.trim().split(SPACES).size > 1
 
-/** What was typed as the tag's search key: trimmed, with spaces as underscores ("blue hair" is `blue_hair`). */
 internal fun asKey(typed: String): String = typed.trim().replace(SPACES, "_")
 
 
@@ -1065,16 +924,10 @@ private fun DraftChips(
       },
       modifier = Modifier.weight(1f).widthIn(min = 160.dp).heightIn(min = 32.dp).focusRequester(focus),
     )
-    // At the end of the input's line.
     LoadingSlot(loading)
   }
 }
 
-/**
- * The desktop panel's footer: the [FilterChips] wrapping as the window allows, and the Search button at the end. From
- * the keyboard (#443) Tab reaches it from the input with nothing typed; A/D move along it as Shift-Tab and Tab do, and
- * Space or Enter opens a chip's menu.
- */
 @Composable
 private fun FilterRow(
   editor: SearchEditor,
@@ -1083,7 +936,6 @@ private fun FilterRow(
   modifier: Modifier = Modifier,
 ) {
   FlowRow(
-    // Sideways only, so A on the first chip stays there rather than going up into the input and typing.
     modifier = modifier.fillMaxWidth().sidewaysFocusKeys(),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1095,20 +947,11 @@ private fun FilterRow(
   }
 }
 
-/**
- * The full-screen search's band above the keyboard (#73): the [FilterChips] on one line that scrolls sideways when
- * they don't fit, then Search across the width. On a phone they wrapped unevenly beside the button.
- *
- * Opening a filter's menu takes the focus from the input, and closing it doesn't give it back: the keyboard goes down
- * and stays down, so the band (and Search with it) stays put while filters are changed, rather than jumping back up as
- * the keyboard returns. Tapping the input brings the keyboard back.
- */
 @Composable
 private fun TouchFilterBand(editor: SearchEditor, signedIn: Boolean) {
   val focusManager = LocalFocusManager.current
   Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(
-      // The padding scrolls with the chips, so they run to the screen's edge.
       Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -1119,12 +962,6 @@ private fun TouchFilterBand(editor: SearchEditor, signedIn: Boolean) {
   }
 }
 
-/**
- * The Rating menu (fixed to G with the reason when it's locked), a menu chip per [Filter], and after Feed the
- * [Favourites] menu. Signed out, the Feed menu leaves out Following, which the API ignores without a session, and the
- * Favourites menu is left out: there are no own favourites to filter by. Each menu calls [onMenuOpened] as its chip
- * opens it, and [onMenuClosed] once something is chosen.
- */
 @Composable
 private fun FilterChips(
   editor: SearchEditor,
@@ -1133,8 +970,6 @@ private fun FilterChips(
   onMenuClosed: () -> Unit,
 ) {
   val draft = editor.draft
-  // Signed out comes first: the sidebar's switch is only there signed in, and the lock holds either way. Else it's the
-  // sidebar's switch, or the debug `safeOnly` launch flag, which holds the same lock for a run.
   val reason = editor.lockReason
   val onChoose = { filter: Filter, option: FilterOption? ->
     editor.with(filter, option)
@@ -1156,7 +991,6 @@ private fun FilterChips(
           options = filter.options.filter { signedIn || it.tag != Feed.Following.tag },
           onChoose = { onChoose(filter, it) },
         )
-        // The user's name is there only while signed in.
         if (draft.me != null) {
           ChoiceMenu(
             label = Favourites.LABEL,
@@ -1177,10 +1011,6 @@ private fun FilterChips(
   }
 }
 
-/**
- * "Rating" until some are ticked, then their stacked badges. The menu ticks G, R15 and R18 on and off without closing;
- * ticking all three, or "All ratings", means every rating. The chip calls [onOpen] as it opens the menu.
- */
 @Composable
 private fun RatingMenu(ratings: Set<Rating>, onRatings: (Set<Rating>) -> Unit, onOpen: () -> Unit, onClosed: () -> Unit) {
   var open by remember { mutableStateOf(false) }
@@ -1200,8 +1030,6 @@ private fun RatingMenu(ratings: Set<Rating>, onRatings: (Set<Rating>) -> Unit, o
       },
     )
     GroupedMenu(expanded = open, onDismissRequest = ::close) {
-      // Esc closes it back to its chip, as the other filter menus do, so A/D go on along the chips (#443); a click
-      // outside still gives the input the focus.
       Column(
         Modifier.onPreviewKeyEvent { event ->
           val esc = event.key == Shortcuts.Back.key
@@ -1238,10 +1066,6 @@ private fun RatingMenu(ratings: Set<Rating>, onRatings: (Set<Rating>) -> Unit, o
 
 private val StarColor = Color(0xFFE8A200)
 
-/**
- * Minimum score (`threshold:1`–`5`) as stars: the chip shows the stars chosen, the menu a row of five where hovering
- * previews and a click picks; "Any score" clears it. The chip calls [onOpen] as it opens the menu.
- */
 @Composable
 private fun ScoreMenu(chosen: FilterOption?, onOpen: () -> Unit, onChoose: (FilterOption?) -> Unit) {
   val minimum = chosen?.tag?.substringAfter(':')?.toIntOrNull()
@@ -1280,12 +1104,6 @@ private fun ScoreMenu(chosen: FilterOption?, onOpen: () -> Unit, onChoose: (Filt
 
 private val StarCell = 40.dp
 
-/**
- * Five stars in a row of touching cells: the hovered star and those before it light up, from wherever the pointer is
- * in the row, so moving between stars never drops the preview. A click picks that many. From the keyboard (#443) the
- * menu's W/S reach the row (on the chosen star, if one is), A/D move along it, the focused star previews as a hovered
- * one does, and Space, Enter or Tab picks it.
- */
 @Composable
 private fun StarPicker(chosen: Int, onPick: (Int) -> Unit) {
   var hovered by remember { mutableIntStateOf(0) }
@@ -1332,10 +1150,6 @@ private fun StarPicker(chosen: Int, onPick: (Int) -> Unit) {
   }
 }
 
-/**
- * A chip named after [filter] until something is [chosen], then after the choice; a click calls [onOpen] and lists the
- * options.
- */
 @Composable
 private fun FilterMenu(
   filter: Filter,
@@ -1347,10 +1161,6 @@ private fun FilterMenu(
   ChoiceMenu(filter.label, filter.anyLabel, chosen, options, FilterOption::label, onOpen, onChoose)
 }
 
-/**
- * A chip named [label] until something is [chosen], then after the choice; a click calls [onOpen] and lists
- * [anyLabel] (the default, no choice) in a group of its own, then [options].
- */
 @Composable
 private fun <T> ChoiceMenu(
   label: String,
@@ -1372,7 +1182,6 @@ private fun <T> ChoiceMenu(
       label = { Text(chosen?.let(optionLabel) ?: label) },
     )
     GroupedMenu(expanded = open, onDismissRequest = { open = false }) {
-      // The API's default first, in a group of its own.
       MenuGroup(0, 2) {
         MenuChoice(
           selected = chosen == null,
@@ -1397,19 +1206,11 @@ private fun <T> ChoiceMenu(
   }
 }
 
-/**
- * The rating badges as TalkBack says them, rather than their letters: "G only" for G alone, as every visible label
- * says it (#523), and "Signed out: G only" when that's why ([signedOut]); else "Ratings R15, R18".
- */
 internal fun ratingsDescription(ratings: Set<Rating>, signedOut: Boolean): String = when {
   ratings == setOf(Rating.G) -> if (signedOut) GOnlyReason.SignedOut.text else "G only"
   else -> "Ratings " + Rating.entries.filter { it in ratings }.joinToString(", ") { it.badge }
 }
 
-/**
- * The Rating chip fixed to G: selected and disabled, with [why] on hover, and [reason] written beside it with its
- * Sign in or Turn off (#523), on both platforms: a touch screen has no hover, and the hover alone was missed.
- */
 @Composable
 private fun LockedRating(why: String, reason: GOnlyReason, onReasonAction: () -> Unit) {
   HoverHint(why) {
@@ -1420,7 +1221,6 @@ private fun LockedRating(why: String, reason: GOnlyReason, onReasonAction: () ->
       label = { RatingStack(setOf(Rating.G)) },
     )
   }
-  // The chip shows the badge already.
   GOnlyReasonLine(reason, onReasonAction, badge = false)
 }
 
@@ -1434,8 +1234,8 @@ private fun SuggestionList(
   me: String?,
   onPick: (Entry) -> Unit,
   modifier: Modifier = Modifier,
-  /** Why a rating just typed was dropped, above everything else (#523). */
   notice: String? = null,
+  inQueue: (String) -> Int? = { null },
 ) {
   val hint = when {
     status == SuggestStatus.Failed ->
@@ -1464,7 +1264,6 @@ private fun SuggestionList(
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
       )
     }
-    // With ↑ back on the input while suggestions show, say what Enter does there. A touch screen has no ↑.
     if (!platformIsTouch && typed.isNotBlank() && highlighted < 0 && entries.firstOrNull() is Entry.Tag) {
       Row(
         Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1480,7 +1279,8 @@ private fun SuggestionList(
       }
     }
     entries.forEachIndexed { index, entry ->
-      EntryRow(entry, typed, known, highlighted = index == highlighted, me = me, onClick = { onPick(entry) })
+      val queued = (entry as? Entry.Tag)?.suggestion?.tagName?.takeUnless { it.startsWith("-") }?.let(inQueue)
+      EntryRow(entry, typed, known, highlighted = index == highlighted, me = me, inQueue = queued, onClick = { onPick(entry) })
     }
     hint?.let {
       Text(
@@ -1501,15 +1301,14 @@ private fun EntryRow(
   highlighted: Boolean,
   me: String?,
   onClick: () -> Unit,
+  inQueue: Int? = null,
 ) {
-  // Only the highlight is drawn; other rows show the panel (or the full-screen bar) behind them.
   val rowColor = if (highlighted) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
   Row(
     Modifier
       .fillMaxWidth()
       .clip(MaterialTheme.shapes.medium)
       .background(rowColor)
-      // The keys move the highlight, not the focus, so Tab goes from the input straight to the filter chips (#443).
       .focusProperties { canFocus = false }
       .clickable(onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1532,6 +1331,7 @@ private fun EntryRow(
           val name = (if (tag.tagName.startsWith("-")) "-" else "") + tag.displayName
           TagBadge(matched(name, typed), tag.category, tag.hint())
         }
+        inQueue?.let { QueueMark(it, size = 16.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (highlighted && !platformIsTouch) {
           KbdBadge("Tab")
           KbdBadge("↵")
@@ -1551,10 +1351,6 @@ private fun EntryRow(
   }
 }
 
-/**
- * [name] with the typed prefix in bold and the rest in normal weight. The name is the display name ("Blue Hair") and
- * the typed text a search key ("blue_ha"), so an underscore matches a space.
- */
 private fun matched(name: String, typed: String): AnnotatedString = buildAnnotatedString {
   fun loose(text: String) = text.lowercase().replace('_', ' ')
   val length = if (typed.isNotEmpty() && loose(name).startsWith(loose(typed))) typed.length else 0
@@ -1562,10 +1358,8 @@ private fun matched(name: String, typed: String): AnnotatedString = buildAnnotat
   withStyle(SpanStyle(fontWeight = FontWeight.Normal)) { append(name.drop(length)) }
 }
 
-/** White, since the hints sit on the scrim, which is black in both themes. They wrap in a narrow window. */
 @Composable
 private fun KeyHints(typing: Boolean, modifier: Modifier = Modifier) {
-  // While typing, Enter adds; with an empty input it searches.
   val hints = if (typing) {
     listOf(
       "↑↓ ⌥W⌥S" to "choose",

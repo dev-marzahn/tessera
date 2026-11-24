@@ -15,10 +15,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-/**
- * A thin indeterminate bar along a picture's bottom edge while a sharper copy loads over it (a sample, a GIF, the full
- * file for zoom; #524). It shows only once [loading] has lasted [LOAD_BAR_DELAY_MS], so a fast load never flashes it.
- */
 @Composable
 fun LoadBar(loading: Boolean, modifier: Modifier = Modifier) {
   var shown by remember { mutableStateOf(false) }
@@ -36,8 +32,6 @@ fun LoadBar(loading: Boolean, modifier: Modifier = Modifier) {
   }
 }
 
-/** What a screen reader calls the [LoadBar]. */
 const val LoadBarDescription = "Loading a sharper picture"
 
-/** How long a load runs before the [LoadBar] shows. */
 const val LOAD_BAR_DELAY_MS = 500L

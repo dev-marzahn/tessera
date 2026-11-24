@@ -3,7 +3,6 @@ package dev.marzahn.sankaku.features.settings
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The licences list read from AboutLibraries' export (#206): each platform's own libraries, by name, with texts. */
 class LicencesTest {
   private val export = """
     {
@@ -28,7 +27,6 @@ class LicencesTest {
   @Test
   fun eachPlatformListsOnlyTheLibrariesItShipsByName() {
     assertEquals(listOf("Alpha", "zeta"), openSourceLibraries(export, "android").map { it.name })
-    // A blank name falls back to the coordinates; metadata-only and tooling libraries are in neither app.
     assertEquals(listOf("java-keyring", "n:none", "zeta"), openSourceLibraries(export, "jvm").map { it.name })
   }
 

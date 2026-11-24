@@ -68,18 +68,6 @@ import com.google.fonts.icons.undo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/*
- * Touch feedback on the control that caused it (`.scratch/android-feedback/`, C · "Pick"): the countdown ring, ↶ (Undo),
- * ⋮'s save states and a failed toggle's shake. Animations run on the motion scheme's springs and keyframes, so with
- * the system's animations off (duration scale 0) they're instant state changes; the error outline and the haptic are
- * timed in real time and still say "it didn't work".
- */
-
-/**
- * A failed toggle's answer each time [count] goes up: a short shake, a 2 dp error outline in [shape] for 1 s and the
- * "reject" haptic. The control has already reverted; the reason goes to the top line. Only a rise after this composed
- * answers, so a control composed again (scrolled back into a list) doesn't replay an old failure.
- */
 fun Modifier.rejected(count: Int, shape: Shape): Modifier = composed {
   val shake = remember { Animatable(0f) }
   var outlined by remember { mutableStateOf(false) }
@@ -116,10 +104,6 @@ fun Modifier.rejected(count: Int, shape: Shape): Modifier = composed {
     }
 }
 
-/**
- * A window's time left as a ring around its control: [left] (1 → 0, read while drawing) of a circle [inset] in from
- * the control's edge, over a faint track, in the content colour.
- */
 @Composable
 fun Modifier.countdownRing(left: () -> Float, inset: Dp = 3.dp): Modifier {
   val color = LocalContentColor.current
@@ -134,11 +118,6 @@ fun Modifier.countdownRing(left: () -> Float, inset: Dp = 3.dp): Modifier {
   }
 }
 
-/**
- * Says [text] to TalkBack once it changes, politely: a morphing control is silent by default, so each in-place change
- * carries one of these. Empty says nothing. It takes no room and no focus of its own. The node is always there with a
- * description (empty at rest), so a new text is a change to a live region, which TalkBack reads, not a new node.
- */
 @Composable
 fun LiveAnnouncement(text: String, modifier: Modifier = Modifier) {
   Box(
@@ -149,15 +128,6 @@ fun LiveAnnouncement(text: String, modifier: Modifier = Modifier) {
   )
 }
 
-/**
- * ✕ in the bottom row's left corner, shown only with "Show queue buttons" on (#178; `.scratch/android-undo/`, E2, for
- * the hold): a 56 dp round button on the primary container. A tap closes the current queue item ([onClose]). A hold
- * reopens the most recently closed one ([onReopen], true when there was one), as a hold on the count pill does: while
- * held, ✕ turns to ↶ and a ring fills to the long-press timeout, then a confirm haptic, or the "reject" haptic with
- * nothing to reopen. While [canReopen], the hold has the label and custom action [REOPEN_LABEL]; the ↶ badge is the
- * pill's. [closeLabel] is what TalkBack hears for the tap: "Close artist_x · 30 kept stay" for a source whose kept
- * posts stay (#184).
- */
 @Composable
 fun CloseCorner(
   canReopen: Boolean,
@@ -172,7 +142,6 @@ fun CloseCorner(
   val reopen = {
     haptics.performHapticFeedback(if (onReopen()) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
   }
-  // No tooltip: a long-press is the hold.
   Surface(
     shape = CircleShape,
     color = MaterialTheme.colorScheme.primaryContainer,
@@ -186,7 +155,6 @@ fun CloseCorner(
           interactionSource = presses,
           indication = ripple(),
           role = Role.Button,
-          // Our own haptics: confirm or reject once the hold has done its work, not the long-press buzz.
           hapticFeedbackEnabled = false,
           onLongClickLabel = if (canReopen) REOPEN_LABEL else null,
           onLongClick = reopen,
@@ -204,25 +172,19 @@ fun CloseCorner(
   }
 }
 
-/** What TalkBack calls closing the current queue item, on ✕ and as the count pill's custom action. */
 const val CLOSE_LABEL = "Close"
 
-/** What TalkBack calls the hold that reopens the most recently closed item. */
 const val REOPEN_LABEL = "Reopen closed item"
 
-/** A hold on a control: whether it's [held] past a tap, and its [progress] (0 → 1) to the long-press timeout. */
 @Stable
 internal class Hold(private val pressed: () -> Boolean, private val fill: Animatable<Float, *>) {
   val progress: Float get() = fill.value
 
-  /** Pressed, as a hold, not a tap: the ring shows. */
   val held: Boolean get() = pressed() && fill.value > 0f
 
-  /** Far enough into the hold that ✕ shows ↶: a tap never flashes it. */
   val showsReopen: Boolean get() = pressed() && fill.value >= HOLD_SHOWS_REOPEN
 }
 
-/** Fills a [Hold] over the long-press timeout while [presses] says pressed and [active]; empties it on release. */
 @Composable
 internal fun rememberHold(presses: MutableInteractionSource, active: Boolean): Hold {
   val pressed by presses.collectIsPressedAsState()
@@ -235,13 +197,8 @@ internal fun rememberHold(presses: MutableInteractionSource, active: Boolean): H
   return remember(fill) { Hold({ pressed }, fill) }
 }
 
-/** The share of the long-press timeout after which a held ✕ shows ↶. */
 private const val HOLD_SHOWS_REOPEN = 0.25f
 
-/**
- * The count pill's ↶ badge: 22 dp, primary. It has no accessibility node of its own: on the pill, the pill's
- * description says it; on desktop's +, [ReopenTabBadge] gives [modifier] its name and click.
- */
 @Composable
 internal fun ReopenBadge(modifier: Modifier = Modifier) {
   Badge(
@@ -255,18 +212,10 @@ internal fun ReopenBadge(modifier: Modifier = Modifier) {
 
 private val ReopenBadgeSize = 22.dp
 
-/** What the strip's ↶ badge is called, in its tooltip and for a screen reader (#420). */
 val REOPEN_TAB_LABEL = "Reopen closed tab (${Shortcuts.ReopenTab.label})"
 
-/**
- * Desktop's [ReopenBadge] (#420): [content] (the tab strip's +) with the count pill's ↶ badge on its top-right corner
- * while [canReopen]. The badge is a button of its own, [REOPEN_TAB_LABEL] in its tooltip and name, and reopens as Z
- * does; [content] keeps its own click.
- */
 @Composable
 fun ReopenTabBadge(canReopen: Boolean, onReopen: () -> Unit, content: @Composable () -> Unit) {
-  // Not a BadgedBox: that hangs the badge above its anchor, and the strip's + is 8 dp from the window's top edge, which
-  // cut the badge in half. Here it sits inside the corner of the +'s 48 dp box.
   Box {
     content()
     if (canReopen) {
@@ -284,25 +233,16 @@ fun ReopenTabBadge(canReopen: Boolean, onReopen: () -> Unit, content: @Composabl
   }
 }
 
-/** A FAB's resting shadow, which the floating ✕ had as a `FloatingActionButton`; the count pill floats on it too. */
 internal val FabElevation = 6.dp
 
-/** What ⋮ shows for a save (`.scratch/android-feedback/`, rows 8 and 11). */
 enum class MenuSaveState {
-  /** Plain ⋮. */
   Idle,
 
-  /** ⋮ in a spinning ring: still a working ⋮. */
   Saving,
 
-  /** ⋮ with a ✓ dot: the post's file is saved, and the menu opens it. */
   Saved,
 }
 
-/**
- * ⋮ on a post: 48 dp, its look by [state]. [onClick] opens its menu in every state. [description] is what TalkBack
- * says for it.
- */
 @Composable
 fun MenuButton(state: MenuSaveState, onClick: () -> Unit, description: String, modifier: Modifier = Modifier) {
   Surface(onClick = onClick, shape = CircleShape, color = Color.Transparent, modifier = modifier.size(48.dp).semantics { contentDescription = description }) {
@@ -321,11 +261,6 @@ private fun SavedDot(modifier: Modifier) {
   }
 }
 
-/**
- * "↗ Open" (the tertiary container) or "↻ Retry" ([error]: the error container) standing in for ⋮ while a save's
- * window runs, at the end of the sheet's peek row (#178): ↗ or ↻ alone in ⋮'s 48 dp circle, so ♡ beside it never
- * moves, with the window's [left] as a ring. [label] is what TalkBack reads.
- */
 @Composable
 fun CornerActionChip(
   icon: ImageVector,

@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `search_off` (weight 400, 24 px), its path as the SVG gives it. */
 public val search_off: ImageVector
   get() {
     _search_off?.let { return it }

@@ -33,7 +33,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-/** A refused password puts the fields in error and counts each refusal, so the form can refocus Password. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SignInRejectionTest {
   @BeforeTest
@@ -42,7 +41,6 @@ class SignInRejectionTest {
   @AfterTest
   fun tearDown() = Dispatchers.resetMain()
 
-  /** Refuses every login, except when [failAttempt] says the connection drops on that (1-based) attempt. */
   private suspend fun viewModelRefusingEveryLogin(failAttempt: Int = -1): SignInViewModel {
     var attempts = 0
     return viewModelAnswering {
@@ -51,7 +49,6 @@ class SignInRejectionTest {
     }
   }
 
-  /** The login host answers every login with [login]. */
   private suspend fun viewModelAnswering(login: MockRequestHandler): SignInViewModel {
     val client = createAuthClient(MockEngine(login), RequestLog(), RateLimiter(limits = emptyMap()), ConnectivityState())
     val session = AuthSession(AuthApi(client), InMemoryTokenStore())
@@ -59,7 +56,6 @@ class SignInRejectionTest {
     return SignInViewModel(session, SignInController().apply { open() })
   }
 
-  /** Submits, then lets the engine (on its own threads) and the test dispatcher finish the sign-in. */
   private suspend fun TestScope.submitAndSettle(viewModel: SignInViewModel) {
     viewModel.submit("user", "wrong")
     withContext(Dispatchers.Default) {
@@ -103,7 +99,6 @@ class SignInRejectionTest {
     assertTrue(state.error!!.contains("connection"))
   }
 
-  /** Only the recorded refusal says the password is wrong; a 429, a 5xx or a block page is Sankaku's doing (#493). */
   @Test
   fun eachLoginAnswerHasItsMessage() = runTest {
     data class Case(val name: String, val error: String, val detail: String?, val login: MockRequestHandler)
@@ -134,7 +129,6 @@ class SignInRejectionTest {
   }
 }
 
-/** The login host's answer to a wrong password, as discovery step 8 recorded it (`docs/api.md`). */
 private const val WRONG_PASSWORD = """{"success":false,"error":"invalid login or password"}"""
 private const val UNAVAILABLE = "Sankaku couldn't sign you in right now. Try again later."
 private val jsonHeaders = headersOf(HttpHeaders.ContentType, "application/json")

@@ -6,10 +6,6 @@ plugins {
   alias(libs.plugins.kotlinx.serialization)
 }
 
-/**
- * `APP_VERSION`, the app's version from the catalog's `tessera`, as a constant the shared code can read at run time:
- * the update check compares it with GitHub's latest release (#209), and About shows it.
- */
 val generateAppVersion by tasks.registering {
   val version = libs.versions.tessera.get()
   val outDir = layout.buildDirectory.dir("generated/appVersion/kotlin")
@@ -53,11 +49,12 @@ kotlin {
     }
     commonMain.dependencies {
       api(libs.ktor.client.core)
-      api(libs.ktor.client.auth) // AuthSession exposes BearerTokens
+      api(libs.ktor.client.auth)
       implementation(libs.ktor.client.content.negotiation)
       implementation(libs.ktor.serialization.kotlinx.json)
       api(libs.kotlinx.serialization.json)
       api(libs.kotlinx.coroutines.core)
+      implementation(libs.kotlinx.datetime)
       api(libs.androidx.paging.common)
     }
     jvmMain.dependencies {

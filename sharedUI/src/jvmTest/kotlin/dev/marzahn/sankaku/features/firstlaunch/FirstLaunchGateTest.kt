@@ -16,6 +16,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.SEEN_FILE
@@ -57,10 +58,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * #210: the whole app, as it starts, with every request it sends counted. On first launch only the first-launch screen
- * shows and nothing reaches Sankaku (nor its CDN) until Continue.
- */
 @OptIn(ExperimentalTestApi::class)
 class FirstLaunchGateTest {
   private val requests = AtomicInteger()
@@ -76,7 +73,7 @@ class FirstLaunchGateTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TextFile>(FIRST_LAUNCH_FILE) { firstLaunch }
       single<TextFile>(PRIVACY_FILE) { privacy }
@@ -85,7 +82,6 @@ class FirstLaunchGateTest {
       single<SaveFolder> { DirectorySaveFolder(cache, opener = {}) }
       single<PlatformContext> { PlatformContext.INSTANCE }
     }
-    // Every client (auth, main, images) is built on this engine; it answers nothing useful, only counts.
     val engine = module {
       single<HttpClientEngine> {
         MockEngine {
@@ -110,7 +106,6 @@ class FirstLaunchGateTest {
     onNodeWithText(FirstLaunchAbout).assertIsDisplayed()
     onNodeWithText(FirstLaunchRisk).assertIsDisplayed()
     onNodeWithText(FirstLaunchAge).assertIsDisplayed()
-    // Long enough for anything the shell would start at launch (first pages, the account, previews) to have gone out.
     mainClock.advanceTimeBy(5_000)
     Thread.sleep(500)
     waitForIdle()
@@ -120,11 +115,9 @@ class FirstLaunchGateTest {
     waitUntil(timeoutMillis = 10_000) { requests.get() > 0 }
     onNodeWithTag(FirstLaunchTag).assertDoesNotExist()
     assertTrue(KoinPlatform.getKoin().get<FirstLaunch>().accepted.value)
-    // The update check (#209) waits for Continue too, then asks GitHub once; its 404 here is "no update".
     waitUntil(timeoutMillis = 10_000) { "api.github.com" in hosts }
   }
 
-  /** #208: a crash before Continue (on this screen, say) is offered once the screen is accepted, never over it. */
   @Test
   fun aCrashNoticeWaitsForContinueThenDismissStartsTheApp() = runComposeUiTest {
     CrashReports(crashFile).record(IllegalStateException())
@@ -137,7 +130,6 @@ class FirstLaunchGateTest {
     onNodeWithTag(FirstLaunchContinueTag).performClick()
     waitForIdle()
     onNodeWithTag(CrashNoticeTag).assertIsDisplayed()
-    // In place of the app: nothing of the shell has started, so nothing went to Sankaku.
     mainClock.advanceTimeBy(5_000)
     Thread.sleep(500)
     waitForIdle()
@@ -161,7 +153,6 @@ class FirstLaunchGateTest {
     assertFalse(KoinPlatform.getKoin().get<FirstLaunch>().accepted.value)
     onNodeWithTag(FirstLaunchTag).assertIsDisplayed()
     assertEquals(0, requests.get())
-    // The next launch asks again.
     assertFalse(FirstLaunch(firstLaunchFile).accepted.value)
   }
 

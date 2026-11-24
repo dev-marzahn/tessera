@@ -12,7 +12,6 @@ class MainActivity : ComponentActivity() {
     (application as SankakuApplication).startKoinOnce(intent)
 
     setContent {
-      // Quit on the first-launch screen: the app closes and leaves Recents, as a swipe-away would.
       App(onQuit = ::finishAndRemoveTask)
     }
   }

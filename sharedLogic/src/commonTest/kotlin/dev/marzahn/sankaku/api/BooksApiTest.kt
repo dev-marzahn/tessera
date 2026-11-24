@@ -115,7 +115,6 @@ class BooksApiTest {
 
   @Test
   fun booksOfAPostAskTheWebAppsWayAndDecodeTheBooks() = runTest {
-    // The web app's `/post/{id}/pools` (#475), which takes the desktop's obfuscated id, unlike `/pools/keyset?post_id=`.
     val found = books.booksOf("aB3dE5gH7jK")
     assertEquals(1, harness.requestsTo("/post/aB3dE5gH7jK/pools").size)
     assertEquals(listOf("bK2mN4pQ6rT"), found.map { it.id })
@@ -171,7 +170,6 @@ class BooksApiTest {
   private companion object {
     val LENIENT = Json { ignoreUnknownKeys = true }
 
-    /** Shaped like `:cli` step b2 (2026-11-06), cut to the fields the app reads plus a few it doesn't. */
     val LIST = """
       { "page": 1,
         "series": { "totalCount": "1", "data": [

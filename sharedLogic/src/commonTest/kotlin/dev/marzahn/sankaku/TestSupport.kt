@@ -51,7 +51,6 @@ fun MockRequestHandleScope.json(body: String, status: HttpStatusCode = HttpStatu
 fun MockRequestHandleScope.html(status: HttpStatusCode = HttpStatusCode.OK): HttpResponseData =
   respond("<html>Just a moment</html>", status, headersOf(HttpHeaders.ContentType, ContentType.Text.Html.toString()))
 
-/** Both clients over one [MockEngine], as the app wires them, with no rate limits and no pause after a 429. */
 class Harness(
   val store: TokenStore = InMemoryTokenStore(),
   limiter: RateLimiter = RateLimiter(limits = emptyMap(), defaultPause = Duration.ZERO),
@@ -108,7 +107,6 @@ object Fixtures {
     }
   """.trimIndent()
 
-  /** `/posts/{id}`: a bare post object with every tag, unlike the keyset list's 5. */
   fun fullPost(id: String = "p1", tagCount: Int = 59, fileUrl: String = "https://s.sankakucomplex.com/data/01/23/x.png?e=2&m=b"): String {
     val tags = (1..tagCount).joinToString(",") {
       """{ "id": "t$it", "name": "Tag $it", "tagName": "tag_$it", "type": ${it % 5}, "post_count": ${it * 10} }"""
@@ -137,7 +135,6 @@ object Fixtures {
 
   const val USER_ME = """{ "success": true, "user": { "id": "42", "name": "tester", "avatar_url": "https://a/b.png" } }"""
 
-  /** Shaped like discovery `d1-autocomplete`: a bare array. With `tag=-…` the API prefixes `name`, not `tagName`. */
   fun autocomplete(excluded: Boolean = false): String {
     val dash = if (excluded) "-" else ""
     return """

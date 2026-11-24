@@ -14,7 +14,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The "Your queue" page (#559): its heading, its four points for TalkBack, the sketch silent, and Start. */
 @OptIn(ExperimentalTestApi::class)
 class QueueIntroTest {
   @Test
@@ -24,7 +23,6 @@ class QueueIntroTest {
 
     onNodeWithText(QueueIntroTitle).assert(isHeading())
     QueueIntroPoints.forEach { onNodeWithText(it).assertExists() }
-    // The sketch is decoration: its rows aren't read out.
     onAllNodesWithText("Kept post").assertCountEquals(0)
 
     assertTrue(intro.shown.value)

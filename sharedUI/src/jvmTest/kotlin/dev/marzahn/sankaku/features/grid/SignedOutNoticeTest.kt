@@ -19,10 +19,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
-/**
- * #507: signed out, posts hidden from signed-out users are left out of the grid, and one line above it says so with
- * Sign in, instead of a "Sign in to view" cell for each.
- */
 @OptIn(ExperimentalTestApi::class)
 class SignedOutNoticeTest {
   private fun run(fixture: GridScreenFixture, test: ComposeUiTest.() -> Unit) {

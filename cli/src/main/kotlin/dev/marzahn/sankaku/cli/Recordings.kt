@@ -4,21 +4,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 
-/** What a discovery step observed: status, top-level JSON keys and an optional step-specific marker. */
 @Serializable
 data class Recorded(val status: Int, val keys: List<String>, val marker: String? = null)
 
-/**
- * `docs/api-recorded.json`. A missing entry is recorded and passes; later runs pass only if the observation equals
- * the stored one, so a failure means the API changed. `--rerecord` overwrites every entry it observes.
- */
 class Recordings(private val file: File, private val rerecord: Boolean) {
   private val json = Json { prettyPrint = true }
   private val entries: MutableMap<String, Recorded> =
     if (file.exists()) json.decodeFromString<Map<String, Recorded>>(file.readText()).toMutableMap() else mutableMapOf()
   private var dirty = false
 
-  /** Returns whether the step passes, and its note. */
   fun check(id: String, observed: Recorded): Pair<Boolean, String> {
     val stored = entries[id]
     return when {

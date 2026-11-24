@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
-/** Material Symbols Outlined `local_fire_department` (weight 400, grade 0, optical size 24). */
 public val local_fire_department: ImageVector
   get() {
     if (_local_fire_department != null) {

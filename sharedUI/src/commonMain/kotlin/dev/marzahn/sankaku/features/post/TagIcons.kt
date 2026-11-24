@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** A Material Symbols glyph from its path in the symbols' 0 -960 960 960 viewBox. */
 private fun symbol(name: String, path: String): ImageVector =
   ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 960f, viewportHeight = 960f)
     .addGroup(translationY = 960f)
@@ -14,7 +13,6 @@ private fun symbol(name: String, path: String): ImageVector =
     .clearGroup()
     .build()
 
-/** A followed tag (Material Symbols `notifications`, filled). */
 val TagFollowed: ImageVector by lazy {
   symbol(
     "notifications_filled",
@@ -23,7 +21,6 @@ val TagFollowed: ImageVector by lazy {
   )
 }
 
-/** Follow a tag (Material Symbols `notifications`, outlined). */
 val TagFollow: ImageVector by lazy {
   symbol(
     "notifications",
@@ -33,10 +30,8 @@ val TagFollow: ImageVector by lazy {
   )
 }
 
-/** Exclude a tag from the search (Material Symbols `remove`). */
 val TagExclude: ImageVector by lazy { symbol("remove", "M200-440v-80h560v80H200Z") }
 
-/** Copy a tag's name (Material Symbols `content_copy`, outlined). */
 val TagCopy: ImageVector by lazy {
   symbol(
     "content_copy",

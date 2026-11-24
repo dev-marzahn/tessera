@@ -65,7 +65,6 @@ class BookFavouritesTest {
     h.session.restore()
     val favourites = BookFavourites(BooksApi(h.mainClient), h.session, backgroundScope)
 
-    // ♡, then un-♡ before the first call answers: the second starts from the first's optimistic state.
     val first = async { favourites.toggle(book) }
     runCurrent()
     val second = async { favourites.toggle(book) }
@@ -74,7 +73,6 @@ class BookFavouritesTest {
     assertTrue(first.await().isFailure)
     assertTrue(second.await().isFailure)
 
-    // Not the first tap's ♡, which the server never had.
     assertEquals(BookFavourite(on = false, count = 10), favourites.current(book))
   }
 
@@ -86,7 +84,6 @@ class BookFavouritesTest {
     favourites.toggle(book)
     assertEquals(BookFavourite(on = true, count = 11), favourites.current(book))
 
-    // Un-♡ed on the website since: the next load says so, and wins.
     val reloaded = book.copy(isFavorited = false, favCount = 10)
     favourites.fresh({ reloaded }) { listOf(it) }
     assertEquals(BookFavourite(on = false, count = 10), favourites.current(reloaded))
@@ -104,7 +101,6 @@ class BookFavouritesTest {
     val toggle = async { favourites.toggle(book) }
     runCurrent()
 
-    // A load that answers while the ♡ is on its way, and one sent before it settles that answers after.
     favourites.fresh({ book }) { listOf(it) }
     assertEquals(true, favourites.current(book).on, "a ♡ on its way stays")
     val load = CompletableDeferred<BookDto>()

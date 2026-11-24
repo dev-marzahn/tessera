@@ -9,7 +9,6 @@ import kotlinx.serialization.Serializable
 
 enum class Variant { Preview, Sample, File }
 
-/** Image URLs from a refetch, newer than the ones in the paged list. */
 data class PostUrls(val preview: String?, val sample: String?, val file: String?) {
   fun forVariant(variant: Variant): String? = when (variant) {
     Variant.Preview -> preview
@@ -18,16 +17,9 @@ data class PostUrls(val preview: String?, val sample: String?, val file: String?
   }
 }
 
-/** The account's vote on a post (null: none) with the post's totals it gives. */
 @Serializable
 data class VoteState(val userVote: Int?, val voteCount: Int, val totalScore: Int)
 
-/**
- * What changed about a post after it was loaded. [generation] identifies the latest favourite toggle, so an older
- * toggle's API result never overwrites a newer one; [voteGeneration] does the same for votes. [inFlight] and
- * [voteInFlight] also hold while the change waits in the [Outbox] to be sent, so a list loaded meanwhile doesn't
- * undo it.
- */
 data class PostOverride(
   val isFavourited: Boolean? = null,
   val favCount: Int? = null,
@@ -45,7 +37,6 @@ fun PostDto.url(variant: Variant): String? = when (variant) {
   Variant.File -> fileUrl
 }
 
-/** The loaded post with its override applied. The paged list itself is never changed. */
 fun PostDto.merge(override: PostOverride?): PostDto {
   override ?: return this
   return copy(
@@ -60,18 +51,14 @@ fun PostDto.merge(override: PostOverride?): PostDto {
   )
 }
 
-/** [post]'s vote state, as a vote override holds it. */
 fun PostDto.voteState(): VoteState = VoteState(userVote, voteCount, totalScore)
 
-/** [post]'s image URLs, as a URL override holds them. */
 fun PostDto.urls(): PostUrls = PostUrls(previewUrl, sampleUrl, fileUrl)
 
-/** Per-post state that changes after loading, shared by every grid and post view. */
 class PostStateStore {
   private val _overrides = MutableStateFlow<Map<String, PostOverride>>(emptyMap())
   val overrides: StateFlow<Map<String, PostOverride>> = _overrides.asStateFlow()
 
-  /** Starts a favourite toggle: returns its generation, which [setFavourite] must match. */
   fun beginToggle(id: String, value: Boolean, favCount: Int): Long {
     var generation = 0L
     _overrides.update { all ->
@@ -82,7 +69,6 @@ class PostStateStore {
     return generation
   }
 
-  /** Writes the outcome of the toggle [generation], unless a newer toggle started since. Returns whether it wrote. */
   fun setFavourite(id: String, value: Boolean, favCount: Int, inFlight: Boolean, generation: Long): Boolean {
     var written = false
     _overrides.update { all ->
@@ -94,7 +80,6 @@ class PostStateStore {
     return written
   }
 
-  /** Starts a vote: shows [vote] at once and returns its generation, which [setVote] must match. */
   fun beginVote(id: String, vote: VoteState): Long {
     var generation = 0L
     _overrides.update { all ->
@@ -105,10 +90,6 @@ class PostStateStore {
     return generation
   }
 
-  /**
-   * Writes the outcome of the vote [generation], unless a newer vote started since. [inFlight]: an earlier vote still
-   * waits to be sent.
-   */
   fun setVote(id: String, vote: VoteState, generation: Long, inFlight: Boolean = false) {
     _overrides.update { all ->
       val current = all[id] ?: return@update all
@@ -117,7 +98,6 @@ class PostStateStore {
     }
   }
 
-  /** The account's vote as a full post reports it (lists don't carry it), unless a vote is still in flight. */
   fun setServerVote(post: PostDto) {
     _overrides.update { all ->
       val current = all[post.id] ?: PostOverride()
@@ -126,10 +106,6 @@ class PostStateStore {
     }
   }
 
-  /**
-   * Shows the favourites and votes waiting in the [Outbox] as made, as they were before a restart or a clear: each as a
-   * toggle still running, so a list loaded meanwhile doesn't undo it.
-   */
   fun restorePending(changes: List<PendingChange>) {
     _overrides.update { all ->
       changes.fold(all) { acc, change ->
@@ -156,19 +132,11 @@ class PostStateStore {
     _overrides.update { all -> all + (post.id to (all[post.id] ?: PostOverride()).copy(urls = post.urls())) }
   }
 
-  /**
-   * Freshly listed [posts] carry the server's state, which their overrides take, so every copy loaded earlier (a
-   * full post, another grid's page) shows it too (#347). [whenAsked] is [overrides] when the list was asked for:
-   * a favourite, vote or URLs that were in flight then, or changed since, keep their override, as the list may
-   * predate them. A list doesn't carry the account's own vote, so that stays. Only the fields an override holds
-   * change: posts without an override get none, and one with only URLs or a vote gets no favourite.
-   */
   fun takeListed(posts: List<PostDto>, whenAsked: Map<String, PostOverride>) {
     _overrides.update { all ->
       posts.fold(all) { acc, post ->
         val current = acc[post.id] ?: return@fold acc
         val before = whenAsked[post.id] ?: PostOverride()
-        // Only a field the override holds: one it doesn't is left to the loaded copy, which a newer full post replaces.
         val favouriteSettled = current.isFavourited != null && !before.inFlight && !current.inFlight &&
           before.generation == current.generation
         val voteSettled = !before.voteInFlight && !current.voteInFlight && before.voteGeneration == current.voteGeneration &&

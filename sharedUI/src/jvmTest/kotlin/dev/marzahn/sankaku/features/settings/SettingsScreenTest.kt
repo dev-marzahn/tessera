@@ -39,6 +39,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.performSemanticsAction
 import dev.marzahn.sankaku.data.GridSettings
+import dev.marzahn.sankaku.data.CacheSettings
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.onAllNodesWithText
 import dev.marzahn.sankaku.features.post.PlayerPreferences
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ComposeUiTest
@@ -58,6 +61,7 @@ import dev.marzahn.sankaku.KNOWN_TAGS_FILE
 import dev.marzahn.sankaku.PLAYER_FILE
 import dev.marzahn.sankaku.PRIVACY_FILE
 import dev.marzahn.sankaku.QUEUE_FILE
+import dev.marzahn.sankaku.CACHE_FILE
 import dev.marzahn.sankaku.GRID_FILE
 import dev.marzahn.sankaku.REOPEN_HINT_FILE
 import dev.marzahn.sankaku.Route
@@ -112,10 +116,6 @@ import kotlin.test.assertFalse
 import kotlin.time.Clock
 import kotlin.test.assertTrue
 
-/**
- * Settings' screen (#205): its sections by heading, the platform's rows, and Storage's wipes each asking once. State and
- * semantics only; how it looks is checked in the running app.
- */
 @OptIn(ExperimentalTestApi::class)
 class SettingsScreenTest {
   private val shown = mutableListOf<String>()
@@ -128,7 +128,7 @@ class SettingsScreenTest {
       single { TokenStorageStatus.InMemory }
       single { DebugFlags() }
       single(CACHE_DIR) { cache.toOkioPath() }
-      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
+      listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<PlatformContext> { PlatformContext.INSTANCE }
@@ -136,7 +136,6 @@ class SettingsScreenTest {
     val fixtures = module {
       single<HttpClientEngine> { MockEngine { respondError(HttpStatusCode.NotFound) } }
       single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
-      // postModule's, which the rest of that module's view models would drag in.
       single { PlayerPreferences(get(PLAYER_FILE)) }
     }
     startKoin { modules(sharedModule, platform, shellModule, authModule, fixtures) }
@@ -156,7 +155,6 @@ class SettingsScreenTest {
     waitForIdle()
   }
 
-  /** The desktop's Settings sheet (#460), open. */
   @androidx.compose.runtime.Composable
   private fun OpenSheet() {
     val controller = koinInject<SettingsController>()
@@ -177,10 +175,8 @@ class SettingsScreenTest {
 
     assertHeadings(
       present = listOf("Settings", "Account", "Privacy", "Queue", "Grid", "Videos", "Keyboard", "Storage", "Updates", "Diagnostics", "About"),
-      // Accessibility is the phone's.
       absent = listOf("Accessibility"),
     )
-    // Keyboard's one row opens the shortcut sheet (#521).
     onNodeWithText(KeyboardShortcutsHelp).assertExists()
     onNodeWithText("Keyboard shortcuts").performScrollTo().performClick()
     assertEquals(true, KoinPlatform.getKoin().get<ShortcutSheetController>().isOpen.value)
@@ -200,7 +196,6 @@ class SettingsScreenTest {
   fun postSizeHelpCountsTheColumns() {
     assertEquals("Larger posts, fewer columns. 1 column in this window.", postSizeHelp(1))
     assertEquals("Larger posts, fewer columns. 4 columns in this window.", postSizeHelp(4))
-    // A phone's has no windows (#468).
     assertEquals("Larger posts, fewer columns. 3 columns on this screen.", postSizeHelp(3, touch = true))
   }
 
@@ -209,7 +204,6 @@ class SettingsScreenTest {
     val player = KoinPlatform.getKoin().get<PlayerPreferences>()
     show { Column { SettingsSections(touch = true) } }
 
-    // The whole row is the switch; it's below the test window, so it's toggled by its action.
     val row = onNode(hasText("Start videos muted") and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
     row.assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
     assertFalse(player.startMuted)
@@ -224,7 +218,6 @@ class SettingsScreenTest {
 
     assertHeadings(
       present = listOf("Account", "Privacy", "Queue", "Grid", "Videos", "Accessibility", "Storage", "Updates", "Diagnostics", "About"),
-      // A phone has no keyboard shortcuts.
       absent = listOf("Keyboard"),
     )
     onNodeWithText("Hide in Recents").assertExists()
@@ -238,7 +231,6 @@ class SettingsScreenTest {
 
   @Test
   fun aPhonesPostSizeSliderHasThePhonesRangeAndSteps() = runComposeUiTest {
-    // Android's GridSettings (#468): 80 to 200 dp in 10 dp steps.
     val grid = GridSettings(InMemoryTextFile(), PostSizes.Phone)
     KoinPlatform.getKoin().loadModules(listOf(module { single { grid } }), allowOverride = true)
     grid.setCellWidth(110)
@@ -284,7 +276,6 @@ class SettingsScreenTest {
 
     onNodeWithText("Clear saved tabs…").performScrollTo().performClick()
     waitForIdle()
-    // The dialog's button, not the row behind it.
     onNode(hasText("Clear saved tabs", substring = false)).performClick()
     waitForIdle()
     onNodeWithText("Clear saved tabs?").assertDoesNotExist()
@@ -305,7 +296,25 @@ class SettingsScreenTest {
     onNodeWithText("Cache in use: Empty").assertExists()
   }
 
-  /** An update check that already knows of `v999.0.0` from today's answer, so it asks nothing. */
+  @Test
+  fun theImageCacheRowShowsItsSizeAndTheDialogSetsIt() = runComposeUiTest {
+    show { OpenSheet() }
+
+    onNodeWithTag(ImageCacheRowTag).performScrollTo()
+    onNodeWithText("Up to 2 GB · empty").assertExists()
+    onNodeWithTag(VideoCacheRowTag).assertDoesNotExist()
+
+    onNodeWithTag(ImageCacheRowTag).performClick()
+    waitForIdle()
+    onNodeWithText("2 GB (default)").assertIsSelected()
+    onNodeWithText("8 GB").performClick()
+    waitForIdle()
+
+    onNodeWithText("8 GB").assertDoesNotExist()
+    waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Up to 8 GB · empty").fetchSemanticsNodes().isNotEmpty() }
+    assertEquals(8L * 1024 * 1024 * 1024, KoinPlatform.getKoin().get<CacheSettings>().imageBytes.value)
+  }
+
   private fun knowsOfANewerRelease(): UpdateCheck {
     val file = InMemoryTextFile(
       """{ "lastCheckEpochMs": ${Clock.System.now().toEpochMilliseconds()}, "latestVersion": "999.0.0",
@@ -369,11 +378,6 @@ class SettingsScreenTest {
     onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, UPDATE_AVAILABLE_DOT)).assertDoesNotExist()
   }
 
-  /**
-   * The desktop window, as `ComposeSceneMediator` hands it a key: the scene first (its focused layer: an open dialog,
-   * else the window's content), then the window's `onKeyEvent` (Main.kt sets none that takes Esc), then the back
-   * dispatcher, whose last-added handler gets it.
-   */
   private class TestWindow : NavigationEventInput() {
     var tabCloses = 0
 
@@ -390,7 +394,6 @@ class SettingsScreenTest {
     }
   }
 
-  /** The Settings sheet as the desktop window holds it (Main.kt), with [window] delivering its keys. */
   private fun ComposeUiTest.showTheSettingsSheet(window: TestWindow) = show {
     val dispatcher = LocalNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
     DisposableEffect(dispatcher) {
@@ -432,12 +435,10 @@ class SettingsScreenTest {
     val window = TestWindow()
     showTheSettingsSheet(window)
 
-    // Fresh, with the keys on the sheet's holder.
     window.pressEsc(this)
     assertFalse(settingsOpen)
     onNodeWithText("Clear cache…").assertDoesNotExist()
 
-    // And once a dialog has come and gone, with focus left on its row.
     KoinPlatform.getKoin().get<SettingsController>().open()
     waitForIdle()
     onNodeWithText("Clear cache…").performScrollTo().performClick()
@@ -459,7 +460,6 @@ class SettingsScreenTest {
 
     KoinPlatform.getKoin().get<SettingsController>().open()
     waitForIdle()
-    // Left of the 480 dp sheet.
     onNodeWithTag(SideSheetScrimTag).performTouchInput { click(centerLeft + Offset(20f, 0f)) }
     waitForIdle()
     assertFalse(settingsOpen)
@@ -471,7 +471,6 @@ class SettingsScreenTest {
     show { OpenSheet() }
     val scene = (this as SkikoComposeUiTest).scene
 
-    // On the sheet itself, as the mouse's back button reaches it over a setting.
     val at = onNodeWithTag(SettingsScrollTag).getUnclippedBoundsInRoot()
     val position = with(density) { Offset((at.left + 40.dp).toPx(), (at.top + 40.dp).toPx()) }
     runOnIdle {
@@ -493,13 +492,11 @@ class SettingsScreenTest {
     assertEquals(SideSheetWidth, sheet.right - sheet.left)
   }
 
-  /** How far Settings is scrolled, and how far it can go. */
   private fun ComposeUiTest.scrolled(): Pair<Float, Float> {
     val range = onNodeWithTag(SettingsScrollTag).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
     return range.value() to range.maxValue()
   }
 
-  /** The sheet's sections in a window shorter than they are, as at 1280 × 832 (#423). */
   private fun ComposeUiTest.showShortSettings() =
     show { Box(Modifier.size(480.dp, 400.dp)) { SettingsColumn(onClearedEverything = {}, Modifier.fillMaxSize()) } }
 
@@ -527,7 +524,6 @@ class SettingsScreenTest {
     waitForIdle()
     assertEquals(0f, scrolled().first, "W didn't come back to the top")
 
-    // The arrows too, and the shell's chords pass.
     keys.performKeyInput { pressKey(Key.DirectionDown) }
     waitForIdle()
     assertEquals(line, scrolled().first)
@@ -575,7 +571,6 @@ class SettingsScreenTest {
     waitForIdle()
     onNodeWithText("Always start in G only").assertIsFocused()
 
-    // On round the window, which here is the Settings alone: the account row is a stop again.
     var presses = 0
     while (presses < 40 && !onNodeWithText("Sign in").fetchSemanticsNode().config.getOrElse(SemanticsProperties.Focused) { false }) {
       keys.performKeyInput { pressKey(Key.Tab) }
@@ -583,7 +578,6 @@ class SettingsScreenTest {
       presses++
     }
     onNodeWithText("Sign in").assertIsFocused()
-    // And Tab from the account row goes on to the first setting.
     keys.performKeyInput { pressKey(Key.Tab) }
     waitForIdle()
     onNodeWithText("Always start in G only").assertIsFocused()
@@ -605,7 +599,6 @@ class SettingsScreenTest {
     assertEquals(-1000 * KEY_SCROLL_SCREEN, step(Key.W, shift = true))
     assertEquals(null, step(Key.S, ctrl = true))
     assertEquals(null, step(Key.S, up = true))
-    // Shift+A/D is the shell's.
     assertEquals(null, step(Key.D, shift = true))
   }
 

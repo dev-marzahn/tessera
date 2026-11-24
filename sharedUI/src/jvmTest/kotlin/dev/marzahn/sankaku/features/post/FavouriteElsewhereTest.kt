@@ -34,12 +34,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
-/**
- * #347: favourite a post, open one of its tags now (a search whose page lists the post again), then come back to the
- * post by each route: the post's sheet (back through the queue, or reopened from Recently closed, both a new
- * [PostViewModel] on the held copy), the queue page's knowledge of it ([CachedTabPosts]) and the grid it was favourited
- * from. Each shows it favourited.
- */
 class FavouriteElsewhereTest {
   private val now = Instant.parse("2026-11-03T12:00:00Z")
   private val clock = object : Clock {
@@ -86,12 +80,10 @@ class FavouriteElsewhereTest {
 
   @Test
   fun aFavouriteShowsByEveryRouteBackAfterATagIsOpened() = runBlocking {
-    // The grid the post was opened from, then the post's sheet with its full copy, both before the favourite.
     val origin = repository.gridStart(listOf("artist")).single()
     val full = repository.fullPost("p1")
     assertTrue(repository.toggleFavourite(full).isSuccess)
 
-    // A tap on blue_hair opens that search now: its first page lists the post.
     repository.gridStart(listOf("blue_hair"))
 
     val sheet = PostViewModel("p1", repository, store, session)
