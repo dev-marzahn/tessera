@@ -50,7 +50,6 @@ import dev.marzahn.sankaku.ui.components.BottomRowLayout
 import dev.marzahn.sankaku.ui.components.TipLayer
 import dev.marzahn.sankaku.ui.components.CLOSE_LABEL
 import dev.marzahn.sankaku.ui.components.REOPEN_LABEL
-import dev.marzahn.sankaku.ui.components.UNDO_CLOSE_LABEL
 import dev.marzahn.sankaku.ui.UserGestures
 import dev.marzahn.sankaku.ui.observeGestures
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
@@ -212,6 +211,39 @@ class QueueBarTest {
     runAction(UNDO_CLOSE_LABEL)
     assertEquals(listOf("Browse", "A", "B"), tabs.tabs.value.map { it.title })
     assertEquals("A", tabs.activeTab.title)
+  }
+
+  @Test
+  fun aCloseOfSeveralIsAnnouncedWithItsCount() = runComposeUiTest {
+    showBar(endsAtNextAction = false)
+    runOnIdle { tabs.closeAll(tabs.tabs.value.drop(1).map { it.id })?.let { undo.opened(it) } }
+
+    onNode(liveRegion("Closed 2 items. Undo available")).assertExists()
+    onNodeWithContentDescription(UNDO_CLOSE_LABEL).assertExists()
+  }
+
+  @Test
+  fun theUndoAfterAnUnkeepSaysWhatItUndoes() = runComposeUiTest {
+    showBar(endsAtNextAction = false)
+    runOnIdle { undo.close(tabs.activeTab.id, Closing.Unkept) }
+
+    onNode(liveRegion("Removed from queue. Undo available")).assertExists()
+    onNodeWithContentDescription("Undo remove").assertHasClickAction()
+    assertTrue("Undo remove" in actions())
+  }
+
+  @Test
+  fun theUndoKeepsItsWordsWhileItLeaves() = runComposeUiTest {
+    mainClock.autoAdvance = false
+    showBar(endsAtNextAction = false)
+    runOnIdle { undo.close(tabs.activeTab.id, Closing.Unkept) }
+    mainClock.advanceTimeBy(1_000)
+
+    runOnIdle { undo.undo() }
+    mainClock.advanceTimeByFrame()
+
+    onNodeWithContentDescription("Undo remove").assertExists()
+    onNodeWithContentDescription(UNDO_CLOSE_LABEL).assertDoesNotExist()
   }
 
   @Test

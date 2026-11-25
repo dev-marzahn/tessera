@@ -280,7 +280,7 @@ class SortDeck(
     val wasGoneIn = goneIn == id && !inKept
     val closed = tabs.close(id) ?: return
     if (!wasCard && !wasGoneIn) {
-      undo.opened(closed, alsoUndo)
+      undo.opened(closed, alsoUndo = alsoUndo)
       return
     }
     if (wasGoneIn) {
@@ -455,7 +455,7 @@ class SortDeck(
   }
 
   private fun answerDone(id: TabId, closed: ClosedTab?, alsoUndo: (() -> Unit)? = null, followed: Boolean = false) {
-    closed?.let { undo.opened(it, alsoUndo) }
+    closed?.let { undo.opened(it, alsoUndo = alsoUndo) }
     val kind = if (followed) Answer.Kind.Followed else Answer.Kind.Done
     answer(kind)
     lastLater = null

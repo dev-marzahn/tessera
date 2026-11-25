@@ -6,10 +6,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.marzahn.sankaku.ui.Message
@@ -36,7 +34,7 @@ class ClosedTabUndo(
   private val messages: Messages? = null,
   private val gestures: UserGestures? = null,
 ) {
-  data class Pending(val closed: ClosedTab, val serial: Int, val alsoUndo: (() -> Unit)? = null)
+  data class Pending(val closed: ClosedTab, val serial: Int, val closing: Closing, val alsoUndo: (() -> Unit)? = null)
 
   private val _pending = MutableStateFlow<Pending?>(null)
   val pending: StateFlow<Pending?> = _pending.asStateFlow()
@@ -64,9 +62,8 @@ class ClosedTabUndo(
     }
   }
 
-  fun close(id: TabId, alsoUndo: (() -> Unit)? = null) {
-    opened(controller.close(id) ?: return, alsoUndo)
-  }
+  fun close(id: TabId, closing: Closing = Closing.Closed, alsoUndo: (() -> Unit)? = null): ClosedTab? =
+    controller.close(id)?.also { opened(it, closing, alsoUndo) }
 
   fun closeBack(id: TabId): Boolean = controller.closeBackSaying(id, messages)
 
@@ -81,32 +78,20 @@ class ClosedTabUndo(
     if (pane != null) upNext.showAhead(pane) else if (controller.keptRunOver()) upNext.showKeptEnd()
   }
 
-  fun opened(closed: ClosedTab, alsoUndo: (() -> Unit)? = null) {
-    _pending.value = Pending(closed, ++serial, alsoUndo)
-  }
-
-  private var lineUndos by mutableIntStateOf(0)
-
-  val undoOnLine: Boolean get() = lineUndos > 0
-
-  fun offerOnLine(closed: ClosedTab, text: String) {
-    val messages = messages ?: return
-    val until: suspend () -> Unit = {
-      lineUndos++
-      try {
-        awaitNextAction()
-      } finally {
-        lineUndos--
-      }
-    }
-    messages.show(Message(text, actionLabel = "Undo", until = until) { controller.reopen(closed, inPlace = true) })
+  fun opened(closed: ClosedTab, closing: Closing = Closing.Closed, alsoUndo: (() -> Unit)? = null) {
+    _pending.value = Pending(closed, ++serial, closing, alsoUndo)
   }
 
   fun undo() {
     val pending = _pending.value ?: return
-    end(pending)
-    controller.reopen(pending.closed)
-    pending.alsoUndo?.invoke()
+    undo(pending.closed, pending.closing)
+  }
+
+  fun undo(closed: ClosedTab, closing: Closing) {
+    val pending = _pending.value?.takeIf { it.closed == closed }
+    pending?.let(::end)
+    controller.reopen(closed, closing)
+    pending?.alsoUndo?.invoke()
   }
 
   fun reopenLatest(): Boolean {
@@ -128,8 +113,6 @@ class ClosedTabUndo(
     _pending.update { if (it == pending) null else it }
   }
 }
-
-const val UNKEPT = "Removed from queue"
 
 const val KEEP_FOR_LATER = "Keep for later"
 

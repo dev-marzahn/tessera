@@ -76,7 +76,6 @@ import kotlin.time.Clock
 import dev.marzahn.sankaku.data.GridPlace
 import dev.marzahn.sankaku.data.PageCursor
 import dev.marzahn.sankaku.tabs.ClosedTabUndo
-import dev.marzahn.sankaku.tabs.UNKEPT
 import dev.marzahn.sankaku.tabs.FeedCatchUp
 import dev.marzahn.sankaku.api.Feed
 import dev.marzahn.sankaku.tabs.DescribeTab
@@ -289,7 +288,7 @@ fun GridScreen(
           followInstead.followAndClose(tab) { unfollow ->
             when {
               sorting -> sort.followedInstead(tab.id, unfollow)
-              platformIsTouch -> closeUndo.close(tab.id, unfollow)
+              platformIsTouch -> closeUndo.close(tab.id, alsoUndo = unfollow)
               else -> tabs.close(tab.id)
             }
           }
@@ -422,9 +421,8 @@ fun GridScreen(
 
   fun unkeep(post: PostDto): Boolean {
     if (!platformIsTouch) return false
-    val closed = unkeepPost(post, tabs, keptCopyOf) ?: return false
+    if (!unkeepPost(post, tabs, closeUndo, keptCopyOf)) return false
     markTouched()
-    closeUndo.offerOnLine(closed, UNKEPT)
     return true
   }
 

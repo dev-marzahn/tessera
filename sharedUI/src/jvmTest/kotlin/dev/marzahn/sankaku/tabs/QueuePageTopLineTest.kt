@@ -28,7 +28,6 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.components.AppSnackbarVisuals
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import java.io.File
@@ -54,17 +53,16 @@ class QueuePageTopLineTest {
         SankakuTheme {
           val snackbar = remember { SnackbarHostState() }
           LaunchedEffect(snackbar) {
-            snackbar.showSnackbar(AppSnackbarVisuals("Cleared 3", "Undo", duration))
+            snackbar.showSnackbar(AppSnackbarVisuals("Unfavourited", "Undo", duration))
           }
           Box(Modifier.fillMaxSize()) {
             QueuePageAndTopLine(snackbar, open.value) { onListTop ->
-              QueuePage(
+              PhoneQueuePage(
                 onDismiss = {},
                 controller = tabs,
                 posts = TabPosts.None,
                 privacy = privacy,
                 seen = seen,
-                clearViewed = ClearViewed(tabs, seen, Messages()),
                 interacted = { false },
                 onInteract = {},
                 onListTop = onListTop,
@@ -76,7 +74,7 @@ class QueuePageTopLineTest {
     }
     if (duration != SnackbarDuration.Indefinite) return
     waitForIdle()
-    onNodeWithText("Cleared 3").assertExists()
+    onNodeWithText("Unfavourited").assertExists()
     System.getenv("EVIDENCE_DIR")?.let { dir ->
       ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(dir, "queue-top-line-${if (open.value) "page" else "closed"}.png"))
     }
@@ -87,7 +85,7 @@ class QueuePageTopLineTest {
   @Test
   fun theMessageSitsBelowTheHeader() = runDesktopComposeUiTest(width = PHONE_WIDTH, height = PHONE_HEIGHT) {
     show()
-    val message = onNodeWithText("Cleared 3").getBoundsInRoot()
+    val message = onNodeWithText("Unfavourited").getBoundsInRoot()
     for (control in header) {
       val bounds = onNodeWithContentDescription(control).getBoundsInRoot()
       println("$control: bottom ${bounds.bottom}, message top ${message.top}")
@@ -122,7 +120,7 @@ class QueuePageTopLineTest {
   @Test
   fun theMessageStillShowsAtTheTopElsewhere() = runDesktopComposeUiTest(width = PHONE_WIDTH, height = PHONE_HEIGHT) {
     show(open = mutableStateOf(false))
-    val top = onNodeWithText("Cleared 3").getBoundsInRoot().top
+    val top = onNodeWithText("Unfavourited").getBoundsInRoot().top
     println("message top, page closed: $top")
     assertTrue(top < 40.dp, "at $top")
   }
@@ -133,13 +131,13 @@ class QueuePageTopLineTest {
     val open = mutableStateOf(true)
     show(open = open, duration = SnackbarDuration.Short)
     mainClock.advanceTimeBy(3_000)
-    onNodeWithText("Cleared 3").assertExists()
+    onNodeWithText("Unfavourited").assertExists()
     open.value = false
     mainClock.advanceTimeBy(200)
-    onNodeWithText("Cleared 3").assertExists()
-    assertTrue(onNodeWithText("Cleared 3").getBoundsInRoot().top < 40.dp)
+    onNodeWithText("Unfavourited").assertExists()
+    assertTrue(onNodeWithText("Unfavourited").getBoundsInRoot().top < 40.dp)
     mainClock.advanceTimeBy(2_000)
-    onNodeWithText("Cleared 3").assertDoesNotExist()
+    onNodeWithText("Unfavourited").assertDoesNotExist()
   }
 }
 

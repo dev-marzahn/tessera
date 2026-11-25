@@ -1,5 +1,13 @@
 package dev.marzahn.sankaku.tabs
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -7,27 +15,32 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.api.Feed
 import dev.marzahn.sankaku.data.InMemoryTextFile
-import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.shell.MenuBadge
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -45,6 +58,8 @@ class QueuePageTest {
     open(Route.Grid(listOf("a")), background = true)
     open(Route.Grid(listOf("b")), background = true)
   }
+  private val pill = ClosedTabUndo(tabs)
+  private val clearViewed = ClearViewed(tabs, seen, ClearedUndo { pill.opened(it, Closing.Cleared) })
 
   private fun titles() = tabs.tabs.value.map { it.title }
 
@@ -52,11 +67,17 @@ class QueuePageTest {
     onDismiss: () -> Unit = {},
     onMenu: (() -> Unit)? = null,
     menuBadge: MenuBadge = MenuBadge.None,
+    onSort: (() -> Unit)? = null,
+    fontScale: Float = 1f,
+    size: DpSize = DpSize(PHONE_WIDTH, Dp.Unspecified),
   ) {
-    val privacy = PrivacySettings(InMemoryTextFile())
     setContent {
-      SankakuTheme {
-        QueuePage(onDismiss = onDismiss, onMenu = onMenu, menuBadge = menuBadge, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen, clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { false }, onInteract = {}, folding = false)
+      CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+        SankakuTheme {
+          Box(Modifier.width(size.width).height(size.height)) {
+            PhoneQueuePage(controller = tabs, onDismiss = onDismiss, onMenu = onMenu, menuBadge = menuBadge, seen = seen, undo = pill, clearViewed = clearViewed, folding = false, onSort = onSort)
+          }
+        }
       }
     }
     waitForIdle()
@@ -342,6 +363,224 @@ class QueuePageTest {
   }
 
   @Test
+  fun thePillsUndoAfterASwipeBringsTheItemBackInPlace() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    show()
+
+    closeRow("Rosehip")
+    runOnIdle { pill.undo() }
+    waitForIdle()
+
+    assertEquals(listOf("Browse", "A", "B", "Rosehip"), titles())
+    assertEquals("Browse", tabs.tabs.value.first { it.id == tabs.active.value }.title)
+    assertNull(pill.pending.value)
+  }
+
+  @Test
+  fun theUndoTakesFocusOnlyTheFirstTimeItShows() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show()
+
+    onNodeWithContentDescription("Clear viewed, 1 kept post").performClick()
+    waitForIdle()
+    onNodeWithContentDescription(UNDO_ONE).assertIsFocused()
+
+    onNodeWithContentDescription("Find in queue").performClick()
+    waitForIdle()
+    onNodeWithContentDescription("Close find").performClick()
+    waitForIdle()
+
+    onNodeWithContentDescription(UNDO_ONE).assertExists()
+    onNodeWithContentDescription(UNDO_ONE).assertIsNotFocused()
+  }
+
+  @Test
+  fun aClearWhileFindIsOpenFocusesTheUndoOnceFindCloses() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show()
+
+    onNodeWithContentDescription("Find in queue").performClick()
+    waitForIdle()
+    runOnIdle { clearViewed() }
+    waitForIdle()
+    onNodeWithContentDescription("Close find").performClick()
+    waitForIdle()
+
+    onNodeWithContentDescription(UNDO_ONE).assertIsFocused()
+  }
+
+  @Test
+  fun theUndoSaysWhatWasClearedAndAnnouncesIt() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show()
+
+    onNodeWithContentDescription("Clear viewed, 1 kept post").performClick()
+    waitForIdle()
+
+    val undo = onNodeWithContentDescription(UNDO_ONE)
+    undo.assertHasClickAction()
+    val config = undo.fetchSemanticsNode().config
+    assertFalse(SemanticsProperties.Text in config, "the label \"Undo · cleared 1\" isn't spoken as a second name")
+    assertEquals("Cleared 1 kept post", config[SemanticsProperties.StateDescription])
+    assertEquals(LiveRegionMode.Polite, config[SemanticsProperties.LiveRegion])
+  }
+
+  @Test
+  fun eachButtonHasOneName() = runComposeUiTest {
+    showOneViewedBesideSort()
+
+    LINE.forEach { name ->
+      val config = onNodeWithContentDescription(name).fetchSemanticsNode().config
+      val names = config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+        config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }
+      assertEquals(listOf(name), names)
+    }
+  }
+
+  @Test
+  fun clearViewedTurnsIntoTheUndoAndPutsTheWholeClearOnThePill() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    tabs.open(Route.Post("p2", "m2", listOf("a"), label = "Yarrow"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    seen.record("p2", "m2")
+    show()
+
+    onNodeWithContentDescription("Clear viewed, 2 kept posts").performClick()
+    waitForIdle()
+
+    assertEquals(listOf("Browse", "A", "B"), titles())
+    onNodeWithContentDescription("Clear viewed", substring = true).assertDoesNotExist()
+    onNodeWithContentDescription(UNDO_TWO).assertExists()
+    assertEquals(tabs.closed.value.last(), pill.pending.value?.closed)
+
+    onNodeWithContentDescription(UNDO_TWO).performClick()
+    waitForIdle()
+
+    assertEquals(listOf("Browse", "A", "B", "Rosehip", "Yarrow"), titles())
+    assertNull(pill.pending.value)
+    onNodeWithContentDescription(UNDO_TWO).assertDoesNotExist()
+    onNodeWithContentDescription("Clear viewed, 2 kept posts").assertExists()
+  }
+
+  private fun ComposeUiTest.showOneViewedBesideSort(fontScale: Float = 1f) {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show(onSort = {}, fontScale = fontScale)
+  }
+
+  private fun ComposeUiTest.showFourButtons(size: DpSize, fontScale: Float = 1f) {
+    tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
+    tabs.open(Route.Post("p2", "m2", listOf("a"), label = "Yarrow"), background = true)
+    tabs.tabs.value.last().markLater()
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show(onSort = {}, fontScale = fontScale, size = size)
+  }
+
+  private fun ComposeUiTest.assertOnePerRow(names: List<String>) {
+    val line = onNodeWithTag(QUEUE_ACTIONS_TAG).getBoundsInRoot()
+    val buttons = names.map { onNodeWithContentDescription(it).getBoundsInRoot() }
+    buttons.forEach {
+      assertEquals((line.left + 16.dp).value, it.left.value, 1f, "$it starts its line")
+      assertEquals((line.right - 16.dp).value, it.right.value, 1f, "$it ends its line")
+      assertTrue((it.bottom - it.top).value >= 48f, "$it is at least 48 dp")
+    }
+    buttons.zipWithNext().forEach { (above, below) -> assertTrue(below.top >= above.bottom, "$below under $above") }
+  }
+
+  private fun ComposeUiTest.assertOneLine(names: List<String>, height: Float) {
+    val line = onNodeWithTag(QUEUE_ACTIONS_TAG).getBoundsInRoot()
+    assertEquals(height, (line.bottom - line.top).value, 1f, "the line $line")
+    val buttons = names.map { onNodeWithContentDescription(it).getBoundsInRoot() }
+    buttons.forEach { assertTrue(it.top >= line.top && it.bottom <= line.bottom, "$it inside $line") }
+    buttons.zipWithNext().forEach { (before, after) -> assertTrue(after.left >= before.right, "$after after $before") }
+  }
+
+  private fun ComposeUiTest.assertTwoPerRow(names: List<String>) {
+    val rows = names.map { onNodeWithContentDescription(it).getBoundsInRoot() }.chunked(2)
+    rows.forEach { (start, end) ->
+      assertEquals(start.top, end.top, "$end beside $start")
+      assertTrue(end.left >= start.right, "$end after $start")
+      assertTrue((start.bottom - start.top).value >= 48f, "$start is at least 48 dp")
+    }
+    rows.zipWithNext().forEach { (above, below) -> assertTrue(below.first().top >= above.first().bottom, "$below under $above") }
+  }
+
+  @Test
+  fun sortClearViewedAndContinueShareOne72DpLine() = runComposeUiTest {
+    showOneViewedBesideSort()
+
+    assertOneLine(LINE, height = 72f)
+  }
+
+  @Test
+  fun afterAClearTheUndoTakesClearViewedsPlaceAndTheLineStays72Dp() = runComposeUiTest {
+    showOneViewedBesideSort()
+    val clear = onNodeWithContentDescription(CLEAR_VIEWED).getBoundsInRoot()
+
+    onNodeWithContentDescription(CLEAR_VIEWED).performClick()
+    waitForIdle()
+
+    assertOneLine(listOf(SORT, UNDO_ONE, CONTINUE), height = 72f)
+    assertEquals(clear, onNodeWithContentDescription(UNDO_ONE).getBoundsInRoot())
+  }
+
+  @Test
+  fun upToALargeFontTheLabelsWrapAndTheLineGrowsRatherThanCutThem() = runComposeUiTest {
+    showOneViewedBesideSort(fontScale = 1.3f)
+
+    val line = onNodeWithTag(QUEUE_ACTIONS_TAG).getBoundsInRoot()
+    assertTrue((line.bottom - line.top).value > 72f, "the line $line grows")
+    LINE.map { onNodeWithContentDescription(it).getBoundsInRoot() }.zipWithNext().forEach { (before, after) ->
+      assertEquals(before.top, after.top, "$after on $before's line")
+      assertEquals(before.bottom, after.bottom, "$after as tall as $before")
+    }
+  }
+
+  @Test
+  fun pastALargeFontEachButtonTakesAWholeLine() = runComposeUiTest {
+    showOneViewedBesideSort(fontScale = 1.5f)
+
+    assertOnePerRow(LINE)
+  }
+
+  @Test
+  fun fourButtonsOnANarrowPhoneGoTwoPerRowRatherThanWrapToThreeLines() = runComposeUiTest {
+    showFourButtons(DpSize(360.dp, Dp.Unspecified))
+
+    assertTwoPerRow(FOUR)
+  }
+
+  @Test
+  fun fourButtonsInTheLandscapeSideColumnAllShowWholeAndNeverFourAcross() = runComposeUiTest {
+    showFourButtons(LANDSCAPE)
+
+    val column = onNodeWithTag(SIDE_COLUMN_TAG).getBoundsInRoot()
+    val line = onNodeWithTag(QUEUE_ACTIONS_TAG).getBoundsInRoot()
+    val halfLine = (line.right - line.left - 32.dp - 8.dp) / 2
+    FOUR.map { onNodeWithContentDescription(it).getBoundsInRoot() }.forEach {
+      assertTrue(it.top >= column.top && it.bottom <= column.bottom, "$it whole in $column")
+      assertTrue(it.right - it.left >= halfLine - 1.dp, "$it at least half the line, not four across")
+    }
+  }
+
+  @Test
+  fun inTheLandscapeSideColumnAt130PercentContinueGetsAWholeLineRatherThanBreak() = runComposeUiTest {
+    showFourButtons(LANDSCAPE, fontScale = 1.3f)
+
+    onNodeWithTag(SIDE_COLUMN_TAG).assertExists()
+    assertOnePerRow(FOUR)
+  }
+
+  @Test
   fun undoOfTheCurrentRowsCloseMakesItCurrentAgain() = runComposeUiTest {
     tabs.activate(tabs.tabs.value[1].id)
     show()
@@ -391,3 +630,21 @@ class QueuePageTest {
     assertEquals(listOf("A", "Browse"), titles())
   }
 }
+
+private val PHONE_WIDTH = 412.dp
+
+private val LANDSCAPE = DpSize(915.dp, 388.dp)
+
+private const val SORT = "Sort 2 new"
+
+private const val CLEAR_VIEWED = "Clear viewed, 1 kept post"
+
+private const val CONTINUE = "Continue · Browse"
+
+private const val UNDO_ONE = "Undo · cleared 1, Undo clear"
+
+private const val UNDO_TWO = "Undo · cleared 2, Undo clear"
+
+private val LINE = listOf(SORT, CLEAR_VIEWED, CONTINUE)
+
+private val FOUR = listOf(SORT, "Clear viewed, 2 kept posts", "Go through later · 1", CONTINUE)

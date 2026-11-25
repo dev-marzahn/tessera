@@ -45,7 +45,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class TabStripAccessTest {
   private val tabs = TabsController()
-  private val clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages())
+  private val clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages()))
   private var width by mutableIntStateOf(1600)
   private var shownAll = 0
 

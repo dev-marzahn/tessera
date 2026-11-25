@@ -40,7 +40,7 @@ class LeavingBlockMessagesTest {
   }
 
   private fun androidx.compose.ui.test.ComposeUiTest.leaveLandscape() {
-    setContent { LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, Messages()), messages) }
+    setContent { LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages())), messages) }
     tabs.activate(id("l2"))
     waitForIdle()
     tabs.activate(id("Cat"))
@@ -50,11 +50,11 @@ class LeavingBlockMessagesTest {
 
   @Test
   fun clearViewedTakingTheShownPostOutOfItsBlockOffersNothing() = runComposeUiTest {
-    setContent { LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, messages), messages) }
+    setContent { LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), messages)), messages) }
     tabs.activate(id("l2"))
     waitForIdle()
 
-    ClearViewed(tabs, seen, messages)()
+    ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), messages))()
     waitForIdle()
 
     assertEquals(id("Cat"), tabs.active.value)

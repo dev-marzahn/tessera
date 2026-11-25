@@ -52,13 +52,12 @@ class QueuePageBehaviourTest {
   private fun ComposeUiTest.show() {
     setContent {
       SankakuTheme {
-        QueuePage(
+        PhoneQueuePage(
           onDismiss = { dismissed++ },
           controller = tabs,
           posts = TabPosts.None,
           privacy = privacy,
           seen = seen,
-          clearViewed = ClearViewed(tabs, seen, messages),
           interacted = { used },
           onInteract = { used = true },
           folding = false,
@@ -130,7 +129,7 @@ class QueuePageBehaviourTest {
     block()
     show()
 
-    onNodeWithText("Continue", substring = true).performSemanticsAction(SemanticsActions.OnClick)
+    onNodeWithContentDescription("Continue", substring = true).performSemanticsAction(SemanticsActions.OnClick)
 
     assertTrue(used)
     assertEquals(1, dismissed)
@@ -172,7 +171,7 @@ class QueuePageBehaviourTest {
     tabs.activate(tabs.tabs.value[1].id)
     show()
 
-    onNodeWithText("Continue · A").performClick()
+    onNodeWithContentDescription("Continue · A").performClick()
 
     assertEquals(1, dismissed)
     assertEquals("A", tabs.activeTab.title)
@@ -203,7 +202,7 @@ class QueuePageBehaviourTest {
     seen.record("g", "md5g")
     show()
 
-    onNodeWithContentDescription("Clear viewed, 1 kept posts").assertExists()
+    onNodeWithContentDescription("Clear viewed, 1 kept post").assertExists()
   }
 
   @Test

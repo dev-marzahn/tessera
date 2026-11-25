@@ -7,7 +7,8 @@ import dev.marzahn.sankaku.data.PostTitle
 import dev.marzahn.sankaku.existingPosition
 import dev.marzahn.sankaku.queue.QueueKind
 import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.tabs.ClosedTab
+import dev.marzahn.sankaku.tabs.ClosedTabUndo
+import dev.marzahn.sankaku.tabs.Closing
 import dev.marzahn.sankaku.tabs.TabState
 import dev.marzahn.sankaku.tabs.TabsController
 import dev.marzahn.sankaku.ui.components.KEPT_AGAIN
@@ -50,8 +51,12 @@ internal fun keptItemOf(post: PostDto, tabs: List<TabState>, keptCopyOf: (PostDt
   return lone(post.id) ?: (keptCopyOf(post)?.top as? Route.Post)?.id?.let(::lone)
 }
 
-internal fun unkeepPost(post: PostDto, tabs: TabsController, keptCopyOf: (PostDto) -> TabState? = { null }): ClosedTab? =
-  keptItemOf(post, tabs.tabs.value, keptCopyOf)?.let { tabs.close(it.id) }
+internal fun unkeepPost(
+  post: PostDto,
+  tabs: TabsController,
+  undo: ClosedTabUndo,
+  keptCopyOf: (PostDto) -> TabState? = { null },
+): Boolean = keptItemOf(post, tabs.tabs.value, keptCopyOf)?.let { undo.close(it.id, Closing.Unkept) } != null
 internal fun keptMessage(kept: Kept, touch: Boolean): String = when {
   kept.again -> KEPT_AGAIN
   kept.already -> alreadySpoken(kept.position, touch)
