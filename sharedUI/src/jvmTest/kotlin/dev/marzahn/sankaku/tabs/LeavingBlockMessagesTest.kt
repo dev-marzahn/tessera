@@ -1,5 +1,6 @@
 package dev.marzahn.sankaku.tabs
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
 import dev.marzahn.sankaku.Route
@@ -60,6 +61,43 @@ class LeavingBlockMessagesTest {
     assertEquals(id("Cat"), tabs.active.value)
     assertNull(offer.pending)
     assertEquals(emptySet(), offer.offered)
+  }
+
+  @Test
+  fun swipingPastTheLastKeptPostOffersToClearItWithTheSeenOnes() = runComposeUiTest {
+    tabs.open(Route.Grid(listOf("dog")), background = false)
+    val shown = mutableListOf<Message>()
+    setContent {
+      LaunchedEffect(messages) { messages.messages.collect { shown += it } }
+      LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages())), messages)
+    }
+    tabs.activate(id("c1"))
+    waitForIdle()
+
+    tabs.next()
+    waitForIdle()
+
+    assertEquals(id("Dog"), tabs.active.value)
+    assertEquals(true, tabs.tabs.value.single { it.title == "c1" }.later)
+    assertEquals(listOf("Queue done · 1 for later" to "Clear viewed · 3"), shown.map { it.text to it.actionLabel })
+  }
+
+  @Test
+  fun seeingTheLastKeptPostSaysNothingKeptIsLeft() = runComposeUiTest {
+    tabs.open(Route.Grid(listOf("dog")), background = false)
+    val shown = mutableListOf<Message>()
+    setContent {
+      LaunchedEffect(messages) { messages.messages.collect { shown += it } }
+      LeavingBlockMessages(offer, tabs, seen, ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages())), messages)
+    }
+    tabs.activate(id("c1"))
+    waitForIdle()
+
+    seen.record("c1", null)
+    tabs.activate(id("Dog"))
+    waitForIdle()
+
+    assertEquals(listOf("Queue done · nothing kept is left" to "Clear viewed · 3"), shown.map { it.text to it.actionLabel })
   }
 
   @Test

@@ -141,11 +141,12 @@ internal fun leavingBlock(
   left: TabId?,
   hadKept: Boolean,
   leftBefore: Int,
+  leftNow: Int,
   now: TabId,
   offered: Set<TabId>,
   seen: (TabState) -> Boolean,
 ): LeavingBlock {
-  if (leftBefore > 0 && keptLeft(tabs, seen) == 0) return LeavingBlock.QueueDone
+  if (leftBefore > 0 && leftNow == 0) return LeavingBlock.QueueDone
   if (left == null || blockHeadOf(tabs, now) == left) return LeavingBlock.None
   if (!hadKept || left in offered) return LeavingBlock.None
   val block = queueBlocks(tabs).firstOrNull { it.head == left && it.headIndex != null } ?: return LeavingBlock.None

@@ -140,6 +140,8 @@ class TabState(
     }
   }
 
+  fun viewedSinceKept(seen: SeenStore): Boolean = later || seenSinceKept(seen)
+
   private var placed by mutableStateOf((routes.lastOrNull() as? Route.Grid)?.let { grid -> place?.let { grid to it } })
 
   val place: GridPlace? get() = (top as? Route.Grid)?.let(::placeFor)
@@ -1276,13 +1278,14 @@ class TabsController(
   private fun before(all: List<TabState>, index: Int, gone: Set<TabId>) = all.take(index).lastOrNull { it.id !in gone }
 
   fun viewedKeptPosts(seen: SeenStore): List<TabId> = _tabs.value
-    .filter { it.kind.isKept && (it.later || it.seenSinceKept(seen)) }
+    .filter { it.kind.isKept && it.viewedSinceKept(seen) }
     .map { it.id }
 
-  fun everyKeptPostViewed(seen: SeenStore): Boolean {
-    val kept = _tabs.value.filter { it.kind.isKept }
-    return kept.isNotEmpty() && kept.all { it.later || it.seenSinceKept(seen) }
-  }
+  fun keptPostsLeftToView(seen: SeenStore): Int = _tabs.value.count { it.kind.isKept && !it.viewedSinceKept(seen) }
+
+  fun keptPostsForLater(): Int = _tabs.value.count { it.kind.isKept && it.later }
+
+  fun everyKeptPostViewed(seen: SeenStore): Boolean = _tabs.value.any { it.kind.isKept } && keptPostsLeftToView(seen) == 0
 
   fun clearViewed(seen: SeenStore): ClosedTab? {
     val wanted = viewedKeptPosts(seen).toSet()

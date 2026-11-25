@@ -105,6 +105,18 @@ class SwitcherQueueListTest {
   }
 
   @Test
+  fun aPostLeftForLaterIsStillLeftAndClearViewedClearsIt() = runComposeUiTest {
+    list = true
+    seen.record("l1", null)
+    tabs.activate(id("l2"))
+    tabs.next()
+    assertTrue(tabs.tabs.value.single { it.title == "l2" }.later)
+    show()
+    onNodeWithTag(QUEUE_LIST_COUNT_TAG, useUnmergedTree = true).assertTextContains("6 items · 2 kept left")
+    onNodeWithText("Clear viewed · 2").assertExists()
+  }
+
+  @Test
   fun wMovesAndSpaceGoes() = runComposeUiTest {
     list = true
     show()
