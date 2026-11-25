@@ -334,12 +334,6 @@ class QueuePageTest {
     assertTrue("Kept from A (closed) · current" in spoken("p1"), "${spoken("p1")}")
   }
 
-  private fun ComposeUiTest.closeRow(title: String) {
-    onNodeWithText(title).fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty()
-      .first { it.label == "Close" }.action()
-    waitForIdle()
-  }
-
   @Test
   fun undoOfASwipedKeptPostPutsItBackWithoutMakingItCurrent() = runComposeUiTest {
     tabs.open(Route.Post("p1", "m1", listOf("a"), label = "Rosehip"), background = true)
@@ -374,6 +368,23 @@ class QueuePageTest {
     assertEquals(listOf("Browse", "A", "B", "Rosehip"), titles())
     assertEquals("Browse", tabs.tabs.value.first { it.id == tabs.active.value }.title)
     assertNull(pill.pending.value)
+  }
+
+  @Test
+  fun aClearAfterASwipeTakesOverTheUndo() = runComposeUiTest {
+    tabs.open(Route.Post("p1", "m1", listOf("b"), label = "Rosehip"), background = true)
+    now += 1.minutes
+    seen.record("p1", "m1")
+    show()
+
+    closeRow("A")
+    onNodeWithText("Closed “A”").assertExists()
+    onNodeWithContentDescription("Clear viewed, 1 kept post").performClick()
+    waitForIdle()
+
+    onNodeWithText("Closed “A”").assertDoesNotExist()
+    onNodeWithContentDescription(UNDO_ONE).assertExists()
+    assertEquals(listOf("Browse", "B"), titles())
   }
 
   @Test

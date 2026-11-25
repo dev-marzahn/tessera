@@ -2,12 +2,24 @@ package dev.marzahn.sankaku.tabs
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Dp
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.queue.TodayStore
 import dev.marzahn.sankaku.shell.MenuBadge
+
+@OptIn(ExperimentalTestApi::class)
+internal fun ComposeUiTest.closeRow(title: String) {
+  onNodeWithText(title).fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty()
+    .first { it.label == "Close" }.action()
+  waitForIdle()
+}
 
 @Composable
 internal fun PhoneQueuePage(
