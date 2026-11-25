@@ -55,6 +55,7 @@ import dev.marzahn.sankaku.tabs.tabTitle
 import dev.marzahn.sankaku.features.grid.ViewerMode
 import dev.marzahn.sankaku.tabs.DescribeTab
 import dev.marzahn.sankaku.tabs.TabContents
+import dev.marzahn.sankaku.tabs.TabDescription
 import dev.marzahn.sankaku.ui.components.AppLoadingIndicator
 import dev.marzahn.sankaku.ui.components.BottomRowLayout
 import dev.marzahn.sankaku.ui.components.ApiErrorState
@@ -123,6 +124,10 @@ internal fun postOriginLabel(tab: TabState, route: Route.Post, tabs: TabsControl
   return "From ${tabTitle(Route.Grid(route.originTags), names = tabs.tagNames)}"
 }
 
+internal fun postDescription(route: Route.Post, state: StateFlow<PostUiState>) = TabDescription {
+  TabContents.post(route.id, route.md5 ?: (state.value as? PostUiState.Loaded)?.post?.md5)
+}
+
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PostScreen(
@@ -143,7 +148,8 @@ fun PostScreen(
   val loadedPost = (state as? PostUiState.Loaded)?.post
   val name = loadedPost?.let(PostTitle::of)
   if (route.label == null && loadedPost != null) LaunchedEffect(route.id, name) { tabs.loadedTitle(route, name) }
-  DescribeTab(route) { TabContents.post(route.id, route.md5 ?: (viewModel.state.value as? PostUiState.Loaded)?.post?.md5) }
+  val description = remember(route, viewModel) { postDescription(route, viewModel.state) }
+  DescribeTab(route) { description }
   val tab = LocalTabEntry.current?.tab
   val keptHere = tab?.takeIf { it.kind.isKept && it.backStack.size == 1 }
   val tabList by tabs.tabs.collectAsStateWithLifecycle()

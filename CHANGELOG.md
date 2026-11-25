@@ -4,6 +4,20 @@ What changed in each release of Tessera.
 
 ## Unreleased
 
+## 100.2.1 - 2026-11-25
+
+### Fixed
+
+- **Memory, on Android:** the app no longer slows down and crashes as you keep more posts and sources, or when you
+  open a video after a long session. Images are kept to what fits the phone, freed once you've gone past them, freed
+  when a source leaves the screen, and freed when the app goes to the background. Video players are let go when
+  you move on.
+- **Clear viewed** also clears posts left for later, and a tap on the queue bar no longer votes.
+- **Queue:** a swiped row's Undo ends at your next action, like the pill's. The end card stays on screen through a
+  theme change or rotation.
+- **Viewer:** the post's details follow a drag from the moment the viewer opens.
+- Saving the queue is quicker in a long queue.
+
 ## 100.2.0 - 2026-11-25
 
 ### Changed
