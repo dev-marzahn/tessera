@@ -17,7 +17,7 @@ class QueueSaveTest {
 
   private val store = RecordingTabStateStore(SavedTabs(activeIndex = 0, tabs = sources.mapIndexed { i, route -> SavedTab("tab$i", listOf(route)) }))
 
-  private fun TestScope.queue(): TabsController = TabsController(store, backgroundScope).also { runCurrent() }
+  private fun TestScope.queue(): TabsController = TabsController(store, inTheBackgroundOnTheTestThread()).also { runCurrent() }
 
   private fun TestScope.settle() {
     Snapshot.sendApplyNotifications()

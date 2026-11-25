@@ -175,7 +175,7 @@ class RecentlyClosedRelaunchTest {
 
   @Test
   fun aCloseAndForgettingThemAreEachSavedByThemselves() = runTest {
-    val saving = TabsController(FileTabStateStore(file, clock = clock), backgroundScope, clock, zone = zone)
+    val saving = TabsController(FileTabStateStore(file, clock = clock), inTheBackgroundOnTheTestThread(), clock, zone = zone)
     runCurrent()
     saving.open(grid("artist_a"), background = true)
     Snapshot.sendApplyNotifications()

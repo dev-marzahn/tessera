@@ -158,7 +158,7 @@ class TabsMigrationTest {
 
       override fun delete() = Unit
     }
-    val controller = TabsController(FileTabStateStore(file, backup, clock = clock), backgroundScope, clock)
+    val controller = TabsController(FileTabStateStore(file, backup, clock = clock), inTheBackgroundOnTheTestThread(), clock)
     runCurrent()
 
     controller.open(Route.Grid(listOf("first")), background = true)

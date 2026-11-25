@@ -32,6 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -184,7 +185,7 @@ class SourcePreviewTest {
 
   @Test
   fun aQueueOfThreeHundredSourcesAsksForNoPreviewAtLaunch() = runBlocking {
-    val tabs = TabsController(FileTabStateStore(InMemoryTextFile(savedQueue(300))), scope)
+    val tabs = TabsController(FileTabStateStore(InMemoryTextFile(savedQueue(300))), TabsBackground(scope, snapshotThread = EmptyCoroutineContext))
     delay(200)
 
     assertEquals(300, tabs.tabs.value.size)
@@ -194,7 +195,7 @@ class SourcePreviewTest {
 
   @Test
   fun aSourceAskedAboutPaysOneRequestOnce() = runBlocking {
-    val tabs = TabsController(FileTabStateStore(InMemoryTextFile(savedQueue(300))), scope)
+    val tabs = TabsController(FileTabStateStore(InMemoryTextFile(savedQueue(300))), TabsBackground(scope, snapshotThread = EmptyCoroutineContext))
     val asked = tabs.tabs.value[41]
 
     listOf(async { previews.load(asked) }, async { previews.load(asked) }).awaitAll()

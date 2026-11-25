@@ -21,12 +21,13 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import dev.marzahn.sankaku.data.GridPlace
 import dev.marzahn.sankaku.api.dto.TagSuggestion
 import dev.marzahn.sankaku.data.PostTitle
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -36,7 +37,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -241,7 +241,28 @@ class TabState(
 
   val top: Route? get() = backStack.lastOrNull() as? Route
 
-  internal val loadedTitle: String? get() = loadedTitleOf(top, loadedTitles)
+  private val titlePost: Route.Post? get() = (top as? Route.Post)?.takeIf { it.label == null }
+
+  private val titleChanges = mutableIntStateOf(0)
+
+  internal val loadedTitle: String?
+    get() {
+      val post = titlePost ?: return null
+      observeTitleChanges()
+      return loadedTitles(post.id)
+    }
+
+  private fun observeTitleChanges() {
+    titleChanges.intValue
+  }
+
+  internal fun titleChanged(post: String) {
+    if (titlePost?.id == post) titlesChanged()
+  }
+
+  internal fun titlesChanged() {
+    titleChanges.intValue++
+  }
 
   val title: String get() = tabTitle(top, loadedTitle, tagNames)
 
@@ -274,9 +295,6 @@ class TabState(
     later = true.takeIf { later },
   )
 }
-
-private fun loadedTitleOf(top: Route?, loaded: (String) -> String?): String? =
-  (top as? Route.Post)?.takeIf { it.label == null }?.let { loaded(it.id) }
 
 private fun keptRoute(route: Any?): Route? = (route as? Route)?.takeIf { it.isLone }
 
@@ -360,9 +378,11 @@ internal fun closedSourceName(source: List<String>, names: TagNameLookup = NoTag
 
 internal fun tabIsUntitled(top: Route?, loaded: String? = null): Boolean = top is Route.Post && top.label == null && loaded == null
 
+class TabsBackground(val scope: CoroutineScope, val snapshotThread: CoroutineContext)
+
 class TabsController(
   private val store: TabStateStore = TabStateStore.None,
-  scope: CoroutineScope? = null,
+  background: TabsBackground? = null,
   private val clock: Clock = Clock.System,
   knownTags: StateFlow<Map<String, TagSuggestion>>? = null,
   private val today: TodayStore? = null,
@@ -488,13 +508,22 @@ class TabsController(
 
   private val loaded = mutableStateMapOf<String, String>()
 
+  private fun knownTitle(post: String): String? = Snapshot.withoutReadObservation { loaded[post] }
+
+  private fun rememberTitle(route: Route.Post, title: String?): Boolean {
+    if (route.label != null) return false
+    val stored = title?.takeUnless { it.isBlank() }
+    val before = if (stored == null) loaded.remove(route.id) else loaded.put(route.id, stored)
+    return before != stored
+  }
+
   fun loadedTitle(route: Route.Post, title: String?) {
-    if (route.label != null) return
-    if (title.isNullOrBlank()) loaded.remove(route.id) else if (loaded[route.id] != title) loaded[route.id] = title
+    if (rememberTitle(route, title)) _tabs.value.forEach { it.titleChanged(route.id) }
   }
 
   fun forgetTitles() {
     loaded.clear()
+    _tabs.value.forEach(TabState::titlesChanged)
   }
 
   private var pinned by mutableStateOf(emptyList<Feed>())
@@ -545,7 +574,7 @@ class TabsController(
     val restored = loneAtLaunch(saved?.tabs.orEmpty().filter { it.routes.isNotEmpty() }.distinctBy { it.id })
       .map { tab ->
         val post = tab.routes.last() as? Route.Post
-        if (post != null && tab.title != null) loadedTitle(post, tab.title)
+        if (post != null && tab.title != null) rememberTitle(post, tab.title)
         TabState(
           TabId(tab.id),
           tab.routes,
@@ -555,7 +584,7 @@ class TabsController(
           touched = tab.touched?.let(Instant::fromEpochSeconds) ?: clock.now(),
           keptAt = tab.keptAt?.let(Instant::fromEpochSeconds),
           closedSource = tab.closedSource,
-          loadedTitles = loaded::get,
+          loadedTitles = ::knownTitle,
           mosaic = QueueMosaic.restored(tab.mosaic, tab.posts),
           gridTouched = tab.gridTouched == true,
           tagNames = tagNames,
@@ -578,9 +607,11 @@ class TabsController(
     val restoredFadedItems = !saved?.faded.isNullOrEmpty()
     val launchState = savedState(_tabs.value, _active.value).takeUnless { restoredFadedItems }
     counting = true
-    val saves = changes().skipFirstIf(launchState)
-    scope?.launch { saves.collect { runCatching { store.save(it) } } }
-    if (knownTags != null) scope?.launch { knownTags.collect { known = it } }
+    if (background != null) {
+      val saves = changes(background.snapshotThread).skipFirstIf(launchState)
+      background.scope.launch { saves.collect { runCatching { store.save(it) } } }
+      if (knownTags != null) background.scope.launch { knownTags.collect { known = it } }
+    }
   }
 
   val tabs: StateFlow<List<TabState>> = _tabs.asStateFlow()
@@ -1489,11 +1520,10 @@ class TabsController(
     step(forward, wrap = true)
   }
 
-  @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-  private fun changes(): Flow<SavedTabs> = combine(_tabs, _active, _closed, ::Triple)
-    .flatMapLatest { (tabs, active, closed) -> largeReadSnapshotFlow { savedState(tabs, active, closed) } }
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private fun changes(snapshotThread: CoroutineContext): Flow<SavedTabs> = combine(_tabs, _active, _closed, ::Triple)
+    .flatMapLatest { (tabs, active, closed) -> settledSnapshotFlow(settle = SAVE_DELAY, snapshotThread) { savedState(tabs, active, closed) } }
     .distinctUntilChanged()
-    .debounce(SAVE_DELAY)
 
   internal fun saved(): SavedTabs = savedState(_tabs.value, _active.value)
 
@@ -1603,7 +1633,7 @@ class TabsController(
     val kept = keptAt ?: now.takeIf { keptRoute(routes.lastOrNull()) != null }
     return TabState(
       TabId(Uuid.random().toString()), routes, block, place, addedIn, touched = now, keptAt = kept,
-      closedSource = closedSource, loadedTitles = loaded::get, mosaic = mosaic, gridTouched = gridTouched,
+      closedSource = closedSource, loadedTitles = ::knownTitle, mosaic = mosaic, gridTouched = gridTouched,
       tagNames = tagNames, openedFrom = openedFrom, refines = refines, preview = preview, foundOn = foundOn, later = later,
     )
   }
