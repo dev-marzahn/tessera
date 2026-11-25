@@ -229,15 +229,18 @@ class TabState(
     if (covers != (route in coveringRoutes)) coveringRoutes = if (covers) coveringRoutes + route else coveringRoutes - route
   }
 
-  private val described = mutableMapOf<Any, Pair<Route, () -> TabContents>>()
+  private val described = mutableMapOf<Any, Described>()
 
-  fun describe(contentKey: Any, route: Route, contents: () -> TabContents) {
-    described[contentKey] = route to contents
+  fun describe(contentKey: Any, route: Route, shown: () -> TabDescription): Described =
+    Described(route, shown).also { described[contentKey] = it }
+
+  fun keepLastShown(contentKey: Any, registered: Described) {
+    if (described[contentKey] === registered) described[contentKey] = registered.lastShown()
   }
 
-  fun topContents(): TabContents? = described.values.lastOrNull { it.first == top }?.second?.invoke()
+  fun topContents(): TabContents? = described.values.lastOrNull { it.route == top }?.contents()
 
-  fun allContents(): List<TabContents> = described.values.map { it.second() }
+  fun allContents(): List<TabContents> = described.values.map { it.contents() }
 
   val top: Route? get() = backStack.lastOrNull() as? Route
 

@@ -1,18 +1,30 @@
 package dev.marzahn.sankaku.tabs
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.api.dto.PostDto
 import dev.marzahn.sankaku.data.Variant
 import dev.marzahn.sankaku.images.PostImage
 
+fun interface TabDescription {
+  fun contents(): TabContents
+
+  companion object {
+    fun grid(loaded: List<PostDto>, firstShown: Int) = TabDescription { TabContents.grid(loaded, firstShown) }
+  }
+}
+
 class TabContents(
   val preview: List<PostImage>,
   val images: List<PostImage>,
   val posts: Int,
-) {
+) : TabDescription {
+  override fun contents(): TabContents = this
+
   companion object {
     private const val GRID_PREVIEW_COUNT = 6
 
@@ -33,12 +45,25 @@ class TabContents(
   }
 }
 
+class Described internal constructor(internal val route: Route, private val shown: () -> TabDescription) {
+  internal fun contents(): TabContents = shown().contents()
+
+  internal fun lastShown(): Described {
+    val last = shown()
+    return Described(route) { last }
+  }
+}
+
 class TabEntry(val tab: TabState, val contentKey: Any)
 
 val LocalTabEntry = staticCompositionLocalOf<TabEntry?> { null }
 
 @Composable
-fun DescribeTab(route: Route, describe: () -> TabContents) {
+fun DescribeTab(route: Route, shown: () -> TabDescription) {
   val entry = LocalTabEntry.current ?: return
-  SideEffect { entry.tab.describe(entry.contentKey, route, describe) }
+  val latest by rememberUpdatedState(shown)
+  DisposableEffect(entry.tab, entry.contentKey, route) {
+    val registered = entry.tab.describe(entry.contentKey, route) { latest() }
+    onDispose { entry.tab.keepLastShown(entry.contentKey, registered) }
+  }
 }

@@ -98,7 +98,7 @@ import dev.marzahn.sankaku.tabs.FoundHereChip
 import dev.marzahn.sankaku.tabs.followInsteadOrNull
 import dev.marzahn.sankaku.features.post.TagFollow
 import dev.marzahn.sankaku.ui.components.DoneWithFollow
-import dev.marzahn.sankaku.tabs.TabContents
+import dev.marzahn.sankaku.tabs.TabDescription
 import dev.marzahn.sankaku.tabs.TabsController
 import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.Tip
@@ -218,7 +218,7 @@ fun GridScreen(
   var showingFollowed by rememberSaveable { mutableStateOf(false) }
   if (showingFollowed) FollowedTagsPage(onDismiss = { showingFollowed = false }, onOpenTag = { showingFollowed = false })
   FeedHeadingEffects(viewModel, items, gridState, { gridItems }, { feedPosts })
-  DescribeTab(route) { TabContents.grid(items.itemSnapshotList.items, gridState.firstPostIndex(gridItems)) }
+  DescribeTab(route) { TabDescription.grid(items.itemSnapshotList.items, gridState.firstPostIndex(gridItems)) }
   LaunchedEffect(gridState, items, route) {
     val tab = tabEntry?.tab ?: return@LaunchedEffect
     snapshotFlow { QueueMosaic.of(items.itemSnapshotList.items, gridState.firstPostIndex(gridItems)) }
