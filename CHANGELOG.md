@@ -4,6 +4,19 @@ What changed in each release of Tessera.
 
 ## Unreleased
 
+## 100.2.0 - 2026-11-25
+
+### Changed
+
+- **On a phone:** Clear viewed and taking a post out of the queue are undone from the queue pill's ↶, like every
+  other close, instead of an Undo on the top line. The queue page's buttons share one line at the bottom, and right
+  after Clear viewed its button is the Undo. On a narrow phone or with large text they go two, then one per row.
+
+### Fixed
+
+- **Sort, on a phone:** inside a source you went into from Sort, the last post says "Next: Sort", since that's where
+  moving on goes, and the pill shows that source's own count instead of Sort's.
+
 ## 100.1.0 - 2026-11-13
 
 ### Added
