@@ -189,16 +189,15 @@ fun QueuePage(
   val liveTabs by controller.tabs.collectAsStateWithLifecycle()
   val active by controller.active.collectAsStateWithLifecycle()
   val liveClosed by controller.closed.collectAsStateWithLifecycle()
-  val shownLists = remember { arrayOfNulls<Pair<List<TabState>, List<ClosedTab>>>(1) }
-  val (tabs, closed) = shownLists[0]?.takeIf { leaving } ?: (liveTabs to liveClosed)
-  SideEffect { if (!leaving) shownLists[0] = liveTabs to liveClosed }
+  val livePending by undo.pending.collectAsStateWithLifecycle()
+  val gOnly by privacy.gOnly.collectAsStateWithLifecycle()
+  val live = ShownQueue(liveTabs, liveClosed, livePending, blurAdult = gOnly || !interacted())
+  val lastShown = remember { arrayOfNulls<ShownQueue>(1) }
+  val shown = lastShown[0]?.takeIf { leaving } ?: live
+  SideEffect { if (!leaving) lastShown[0] = live }
+  val (tabs, closed, _, blurAdult) = shown
   var reopened by remember { mutableStateOf<Long?>(null) }
   if (!leaving && reopened != null) SideEffect { reopened = null }
-  val gOnly by privacy.gOnly.collectAsStateWithLifecycle()
-  val blurNow = gOnly || !interacted()
-  val shownBlur = remember { booleanArrayOf(blurNow) }
-  val blurAdult = if (leaving) shownBlur[0] else blurNow
-  SideEffect { if (!leaving) shownBlur[0] = blurNow }
   val seenRevision = seen?.revision?.collectAsStateWithLifecycle()?.value
   val seenSince: (TabState) -> Boolean = remember(seen, seenRevision) {
     { tab -> seen != null && tab.seenSinceKept(seen) }
@@ -207,9 +206,8 @@ fun QueuePage(
   val known by remember(postIds) { posts.of(postIds) }.collectAsStateWithLifecycle(emptyMap())
   val post: (TabState) -> TabPost? = { tab -> (tab.top as? Route.Post)?.let { known[it.id] } }
   val closedListed = remember(closed, gOnly, known) { closedRows(closed, gOnly) { known[it.id] } }
-  var swiped by remember { mutableStateOf<ClosedTab?>(null) }
   val focused = remember { mutableSetOf<Long>() }
-  val inline = swiped?.takeIf { it in closed }
+  val inline = shown.undoOf(Closing.OnQueuePage)
   var query by remember { mutableStateOf<String?>(null) }
   val finding = query?.takeIf { it.isNotBlank() }
   val ownChip = rememberSaveable(stateSaver = QueueFilterSaver) { mutableStateOf(QueueFilter.All) }
@@ -292,14 +290,13 @@ fun QueuePage(
   val scope = rememberCoroutineScope()
   val activeTab = liveTabs.firstOrNull { it.id == active }
   val clearStatus = clearViewed.status()
-  val pending by undo.pending.collectAsStateWithLifecycle()
-  val clearedShown = pending?.takeIf { it.closing == Closing.Cleared && it.closed in closed }
+  val clearedShown = shown.undoOf(Closing.Cleared)
   val sort = onSort?.takeIf { newSources > 0 }
   val lineButtons = buildList {
     if (sort != null) add(sortButton(newSources, sort))
     when {
       clearedShown != null -> add(
-        undoClearButton(clearedShown.closed, FocusOnFirstShow(clearedShown.closed.key) { focused.add(clearedShown.closed.key) }) {
+        undoClearButton(clearedShown, FocusOnFirstShow(clearedShown.key) { focused.add(clearedShown.key) }) {
           interact()
           undo.undo()
         },
@@ -435,7 +432,7 @@ fun QueuePage(
           step = ::step,
           onClose = { id ->
             interact()
-            undo.close(id, Closing.OnQueuePage)?.let { swiped = it }
+            undo.close(id, Closing.OnQueuePage)
           },
           firstShow = focused::add,
           onUndo = {
@@ -474,7 +471,6 @@ fun QueuePage(
           onBulk = { ids ->
             controller.closeAll(ids)?.let {
               undo.opened(it, Closing.OnQueuePage)
-              swiped = it
               reveal = it.key
             }
           },
@@ -544,6 +540,15 @@ private val TabIdSetSaver = Saver<Set<TabId>, ArrayList<String>>(
 internal fun QueueRow.isTab(id: TabId) = (this is QueueRow.Item && tab.id == id) || (this is QueueRow.ClosedBlock && head == id)
 
 private class BulkClose(val label: String, val ids: List<TabId>)
+
+private data class ShownQueue(
+  val tabs: List<TabState>,
+  val closed: List<ClosedTab>,
+  val pending: ClosedTabUndo.Pending?,
+  val blurAdult: Boolean,
+) {
+  fun undoOf(closing: Closing): ClosedTab? = pending?.takeIf { it.closing == closing && it.closed in closed }?.closed
+}
 
 private fun positionNear(rows: List<QueueRow>, row: Int): Int {
   if (rows.isEmpty()) return 1
