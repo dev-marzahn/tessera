@@ -144,6 +144,9 @@ class LaterTest {
     tabs.activate(other.id)
 
     assertEquals(listOf(p1.id, p2.id, p4.id), tabs.viewedKeptPosts(seen))
+    assertEquals(2, tabs.keptPostsLeftToView(seen), "p3 and p5")
+    assertEquals(2, tabs.keptPostsForLater())
+    assertFalse(tabs.everyKeptPostViewed(seen))
     val cleared = assertNotNull(tabs.clearViewed(seen))
     assertEquals(3, cleared.size)
     assertTrue(tabs.tabs.value.none { (it.top as? Route.Post)?.id in setOf("p1", "p2", "p4") })

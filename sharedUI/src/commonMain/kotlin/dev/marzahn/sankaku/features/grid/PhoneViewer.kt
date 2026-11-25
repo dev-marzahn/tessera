@@ -204,6 +204,7 @@ import dev.marzahn.sankaku.ui.components.BottomRowLayout
 import dev.marzahn.sankaku.ui.components.FavouriteBursts
 import dev.marzahn.sankaku.ui.Tip
 import dev.marzahn.sankaku.ui.Tips
+import dev.marzahn.sankaku.ui.takingPresses
 import dev.marzahn.sankaku.ui.offerLongPressTip
 import dev.marzahn.sankaku.ui.components.PictureBurstSize
 import dev.marzahn.sankaku.features.post.forShown
@@ -219,6 +220,8 @@ import org.koin.compose.koinInject
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 private val PEEK_HEADER = 80.dp
 
@@ -337,8 +340,8 @@ fun SharedTransitionScope.PhoneViewer(
   val floatingBar = mode != ViewerMode.Tab
   val dockedState = animateFloatAsState(if (controlsShown) 1f else 0f, closeSpec)
   var windowHeight by remember { mutableFloatStateOf(0f) }
-  val docked: () -> Float = { dockedState.value * dragFade(dismiss.fraction(windowHeight / 2f)) }
-  val floated by remember(opening) { derivedStateOf { docked() == 0f } }
+  val docked: () -> Float = remember(dockedState, dismiss) { { dockedState.value * dragFade(dismiss.fraction(windowHeight / 2f)) } }
+  val floated by remember(docked) { derivedStateOf { docked() == 0f } }
   val handBack = closing && floatingBar && floated
   var handedBack by remember(opening) { mutableStateOf(false) }
   LaunchedEffect(handBack) {
@@ -350,6 +353,8 @@ fun SharedTransitionScope.PhoneViewer(
   }
   val tabBarSlide = LocalTabBarSlide.current
   val slideFrom = remember(opening) { tabBarSlide() }
+  val barInPlace by remember(docked, floatingBar) { derivedStateOf { !floatingBar || docked() == 1f } }
+  val statsTakeTaps = heldFor(settled && !closing && barInPlace, BAR_MOVE_GRACE)
 
   CoverChrome(enabled = !handBack)
 
@@ -859,6 +864,7 @@ fun SharedTransitionScope.PhoneViewer(
           )
         },
         onDrop = onDrop.takeIf { mode == ViewerMode.Tab },
+        statsTakeTaps = statsTakeTaps,
         modifier = Modifier.draggable(
           rememberDraggableState { sheet.dragBy(it) },
           Orientation.Vertical,
@@ -1088,6 +1094,7 @@ private fun SheetHeader(
   onToggleFavourite: () -> Unit,
   onVote: (Int?) -> Unit,
   menu: @Composable () -> Unit,
+  statsTakeTaps: Boolean,
   modifier: Modifier,
   onDrop: (() -> Unit)? = null,
   actions: PostActions = koinInject(),
@@ -1126,7 +1133,9 @@ private fun SheetHeader(
       countsApart = true,
       mirrored = leftHanded,
       leading = onDrop?.let { drop -> { DropButton(drop) } },
-      modifier = Modifier.padding(start = if (leftHanded) 4.dp else 16.dp, end = if (leftHanded) 16.dp else 4.dp, bottom = 16.dp),
+      modifier = Modifier
+        .takingPresses(statsTakeTaps)
+        .padding(start = if (leftHanded) 4.dp else 16.dp, end = if (leftHanded) 16.dp else 4.dp, bottom = 16.dp),
     )
     PostCounts(post, Modifier.graphicsLayer { alpha = halfFraction() }.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
   }
@@ -1322,6 +1331,19 @@ private fun Modifier.passTouchesThrough(enabled: Boolean): Modifier =
 private val NoArea = object : Shape {
   override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) = Outline.Rectangle(Rect.Zero)
 }
+
+@Composable
+private fun heldFor(condition: Boolean, hold: Duration): Boolean {
+  var held by remember(condition) { mutableStateOf(false) }
+  LaunchedEffect(condition) {
+    if (!condition) return@LaunchedEffect
+    delay(hold)
+    held = true
+  }
+  return held
+}
+
+internal val BAR_MOVE_GRACE = 500.milliseconds
 
 internal fun detailsComposed(shownAFrame: Boolean, lift: Float): Boolean = shownAFrame || lift > 0f
 

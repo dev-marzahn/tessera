@@ -76,11 +76,12 @@ fun LeavingBlockMessages(
       LeavingBlock.QueueDone -> {
         offer.pending = null
         val viewed = clearViewed.status().count
+        val text = queueDoneText(controller.keptPostsForLater())
         messages.show(
           if (viewed > 0) {
-            Message("Queue done · nothing kept is left", actionLabel = "Clear viewed · $viewed") { clearViewed() }
+            Message(text, actionLabel = "Clear viewed · $viewed") { clearViewed() }
           } else {
-            Message("Queue done · nothing kept is left")
+            Message(text)
           },
         )
       }
@@ -129,14 +130,14 @@ internal fun leftSource(tabs: List<TabState>, left: TabId?, hadKept: Boolean, no
   return LeavingBlock.Done(head.id, head.title, seen = 0)
 }
 
-private class Moved(val tabs: List<TabState>, val left: TabId?, val hadKept: Boolean, val keptBefore: Int, val now: TabId, val seen: (TabState) -> Boolean)
+private class Moved(val tabs: List<TabState>, val left: TabId?, val hadKept: Boolean, val keptBefore: Int, val keptNow: Int, val now: TabId, val seen: (TabState) -> Boolean)
 
 @Composable
 private fun OnLeavingBlock(
   offer: BlockOffer,
   controller: TabsController,
   seen: SeenStore,
-  judge: (Moved) -> LeavingBlock = { leavingBlock(it.tabs, it.left, it.hadKept, it.keptBefore, it.now, offer.offered, it.seen) },
+  judge: (Moved) -> LeavingBlock = { leavingBlock(it.tabs, it.left, it.hadKept, it.keptBefore, it.keptNow, it.now, offer.offered, it.seen) },
   said: (LeavingBlock) -> Unit,
 ) {
   val last = remember { Shown() }
@@ -146,17 +147,21 @@ private fun OnLeavingBlock(
     withFrameNanos {}
     val tabs = controller.tabs.value
     val seenNow = { tab: TabState -> !tab.later && tab.seenSinceKept(seen) }
+    val keptNow = controller.keptPostsLeftToView(seen)
     val quiet = controller.backClosedTo == active || controller.clearedTo == active
-    val result = if (quiet) LeavingBlock.None else judge(Moved(tabs, last.head, last.hadKept, last.keptLeft, active, seenNow))
+    val result = if (quiet) LeavingBlock.None else judge(Moved(tabs, last.head, last.hadKept, last.keptLeft, keptNow, active, seenNow))
     val head = blockHeadOf(tabs, active)
     val hasKept = blockProgress(tabs, active, seenNow) != null
     last.hadKept = hasKept || (head == last.head && last.hadKept)
     last.head = head
-    last.keptLeft = keptLeft(tabs, seenNow)
+    last.keptLeft = keptNow
     if (offer.pending != null && offer.pending == head) offer.pending = null
     onSaid(result)
   }
 }
+
+internal fun queueDoneText(later: Int) =
+  if (later > 0) "Queue done · ${grouped(later)} for later" else "Queue done · nothing kept is left"
 
 private class Shown(var head: TabId? = null, var hadKept: Boolean = false, var keptLeft: Int = 0)
 

@@ -82,15 +82,15 @@ class BlockProgressTest {
     queue()
     seen += listOf("l1", "l2", "l3")
     val landscape = id("Landscape")
-    val said = leavingBlock(tabs.tabs.value, landscape, hadKept = true, leftBefore = 2, now = id("Cat"), emptySet(), isSeen)
+    val said = leavingBlock(tabs.tabs.value, landscape, hadKept = true, leftBefore = 2, leftNow = 1, now = id("Cat"), emptySet(), isSeen)
     assertEquals(LeavingBlock.Done(landscape, "Landscape", seen = 3), said)
     assertEquals(
       LeavingBlock.None,
-      leavingBlock(tabs.tabs.value, landscape, hadKept = true, leftBefore = 1, now = id("Cat"), setOf(landscape), isSeen),
+      leavingBlock(tabs.tabs.value, landscape, hadKept = true, leftBefore = 1, leftNow = 1, now = id("Cat"), setOf(landscape), isSeen),
     )
     seen -= "l3"
-    assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, landscape, true, 2, id("Cat"), emptySet(), isSeen))
-    assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, landscape, true, 2, id("l3"), emptySet(), isSeen))
+    assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, landscape, true, 2, 2, id("Cat"), emptySet(), isSeen))
+    assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, landscape, true, 2, 2, id("l3"), emptySet(), isSeen))
   }
 
   @Test
@@ -98,26 +98,34 @@ class BlockProgressTest {
     queue()
     seen += listOf("l1", "l2")
     tabs.closeAll(listOf(id("l3")))
-    val said = leavingBlock(tabs.tabs.value, id("Landscape"), hadKept = true, leftBefore = 2, now = id("Cat"), emptySet(), isSeen)
+    val said = leavingBlock(tabs.tabs.value, id("Landscape"), hadKept = true, leftBefore = 2, leftNow = 1, now = id("Cat"), emptySet(), isSeen)
     assertEquals(LeavingBlock.Done(id("Landscape"), "Landscape", seen = 2), said)
   }
 
   @Test
   fun aSourceNothingWasKeptFromIsNeverOffered() {
     queue()
-    assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, id("Browse"), hadKept = false, 4, id("Landscape"), emptySet(), isSeen))
+    assertEquals(LeavingBlock.None, leavingBlock(tabs.tabs.value, id("Browse"), hadKept = false, 4, 4, id("Landscape"), emptySet(), isSeen))
   }
 
   @Test
   fun usingUpTheLastKeptItemSaysTheQueueIsDone() {
     queue()
     seen += listOf("l1", "l2", "l3", "c1")
-    val said = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 1, now = id("Browse"), emptySet(), isSeen)
+    val said = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 1, leftNow = 0, now = id("Browse"), emptySet(), isSeen)
     assertEquals(LeavingBlock.QueueDone, said)
     assertEquals(
       LeavingBlock.None,
-      leavingBlock(tabs.tabs.value, id("Browse"), hadKept = false, leftBefore = 0, now = id("Landscape"), setOf(id("Cat")), isSeen),
+      leavingBlock(tabs.tabs.value, id("Browse"), hadKept = false, leftBefore = 0, leftNow = 0, now = id("Landscape"), setOf(id("Cat")), isSeen),
     )
+  }
+
+  @Test
+  fun theQueueIsDoneOnlyOnTheStepFromSomeLeftToNone() {
+    queue()
+    seen += listOf("l1", "l2", "l3")
+    val left = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 2, leftNow = 1, now = id("Browse"), emptySet(), isSeen)
+    assertEquals(LeavingBlock.None, left)
   }
 
   @Test
@@ -125,7 +133,7 @@ class BlockProgressTest {
     queue()
     seen += listOf("l1", "l2", "l3")
     tabs.closeAll(listOf(id("c1")))
-    val said = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 1, now = id("Cat"), emptySet(), isSeen)
+    val said = leavingBlock(tabs.tabs.value, id("Cat"), hadKept = true, leftBefore = 1, leftNow = 0, now = id("Cat"), emptySet(), isSeen)
     assertEquals(LeavingBlock.QueueDone, said)
   }
 
@@ -136,7 +144,7 @@ class BlockProgressTest {
     tabs.open(Route.Grid(listOf("cat")), background = false)
     keep("c1", "cat")
     seen += "f1"
-    val said = leavingBlock(tabs.tabs.value, id("Following"), hadKept = true, leftBefore = 2, now = id("Cat"), emptySet(), isSeen)
+    val said = leavingBlock(tabs.tabs.value, id("Following"), hadKept = true, leftBefore = 2, leftNow = 1, now = id("Cat"), emptySet(), isSeen)
     assertEquals(LeavingBlock.None, said)
   }
 

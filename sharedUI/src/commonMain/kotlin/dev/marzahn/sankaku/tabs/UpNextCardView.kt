@@ -200,21 +200,49 @@ private fun CardContent(card: UpNextCard, state: UpNextState, sources: EndLeftov
             }
           }
           UpNextCard.KeptEnd -> {
-            if (kept.laterCount > 0) {
-              PrimaryIconButton(goThroughLaterLabel(kept.laterCount), replay, kept.goThroughLater)
-              OutlinedButton(onClick = kept.toQueue) { Text(TO_THE_QUEUE) }
-            } else {
-              if (kept.clearCount > 0) {
-                OutlinedButton(onClick = { kept.clear() }, modifier = Modifier.semantics { contentDescription = clearViewedLabel(kept.clearCount) }) {
-                  Text("$CLEAR_VIEWED · ${kept.clearCount}")
-                }
-              }
-              PrimaryButton(TO_THE_QUEUE, kept.toQueue)
-            }
+            val buttons = keptEndButtons(kept)
+            buttons.shown.forEach { KeptEndButtonView(it, leads = it == buttons.lead, kept) }
           }
         }
       }
     }
+  }
+}
+
+private enum class KeptEndButton(val action: String) {
+  GoThroughLater(GO_THROUGH_LATER),
+  ClearViewed(CLEAR_VIEWED),
+  ToTheQueue(TO_THE_QUEUE),
+}
+
+private class KeptEndButtons(val lead: KeptEndButton, val shown: List<KeptEndButton>)
+
+private fun keptEndButtons(kept: KeptEndActions): KeptEndButtons {
+  val lead = if (kept.laterCount > 0) KeptEndButton.GoThroughLater else KeptEndButton.ToTheQueue
+  val shown = listOfNotNull(
+    KeptEndButton.GoThroughLater.takeIf { lead == it },
+    KeptEndButton.ClearViewed.takeIf { kept.clearCount > 0 },
+    KeptEndButton.ToTheQueue,
+  )
+  return KeptEndButtons(lead, shown)
+}
+
+private fun KeptEndActions.press(button: KeptEndButton) = when (button) {
+  KeptEndButton.GoThroughLater -> goThroughLater()
+  KeptEndButton.ClearViewed -> clear()
+  KeptEndButton.ToTheQueue -> toQueue()
+}
+
+@Composable
+private fun KeptEndButtonView(button: KeptEndButton, leads: Boolean, kept: KeptEndActions) {
+  when (button) {
+    KeptEndButton.GoThroughLater -> PrimaryIconButton(goThroughLaterLabel(kept.laterCount), replay, kept.goThroughLater)
+    KeptEndButton.ClearViewed ->
+      OutlinedButton(onClick = kept.clear, modifier = Modifier.semantics { contentDescription = clearViewedLabel(kept.clearCount) }) {
+        Text("$CLEAR_VIEWED · ${kept.clearCount}")
+      }
+    KeptEndButton.ToTheQueue ->
+      if (leads) PrimaryButton(TO_THE_QUEUE, kept.toQueue) else OutlinedButton(onClick = kept.toQueue) { Text(TO_THE_QUEUE) }
   }
 }
 
@@ -268,11 +296,7 @@ private fun cardActions(card: UpNextCard, state: UpNextState, kept: KeptEndActio
     CustomAccessibilityAction(BACK_TO_START) { state.backToStart(); true },
     CustomAccessibilityAction(BROWSE) { state.browse(); true },
   )
-  UpNextCard.KeptEnd -> listOfNotNull(
-    CustomAccessibilityAction(GO_THROUGH_LATER) { kept.goThroughLater(); true }.takeIf { kept.laterCount > 0 },
-    CustomAccessibilityAction(CLEAR_VIEWED) { kept.clear(); true }.takeIf { kept.clearCount > 0 && kept.laterCount == 0 },
-    CustomAccessibilityAction(TO_THE_QUEUE) { kept.toQueue(); true },
-  )
+  UpNextCard.KeptEnd -> keptEndButtons(kept).shown.map { button -> CustomAccessibilityAction(button.action) { kept.press(button); true } }
 }
 
 private class KeptEndActions(
