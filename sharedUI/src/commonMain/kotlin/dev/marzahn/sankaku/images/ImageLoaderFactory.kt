@@ -5,7 +5,6 @@ import coil3.PlatformContext
 import coil3.annotation.ExperimentalCoilApi
 import coil3.decode.Decoder
 import coil3.disk.DiskCache
-import coil3.memory.MemoryCache
 import coil3.network.ConnectivityChecker
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.serviceLoaderEnabled
@@ -18,7 +17,7 @@ import kotlin.time.Clock
 
 internal expect fun platformImageDecoders(): List<Decoder.Factory>
 
-internal expect fun imageMemoryCache(context: PlatformContext): MemoryCache
+internal expect fun ImageLoader.Builder.imageMemoryPolicy(context: PlatformContext): ImageLoader.Builder
 
 @OptIn(ExperimentalCoilApi::class)
 fun createImageLoader(
@@ -45,7 +44,7 @@ fun createImageLoader(
       add(network)
       platformImageDecoders().forEach(::add)
     }
-    .memoryCache { imageMemoryCache(context) }
+    .imageMemoryPolicy(context)
     .diskCache {
       ResizableDiskCache(diskCacheBytes) { DiskCache.Builder().directory(cacheDir).maxSizeBytes(it).build() }
     }
