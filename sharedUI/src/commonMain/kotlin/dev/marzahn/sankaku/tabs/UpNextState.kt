@@ -58,8 +58,9 @@ class UpNextState(
   private val privacy: PrivacySettings,
   private val deck: SortDeck,
 ) {
-  var card: UpNextCard? by mutableStateOf(null)
-    private set
+  private var shown: Shown? by mutableStateOf(null)
+
+  val card: UpNextCard? get() = shown?.card
 
   val gOnly: StateFlow<Boolean> get() = privacy.gOnly
 
@@ -128,16 +129,14 @@ class UpNextState(
       is Ahead.End -> showEnd()
       Ahead.Sort -> backToSort()
     }
-    if (card != null) landedOn = tabs.activeTab.let { it.id to it.top }
   }
 
   fun itemShown(id: TabId, top: Route?) {
-    if (landedOn != id to top) dismiss()
+    if (shown?.landedOn(id, top) != true) dismiss()
   }
 
   fun dismiss() {
-    card = null
-    landedOn = null
+    shown = null
     if (tabs.keptRunOver()) tabs.endKeptRun()
   }
 
@@ -155,16 +154,17 @@ class UpNextState(
     tabs.startLaterRun(ids)
   }
 
-  fun showKeptEnd() {
-    card = UpNextCard.KeptEnd
-    landedOn = tabs.activeTab.let { it.id to it.top }
+  fun showKeptEnd() = show(UpNextCard.KeptEnd)
+
+  private fun showEnd() = show(if (tabs.keptPlace() != null) UpNextCard.KeptEnd else UpNextCard.End)
+
+  private fun show(card: UpNextCard) {
+    shown = tabs.activeTab.let { Shown(card, it.id, it.top) }
   }
 
-  private fun showEnd() {
-    card = if (tabs.keptPlace() != null) UpNextCard.KeptEnd else UpNextCard.End
+  private class Shown(val card: UpNextCard, val id: TabId, val top: Route?) {
+    fun landedOn(id: TabId, top: Route?): Boolean = this.id == id && this.top == top
   }
-
-  private var landedOn: Pair<TabId, Route?>? = null
 }
 
 internal fun shownSearch(card: UpNextCard?, top: Route?): Route? =

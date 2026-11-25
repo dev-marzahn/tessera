@@ -131,6 +131,35 @@ class UpNextTest {
     assertEquals("Browse", tabs.activeTab.title)
   }
 
+  private fun screenSeesTheSameItemAgain() = upNext.itemShown(tabs.activeTab.id, tabs.activeTab.top)
+
+  @Test
+  fun aSwipedOnEndCardStaysWhenTheScreenSeesTheSameItemAgain() {
+    tabs.open(grid("scenery"), background = false)
+    upNext.forward()
+    assertEquals(UpNextCard.End, upNext.card)
+
+    screenSeesTheSameItemAgain()
+
+    assertEquals(UpNextCard.End, upNext.card)
+  }
+
+  @Test
+  fun aSwipedOnKeptEndCardKeepsItsTallyWhenTheScreenSeesTheSameItemAgain() {
+    val source = tabs.openSource("artist_a")
+    val kept = listOf("p1", "p2", "p3", "p4").map { tabs.keepInto(source, it) }
+    tabs.startKeptRun(kept.map { it.id }, kept.first().id)
+    repeat(kept.size) { upNext.forward() }
+    assertEquals(UpNextCard.KeptEnd, upNext.card)
+    val tally = upNext.keptTally()
+
+    screenSeesTheSameItemAgain()
+
+    assertEquals(UpNextCard.KeptEnd, upNext.card)
+    assertEquals(KeptTally(KeptRunKind.Kept, goneThrough = 4, dropped = emptyList(), later = 4), tally)
+    assertEquals(tally, upNext.keptTally())
+  }
+
   @Test
   fun aStartTakesTheCardAwaySoItIsNeverTheFirstThingShown() {
     val time = TestTimeSource()
