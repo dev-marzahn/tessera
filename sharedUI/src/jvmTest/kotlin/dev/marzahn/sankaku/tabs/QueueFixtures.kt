@@ -4,8 +4,12 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.ui.Tips
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.test.TestScope
 
 internal fun noTips() = Tips(InMemoryTextFile(), touch = false)
+
+internal fun TestScope.inTheBackgroundOnTheTestThread() = TabsBackground(backgroundScope, snapshotThread = EmptyCoroutineContext)
 
 internal fun noUpNext(
   tabs: TabsController,

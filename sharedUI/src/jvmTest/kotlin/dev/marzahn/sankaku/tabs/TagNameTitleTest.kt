@@ -34,7 +34,7 @@ class TagNameTitleTest {
 
   @Test
   fun aNameLearntLaterRenamesTheSourceAndAClosedOneIsNamedToo() = runTest {
-    val tabs = TabsController(scope = backgroundScope, knownTags = known)
+    val tabs = TabsController(background = inTheBackgroundOnTheTestThread(), knownTags = known)
     runCurrent()
     tabs.open(Route.Grid(listOf("jien_(nikke)")), background = false)
     val source = tabs.activeTab

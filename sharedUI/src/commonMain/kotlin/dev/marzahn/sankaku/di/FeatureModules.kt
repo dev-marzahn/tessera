@@ -52,6 +52,7 @@ import dev.marzahn.sankaku.features.post.PostSaver
 import dev.marzahn.sankaku.features.post.PostScreen
 import dev.marzahn.sankaku.features.post.PostViewModel
 import dev.marzahn.sankaku.features.post.TagBlacklisting
+import dev.marzahn.sankaku.tabs.TabsBackground
 import dev.marzahn.sankaku.tabs.TabsController
 import dev.marzahn.sankaku.tabs.NewTab
 import dev.marzahn.sankaku.tabs.ClearViewed
@@ -86,7 +87,7 @@ import org.koin.dsl.navigation3.navigation
 @OptIn(KoinExperimentalAPI::class)
 val shellModule = module {
   single(createdAtStart = true) {
-    TabsController(get(), get(), knownTags = getOrNull<TagsRepository>()?.known, today = getOrNull())
+    TabsController(get(), TabsBackground(get(), get(SNAPSHOT_THREAD)), knownTags = getOrNull<TagsRepository>()?.known, today = getOrNull())
       .also { it.pinFeeds(pinnedFeeds(getOrNull(), getOrNull())) }
   }
   single<Navigator> { TabsNavigator(get(), get()) }

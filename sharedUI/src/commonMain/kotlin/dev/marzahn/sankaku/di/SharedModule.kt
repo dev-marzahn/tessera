@@ -63,6 +63,7 @@ import dev.marzahn.sankaku.tabs.FeedCatchUp
 import dev.marzahn.sankaku.tabs.FollowingNewsSource
 import dev.marzahn.sankaku.tabs.SourcePreviews
 import io.ktor.client.HttpClient
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -76,11 +77,13 @@ import kotlin.time.TimeSource
 val AUTH_CLIENT = named("authClient")
 val MAIN_CLIENT = named("mainClient")
 val GITHUB_CLIENT = named("githubClient")
+val SNAPSHOT_THREAD = named("snapshotThread")
 
 val sharedModule = module {
   single<Clock> { Clock.System }
   single<TimeSource.WithComparableMarks> { TimeSource.Monotonic }
   single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+  single<CoroutineContext>(SNAPSHOT_THREAD) { Dispatchers.Main }
   single { ConnectivityState() }
   single { RequestLog(get()) }
   single { Diagnostics(get(), platformEnvironment()) }

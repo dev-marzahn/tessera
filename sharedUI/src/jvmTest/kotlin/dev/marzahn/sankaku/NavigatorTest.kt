@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.runtime.snapshots.Snapshot
 import dev.marzahn.sankaku.data.InMemoryTextFile
+import dev.marzahn.sankaku.di.SNAPSHOT_THREAD
 import dev.marzahn.sankaku.tabs.FileTabStateStore
 import dev.marzahn.sankaku.tabs.RecordingTabStateStore
 import dev.marzahn.sankaku.tabs.SavedTab
@@ -11,14 +12,18 @@ import dev.marzahn.sankaku.tabs.SavedTabs
 import dev.marzahn.sankaku.tabs.TabId
 import dev.marzahn.sankaku.tabs.TabStateStore
 import dev.marzahn.sankaku.tabs.TabsController
+import dev.marzahn.sankaku.tabs.inTheBackgroundOnTheTestThread
 import dev.marzahn.sankaku.di.shellModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.koin.core.module.Module
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.reflect.KClass
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.Test
@@ -345,7 +350,7 @@ class TabsControllerTest {
   @Test
   fun tabsTheirBackStacksAndTheActiveTabSurviveARestart() = runTest {
     val store = RecordingTabStateStore()
-    val before = TabsController(store, backgroundScope)
+    val before = TabsController(store, inTheBackgroundOnTheTestThread())
     runCurrent()
     val post = Route.Post("p1", "m1", listOf("a"))
     before.open(listOf(post), background = true)
@@ -364,7 +369,7 @@ class TabsControllerTest {
   @Test
   fun aBurstOfChangesIsSavedOnce() = runTest {
     val store = RecordingTabStateStore()
-    val controller = TabsController(store, backgroundScope)
+    val controller = TabsController(store, inTheBackgroundOnTheTestThread())
     runCurrent()
 
     repeat(5) {
@@ -384,7 +389,7 @@ class TabsControllerTest {
   @Test
   fun nothingIsSavedUntilSomethingChanges() = runTest {
     val store = RecordingTabStateStore()
-    TabsController(store, backgroundScope)
+    TabsController(store, inTheBackgroundOnTheTestThread())
 
     advanceTimeBy(TabsController.SAVE_DELAY * 3)
 
@@ -396,7 +401,7 @@ class TabsControllerTest {
     val stacks = listOf(listOf(Route.Grid(emptyList())), listOf(Route.Grid(emptyList()), Route.Grid(listOf("a"))))
     val store = RecordingTabStateStore(SavedTabs(1, stacks.mapIndexed { i, routes -> SavedTab("t$i", routes) }))
     val app = koinApplication {
-      modules(module { single<TabStateStore> { store }; single<CoroutineScope> { backgroundScope } }, shellModule)
+      modules(module { single<TabStateStore> { store }; single<CoroutineScope> { backgroundScope }; onTheTestThread() }, shellModule)
     }
     try {
       val controller = app.koin.get<TabsController>()
@@ -424,7 +429,7 @@ class TabsControllerTest {
       override fun clear() = Unit
     }
     val app = koinApplication {
-      modules(module { single<TabStateStore> { store }; single<CoroutineScope> { CoroutineScope(Job()) } }, shellModule)
+      modules(module { single<TabStateStore> { store }; single<CoroutineScope> { CoroutineScope(Job()) }; onTheTestThread() }, shellModule)
     }
 
     assertEquals(1, loads)
@@ -449,5 +454,9 @@ class TabsControllerTest {
     val controller = TabsController(RecordingTabStateStore(saved))
 
     assertEquals("A", controller.activeTab.title)
+  }
+
+  private fun Module.onTheTestThread() {
+    single<CoroutineContext>(SNAPSHOT_THREAD) { EmptyCoroutineContext }
   }
 }
