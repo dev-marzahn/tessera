@@ -204,6 +204,22 @@ internal class ViewerSheetState(
       return available
     }
   }
+
+  val letGo = object : NestedScrollConnection {
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+      settleIfBetweenStops()
+      return available
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+      settleIfBetweenStops()
+      return available
+    }
+  }
+
+  private fun settleIfBetweenStops() {
+    if (!atStop && job?.isActive != true) settle(0f)
+  }
 }
 
 @Composable
@@ -223,7 +239,7 @@ internal fun rememberViewerSheetState(
 
 internal fun viewerSheetKey(id: String): String = "viewer-sheet-$id"
 
-internal fun Modifier.viewerSheet(sheet: ViewerSheetState): Modifier = this
+internal fun Modifier.viewerSheet(sheet: ViewerSheetState, enabled: Boolean): Modifier = this
   .pointerInput(sheet) {
     awaitPointerEventScope {
       try {
@@ -233,14 +249,16 @@ internal fun Modifier.viewerSheet(sheet: ViewerSheetState): Modifier = this
       }
     }
   }
-  .nestedScroll(sheet.connection)
+  .nestedScroll(if (enabled) sheet.connection else sheet.letGo)
   .semantics {
     verticalScrollAxisRange = ScrollAxisRange(value = { sheet.lift }, maxValue = { sheet.stops.full })
-    scrollBy { _, y ->
-      when {
-        y > 0f -> sheet.expand()
-        y < 0f -> sheet.collapse()
-        else -> false
+    if (enabled) {
+      scrollBy { _, y ->
+        when {
+          y > 0f -> sheet.expand()
+          y < 0f -> sheet.collapse()
+          else -> false
+        }
       }
     }
   }

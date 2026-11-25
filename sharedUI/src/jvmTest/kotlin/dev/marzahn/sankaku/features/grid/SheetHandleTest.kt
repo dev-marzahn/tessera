@@ -51,7 +51,7 @@ class SheetHandleTest {
       val pictureActions = sheetActions(sheet) { expandedFromPicture++ }
       Column(Modifier.size(400.dp, 800.dp)) {
         Box(Modifier.testTag("picture").size(400.dp, 100.dp).semantics { customActions = pictureActions })
-        Column(Modifier.testTag("sheet").fillMaxWidth().height(700.dp).viewerSheet(sheet)) {
+        Column(Modifier.testTag("sheet").fillMaxWidth().height(700.dp).viewerSheet(sheet, enabled = true)) {
           SheetHandle(sheet, fullFraction = { 0f })
           Column(Modifier.testTag("details").fillMaxWidth().height(600.dp).verticalScroll(rememberScrollState())) {
             Box(Modifier.size(400.dp, 2000.dp))

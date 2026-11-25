@@ -858,7 +858,7 @@ fun SharedTransitionScope.PhoneViewer(
         .height(with(density) { height.toDp() })
         .clip(RoundedCornerShape(topStart = lerp(SHEET_CORNER, 0.dp, fullFraction), topEnd = lerp(SHEET_CORNER, 0.dp, fullFraction)))
         .background(MaterialTheme.colorScheme.surfaceContainerLow)
-        .viewerSheet(sheet),
+        .viewerSheet(sheet, enabled = !closing),
     ) {
       SheetHeader(
         post = post,
