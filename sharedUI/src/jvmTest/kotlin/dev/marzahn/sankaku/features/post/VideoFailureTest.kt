@@ -51,6 +51,8 @@ class VideoFailureTest {
       seeks += fraction
       position = fraction
     }
+
+    override fun release() {}
   }
 
   @Test

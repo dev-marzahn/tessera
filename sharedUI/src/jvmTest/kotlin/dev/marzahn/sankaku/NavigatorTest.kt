@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.compose.runtime.snapshots.Snapshot
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.tabs.FileTabStateStore
+import dev.marzahn.sankaku.tabs.RecordingTabStateStore
 import dev.marzahn.sankaku.tabs.SavedTab
 import dev.marzahn.sankaku.tabs.SavedTabs
 import dev.marzahn.sankaku.tabs.TabId
@@ -341,24 +342,9 @@ class TabsControllerTest {
 
   private val TabsController.stacks get() = tabs.value.map { it.backStack.toList() }
 
-  private class FakeStore(var saved: SavedTabs? = null) : TabStateStore {
-    var writes = 0
-
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) {
-      saved = tabs
-      writes++
-    }
-
-    override fun clear() {
-      saved = null
-    }
-  }
-
   @Test
   fun tabsTheirBackStacksAndTheActiveTabSurviveARestart() = runTest {
-    val store = FakeStore()
+    val store = RecordingTabStateStore()
     val before = TabsController(store, backgroundScope)
     runCurrent()
     val post = Route.Post("p1", "m1", listOf("a"))
@@ -377,7 +363,7 @@ class TabsControllerTest {
 
   @Test
   fun aBurstOfChangesIsSavedOnce() = runTest {
-    val store = FakeStore()
+    val store = RecordingTabStateStore()
     val controller = TabsController(store, backgroundScope)
     runCurrent()
 
@@ -387,28 +373,28 @@ class TabsControllerTest {
       Snapshot.sendApplyNotifications()
       advanceTimeBy(200.milliseconds)
     }
-    assertEquals(0, store.writes)
+    assertEquals(0, store.saves.size)
     advanceTimeBy(TabsController.SAVE_DELAY)
 
-    assertEquals(1, store.writes)
+    assertEquals(1, store.saves.size)
     assertEquals(6, store.saved?.tabs?.size)
     assertEquals(5, store.saved?.activeIndex)
   }
 
   @Test
   fun nothingIsSavedUntilSomethingChanges() = runTest {
-    val store = FakeStore()
+    val store = RecordingTabStateStore()
     TabsController(store, backgroundScope)
 
     advanceTimeBy(TabsController.SAVE_DELAY * 3)
 
-    assertEquals(0, store.writes)
+    assertEquals(0, store.saves.size)
   }
 
   @Test
   fun koinCreatesTheControllerAtStartSoRestoredTabsAreSavedWithTheirRoutes() = runTest {
     val stacks = listOf(listOf(Route.Grid(emptyList())), listOf(Route.Grid(emptyList()), Route.Grid(listOf("a"))))
-    val store = FakeStore(SavedTabs(1, stacks.mapIndexed { i, routes -> SavedTab("t$i", routes) }))
+    val store = RecordingTabStateStore(SavedTabs(1, stacks.mapIndexed { i, routes -> SavedTab("t$i", routes) }))
     val app = koinApplication {
       modules(module { single<TabStateStore> { store }; single<CoroutineScope> { backgroundScope } }, shellModule)
     }
@@ -420,7 +406,7 @@ class TabsControllerTest {
       Snapshot.sendApplyNotifications()
       advanceTimeBy(TabsController.SAVE_DELAY + 100.milliseconds)
 
-      assertEquals(1, store.writes)
+      assertEquals(1, store.saves.size)
       assertEquals(stacks, store.saved?.tabs?.map { it.routes })
     } finally {
       app.close()
@@ -460,7 +446,7 @@ class TabsControllerTest {
   fun anOutOfRangeActiveIndexFallsBackToATab() {
     val saved = SavedTabs(activeIndex = 7, tabs = listOf(SavedTab("a", listOf(Route.Grid(listOf("a"))))))
 
-    val controller = TabsController(FakeStore(saved))
+    val controller = TabsController(RecordingTabStateStore(saved))
 
     assertEquals("A", controller.activeTab.title)
   }

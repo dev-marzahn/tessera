@@ -150,19 +150,11 @@ class FeedIsASourceTest {
     val store = FileTabStateStore(old)
     val loaded = store.load()!!
 
-    val restored = TabsController(FakeStore(loaded))
+    val restored = TabsController(RecordingTabStateStore(loaded))
     restored.pinFeeds(listOf(Feed.Following))
 
     assertEquals(listOf("X", "Following", "Post k", "Y"), titles(restored))
     assertEquals(loaded.tabs.map { it.id }, restored.saved().tabs.map { it.id })
     assertEquals(text, old.read())
-  }
-
-  private class FakeStore(val saved: SavedTabs?) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) = Unit
-
-    override fun clear() = Unit
   }
 }

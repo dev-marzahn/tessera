@@ -88,7 +88,7 @@ class TabsMigrationTest {
     assertNotEquals(v1, file.read())
     val reloaded = FileTabStateStore(file, backup, clock = clock).load()
     assertEquals(migrated, reloaded)
-    val again = TabsController(FakeStore(reloaded), clock = clock).saved()
+    val again = TabsController(RecordingTabStateStore(reloaded), clock = clock).saved()
     assertEquals(migrated.copy(session = again.session), again)
     store.save(migrated)
     assertEquals(v1, backup.read())
@@ -245,13 +245,5 @@ class TabsMigrationTest {
     store.save(SavedTabs(0, listOf(SavedTab("a", listOf(Route.Grid(listOf("x"))), place = place))))
 
     assertEquals(place, store.load()!!.tabs.single().place)
-  }
-
-  private class FakeStore(val saved: SavedTabs?) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) = Unit
-
-    override fun clear() = Unit
   }
 }

@@ -230,20 +230,20 @@ class ClearViewedTest {
     see("p1")
     val session = tabs.sessions.current
 
-    val relaunched = TabsController(FakeStore(tabs.saved()), clock = clock)
+    val relaunched = TabsController(RecordingTabStateStore(tabs.saved()), clock = clock)
     assertEquals(session, relaunched.sessions.current)
     relaunched.open(grid("fresh"), background = true)
     assertEquals("Fresh", relaunched.tabs.value.last { it.addedIn == session }.title)
 
     tabs.clearViewed(seen)
-    val afterClear = TabsController(FakeStore(tabs.saved()), clock = clock)
+    val afterClear = TabsController(RecordingTabStateStore(tabs.saved()), clock = clock)
     assertNotEquals(session, tabs.sessions.current)
     assertEquals(tabs.sessions.current, afterClear.sessions.current)
   }
 
   @Test
   fun aFileWithoutASessionStartsOne() {
-    val controller = TabsController(FakeStore(SavedTabs(0, listOf(SavedTab("old", listOf(grid("old")))))), clock = clock)
+    val controller = TabsController(RecordingTabStateStore(SavedTabs(0, listOf(SavedTab("old", listOf(grid("old")))))), clock = clock)
 
     assertEquals(controller.sessions.current.value, controller.saved().session)
     assertNotEquals("", controller.sessions.current.value)
@@ -366,13 +366,5 @@ class ClearViewedTest {
   fun theAccessibleNameCountsTheKeptPosts() {
     assertEquals("Clear viewed, 118 kept posts", clearViewedLabel(118))
     assertEquals("Clear viewed, 1 kept post", clearViewedLabel(1))
-  }
-
-  private class FakeStore(val saved: SavedTabs?) : TabStateStore {
-    override fun load() = saved
-
-    override fun save(tabs: SavedTabs) = Unit
-
-    override fun clear() = Unit
   }
 }

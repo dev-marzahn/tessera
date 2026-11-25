@@ -67,6 +67,7 @@ import dev.marzahn.sankaku.features.post.DirectorySaveFolder
 import dev.marzahn.sankaku.features.post.LocalVideoPlayback
 import dev.marzahn.sankaku.features.post.SaveFolder
 import dev.marzahn.sankaku.features.post.VideoPlayback
+import dev.marzahn.sankaku.features.post.rememberPlatformVideoPlayback
 import dev.marzahn.sankaku.tabs.FileTabStateStore
 import dev.marzahn.sankaku.tabs.TabStateStore
 import dev.marzahn.sankaku.tabs.TabsController
@@ -103,7 +104,7 @@ import kotlin.time.Duration.Companion.hours
 @OptIn(ExperimentalTestApi::class)
 internal class GridScreenFixture(
   private val types: Map<Int, String> = emptyMap(),
-  private val player: VideoPlayback? = null,
+  private val playback: @Composable () -> VideoPlayback = { rememberPlatformVideoPlayback() },
   private val images: Boolean = false,
   private val pictures: Map<Int, Int> = emptyMap(),
   private val locked: Set<Int> = emptySet(),
@@ -235,17 +236,15 @@ internal class GridScreenFixture(
     val navigator = TabsNavigator(tabs)
     setContent {
       SankakuTheme {
-        val grid = @Composable {
-          val activeId by tabs.active.collectAsState()
-          val active = tabs.tabs.collectAsState().value.first { it.id == activeId }
-          ActiveTab(active, tabs, navigator, rememberSaveableStateHolder()) { key ->
-            NavEntry<NavKey>(key) { if (key is Route.Grid) GridScreen(key) }
-          }
-        }
-        val fake = player
         val tips = GlobalContext.get().get<Tips>()
         Box(Modifier.fillMaxSize().tipGestures(tips)) {
-          if (fake == null) grid() else CompositionLocalProvider(LocalVideoPlayback provides { fake }) { grid() }
+          CompositionLocalProvider(LocalVideoPlayback provides playback) {
+            val activeId by tabs.active.collectAsState()
+            val active = tabs.tabs.collectAsState().value.first { it.id == activeId }
+            ActiveTab(active, tabs, navigator, rememberSaveableStateHolder()) { key ->
+              NavEntry<NavKey>(key) { if (key is Route.Grid) GridScreen(key) }
+            }
+          }
           TipLayer(tips)
         }
       }

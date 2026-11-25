@@ -24,28 +24,9 @@ import kotlin.test.assertNull
 
 @OptIn(ExperimentalTestApi::class)
 class TapSeekTest {
-  private class Player : VideoPlayback {
-    override val hasMedia = true
-    override val isPlaying = true
-    override val failed = false
-    override val firstFrameShown = true
-    override val duration = 100.0
-    override var position by mutableStateOf(0.5f)
-    override var volume = 1f
-    override var dragging = false
+  private fun playingVideo() = FakeVideoPlayback(playing = true, position = 0.5f, hasMedia = true, firstFrameShown = true, duration = 100.0)
 
-    override fun open(url: String, cacheKey: String, play: Boolean) {}
-
-    override fun play() {}
-
-    override fun pause() {}
-
-    override fun seekTo(fraction: Float) {
-      position = fraction
-    }
-  }
-
-  private val player = Player()
+  private val player = playingVideo()
   private val keys = VideoKeys(PlayerPreferences(InMemoryTextFile())).also { it.register(player) }
   private var taps = 0
 
@@ -154,7 +135,7 @@ class TapSeekTest {
   fun anotherVideoStartsWithNoSeekShowing() {
     keys.seekFromTap(SeekDirection.Back)
 
-    keys.register(Player())
+    keys.register(playingVideo())
 
     assertNull(keys.tapSeek)
   }

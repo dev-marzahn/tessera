@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
-import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
+import io.github.kdroidfilter.composemediaplayer.createVideoPlayerState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -66,6 +66,8 @@ internal class LibraryVideoPlayback(val state: VideoPlayerState) : VideoPlayback
     seekTarget = to
   }
 
+  override fun release() = state.dispose()
+
   suspend fun settleSeeks() {
     snapshotFlow { seekTarget }.collectLatest { to ->
       if (to == null) return@collectLatest
@@ -100,9 +102,8 @@ internal class LibraryVideoPlayback(val state: VideoPlayerState) : VideoPlayback
 }
 
 @Composable
-internal actual fun rememberVideoPlayback(): VideoPlayback {
-  val state = rememberVideoPlayerState()
-  val playback = remember(state) { LibraryVideoPlayback(state) }
+internal actual fun rememberPlatformVideoPlayback(): VideoPlayback {
+  val playback = remember { LibraryVideoPlayback(createVideoPlayerState()) }
   LaunchedEffect(playback) { playback.settleSeeks() }
   return playback
 }

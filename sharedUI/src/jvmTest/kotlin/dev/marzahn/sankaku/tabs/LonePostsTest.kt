@@ -120,13 +120,7 @@ class LonePostsTest {
     val lone = loneAtLaunch(tabs, newId = { "new" })
 
     assertEquals(listOf("new" to null, "a" to "new", "u" to "new"), lone.map { it.id to it.block })
-    val controller = TabsController(object : TabStateStore {
-      override fun load() = SavedTabs(activeIndex = 0, tabs = tabs)
-
-      override fun save(tabs: SavedTabs) = Unit
-
-      override fun clear() = Unit
-    })
+    val controller = TabsController(RecordingTabStateStore(SavedTabs(activeIndex = 0, tabs = tabs)))
     val grid = controller.tabs.value.first()
     assertEquals(listOf(grid, grid), controller.tabs.value.drop(1).map { controller.sourceOf(it) })
   }
@@ -143,16 +137,9 @@ class LonePostsTest {
 
   @Test
   fun theActiveTabStaysActiveWhenAGridIsSplitOutBeforeIt() {
-    val store = object : TabStateStore {
-      override fun load() = SavedTabs(
-        activeIndex = 1,
-        tabs = listOf(saved("a", artist, post("p1")), saved("b", Route.Grid(listOf("other")))),
-      )
-
-      override fun save(tabs: SavedTabs) = Unit
-
-      override fun clear() = Unit
-    }
+    val store = RecordingTabStateStore(
+      SavedTabs(activeIndex = 1, tabs = listOf(saved("a", artist, post("p1")), saved("b", Route.Grid(listOf("other"))))),
+    )
 
     val controller = TabsController(store)
 
