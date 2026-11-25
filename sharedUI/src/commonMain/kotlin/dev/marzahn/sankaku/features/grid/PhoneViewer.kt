@@ -81,6 +81,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.AnimatedVisibility
 import dev.marzahn.sankaku.ui.components.effectsSpec
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -150,7 +151,6 @@ import dev.marzahn.sankaku.tabs.PicturePeek
 import dev.marzahn.sankaku.tabs.TabId
 import dev.marzahn.sankaku.tabs.queueSwipe
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.foundation.layout.heightIn
@@ -334,7 +334,12 @@ fun SharedTransitionScope.PhoneViewer(
   val progress by transition.animateFloat({ if (targetState == EnterExitState.Visible) openSpec else closeSpec }) {
     if (it == EnterExitState.Visible) 1f else 0f
   }
-  val controlsShown = progress > CONTROLS_SHOWN_AT && !leaving
+  val shownAt = if (mode.steps) index else 0
+  val sheet = rememberViewerSheetState(scope, closeSpec, SHEET_FLING, postId = sharedId ?: postAt(shownAt)?.id)
+  var sheetDragged by remember(opening) { mutableStateOf(false) }
+  val sheetDrag = remember(sheet, opening) { SheetDrag(sheet) { sheetDragged = true } }
+  val sheetDragState = rememberDraggableState(sheetDrag::dragBy)
+  val controlsShown = controlsShown(progress, sheetDragged, closing, leaving)
   val bounds = spatialBoundsTransform(slow = !closing)
 
   val floatingBar = mode != ViewerMode.Tab
@@ -354,12 +359,13 @@ fun SharedTransitionScope.PhoneViewer(
   val tabBarSlide = LocalTabBarSlide.current
   val slideFrom = remember(opening) { tabBarSlide() }
   val barInPlace by remember(docked, floatingBar) { derivedStateOf { !floatingBar || docked() == 1f } }
-  val statsTakeTaps = heldFor(settled && !closing && barInPlace, BAR_MOVE_GRACE)
+  var barDragging by remember(opening) { mutableStateOf(false) }
+  val barSpot = barSpotTaker(closing, barInPlace, barDragging)
+  val statsTakeTaps = heldFor(settled && barSpot == BarSpotTaker.Stats, BAR_MOVE_GRACE)
 
   CoverChrome(enabled = !handBack)
 
   val minFling = with(density) { MIN_FLING.toPx() }
-  val sheet = rememberViewerSheetState(scope, closeSpec, SHEET_FLING, postId = sharedId ?: postAt(if (mode.steps) index else 0)?.id)
   val zoom = remember { PostZoom() }
   var tapHidden by remember(opening) { mutableStateOf(false) }
   var onEndPage by remember { mutableStateOf(false) }
@@ -371,7 +377,7 @@ fun SharedTransitionScope.PhoneViewer(
   val imageLayout by remember { derivedStateOf { imageSpring.value.coerceIn(0f, 1f) } }
   val chromeAlpha by animateFloatAsState(if (chromeShown && controlsShown) 1f else 0f, fadeSpec)
 
-  val pager = rememberPagerState(initialPage = if (mode.steps) index else 0) { if (mode.steps) loadedCount + 1 else 1 }
+  val pager = rememberPagerState(initialPage = shownAt) { if (mode.steps) loadedCount + 1 else 1 }
   val currentIndex by rememberUpdatedState(index)
   val currentLoaded by rememberUpdatedState(loadedCount)
   if (mode.steps) {
@@ -386,7 +392,7 @@ fun SharedTransitionScope.PhoneViewer(
     }
     LaunchedEffect(index, opening) { if (!pager.isScrollInProgress && pager.settledPage != index) pager.scrollToPage(index) }
   }
-  val post = sameWhileEqual(postAt(if (mode.steps) index else 0))
+  val post = sameWhileEqual(postAt(shownAt))
   val viewing = rememberViewing(post)
   val keep = onKeep?.let(viewing::keepingFrom)
 
@@ -438,6 +444,46 @@ fun SharedTransitionScope.PhoneViewer(
 
   val keyFocus = remember { FocusRequester() }
   LaunchedEffect(video.player) { keyFocus.requestFocus() }
+  val viewerBox = remember { arrayOfNulls<LayoutCoordinates>(1) }
+  val barBox = remember { arrayOfNulls<LayoutCoordinates>(1) }
+  val sheetBox = remember { arrayOfNulls<LayoutCoordinates>(1) }
+  val seekRow = remember { arrayOfNulls<LayoutCoordinates>(1) }
+  fun inViewer(box: Array<LayoutCoordinates?>): Rect? {
+    val viewer = viewerBox[0]?.takeIf { it.isAttached } ?: return null
+    return box[0]?.takeIf { it.isAttached }?.let { viewer.localBoundingBoxOf(it, clipBounds = false) }
+  }
+  fun toViewer(box: Array<LayoutCoordinates?>, at: Offset): Offset {
+    val viewer = viewerBox[0]?.takeIf { it.isAttached } ?: return Offset.Unspecified
+    return box[0]?.takeIf { it.isAttached }?.let { viewer.localPositionOf(it, at) } ?: Offset.Unspecified
+  }
+  val currentClose by rememberUpdatedState(::close)
+  val currentDragClose by rememberUpdatedState(onDragClose)
+  val pictureDrag = remember(sheetDrag, dismiss, mode, density) {
+    PictureDrag(
+      sheet = sheetDrag,
+      dismiss = dismiss,
+      closes = { dy, fromSeekRow ->
+        dragDownCloses(dy, sheet.headedForPeek, zoom.zoomed, mode, closable = mode == ViewerMode.Overlay || currentDragClose != null, fromSeekRow)
+      },
+      onSeekRow = { at -> inViewer(seekRow)?.contains(at) == true },
+      onLifting = { tapHidden = false },
+      letGo = { velocity ->
+        when {
+          mode == ViewerMode.Tab ->
+            if (loneDragCloses(dismiss.offset, windowHeight, velocity, minFling)) currentDragClose?.invoke() else dismiss.springBack()
+          dismiss.offset > with(density) { DISMISS_DISTANCE.toPx() } || velocity > DISMISS_VELOCITY -> currentClose()
+          else -> dismiss.springBack()
+        }
+      },
+    )
+  }
+  val pictureDragState = rememberDraggableState(pictureDrag::dragBy)
+  fun barDragAt(at: Offset): ViewerDrag? {
+    if (barSpot != BarSpotTaker.Bar || inViewer(barBox)?.contains(at) != true) return null
+    val sheetTop = inViewer(sheetBox)?.top ?: return sheetDrag
+    return if (at.y < sheetTop) pictureDrag else sheetDrag
+  }
+  val currentBarDragAt by rememberUpdatedState(::barDragAt)
   BoxWithConstraints(
     Modifier
       .fillMaxSize()
@@ -446,7 +492,11 @@ fun SharedTransitionScope.PhoneViewer(
         false
       }
       .focusRequester(keyFocus)
-      .focusable(),
+      .focusable()
+      .onGloballyPositioned { viewerBox[0] = it }
+      .pointerInput(closing, opening) {
+        if (!closing) handOnBarDrags(dragAt = { currentBarDragAt(it) }, onDragging = { barDragging = it })
+      },
   ) {
     val height = constraints.maxHeight.toFloat()
     val seenBars = LocalBarInsets.current
@@ -476,7 +526,7 @@ fun SharedTransitionScope.PhoneViewer(
     )
     val peekTop = height - (with(density) { PEEK_HEADER.toPx() } + navBottom) * (1f - videoLandscape)
     val gridLine = height - navBottom - with(density) { BottomRowLayout.CentreLine.toPx() }
-    LaunchedEffect(peekTop, height) { sheet.update(SheetStops(half = peekTop - height * HALF_TOP, full = peekTop)) }
+    LaunchedEffect(peekTop, height) { sheet.update(sheetStops(peekTop, height)) }
     val topRow = statusTop + with(density) { TOP_ROW.toPx() }
     val pictureTop = density.pictureTop(statusTop, compactHeight) * (1f - videoLandscape)
     fun sheetTop(shown: Float = chromeLayout) = peekTop - sheet.lift + (1f - shown) * (height - peekTop + sheet.lift)
@@ -484,11 +534,7 @@ fun SharedTransitionScope.PhoneViewer(
     val dismissRange = height / 2f
     fun dismissFraction() = dismiss.fraction(dismissRange)
     val imageBox = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val seekRow = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    fun seekRowBounds(): Rect? = seekRow[0]?.takeIf { it.isAttached }?.boundsInRoot()
     val seekTrack = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val viewerOrigin = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    Box(Modifier.onGloballyPositioned { viewerOrigin[0] = it })
 
     if (mode != ViewerMode.Tab) {
       Box(
@@ -539,19 +585,6 @@ fun SharedTransitionScope.PhoneViewer(
         .background(Color.Black),
     ) {
       val cardShare = remember { floatArrayOf(1f) }
-      var dragDismisses by remember { mutableStateOf<Boolean?>(null) }
-      var fromSeekRow by remember { mutableStateOf(false) }
-      val drag = rememberDraggableState { dy ->
-        val dismissing = dragDismisses
-          ?: dragDownCloses(dy, sheet.headedForPeek, zoom.zoomed, mode, closable = mode == ViewerMode.Overlay || onDragClose != null, fromSeekRow)
-            .also { dragDismisses = it }
-        if (dismissing) {
-          dismiss.dragBy(dy)
-        } else {
-          if (dy < 0f && tapHidden) tapHidden = false
-          sheet.dragBy(dy)
-        }
-      }
       Box(
         Modifier
           .layout { measurable, constraints ->
@@ -565,23 +598,11 @@ fun SharedTransitionScope.PhoneViewer(
           }
           .onGloballyPositioned { imageBox[0] = it }
           .draggable(
-            drag,
+            pictureDragState,
             Orientation.Vertical,
             enabled = !closing && !zoom.zoomed,
-            onDragStarted = { start ->
-              dragDismisses = null
-              fromSeekRow = imageBox[0]?.takeIf { it.isAttached }?.localToRoot(start)?.let { seekRowBounds()?.contains(it) } == true
-            },
-            onDragStopped = { velocity ->
-              if (dragDismisses == true && mode == ViewerMode.Tab) {
-                if (loneDragCloses(dismiss.offset, height, velocity, minFling)) onDragClose?.invoke() else dismiss.springBack()
-              } else if (dragDismisses == true) {
-                if (dismiss.offset > with(density) { DISMISS_DISTANCE.toPx() } || velocity > DISMISS_VELOCITY) close() else dismiss.springBack()
-              } else {
-                sheet.settle(velocity)
-              }
-              dragDismisses = null
-            },
+            onDragStarted = { start -> pictureDrag.start(toViewer(imageBox, start)) },
+            onDragStopped = { velocity -> pictureDrag.stop(velocity) },
           ),
       ) {
         val queueActions = LocalQueueActions.current
@@ -795,7 +816,7 @@ fun SharedTransitionScope.PhoneViewer(
           .layout { measurable, constraints ->
             val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
             layout(constraints.maxWidth, constraints.maxHeight) {
-              val origin = viewerOrigin[0]?.takeIf { it.isAttached }
+              val origin = viewerBox[0]?.takeIf { it.isAttached }
               val track = seekTrack[0]?.takeIf { it.isAttached }
               if (origin == null || track == null) return@layout
               val bounds = origin.localBoundingBoxOf(track)
@@ -830,6 +851,7 @@ fun SharedTransitionScope.PhoneViewer(
     Column(
       Modifier
         .offset { IntOffset(0, sheetTop().roundToInt()) }
+        .onGloballyPositioned { sheetBox[0] = it }
         .then(chrome)
         .then(if (videoLandscape == 1f && sheet.atPeek) Modifier.semantics { hideFromAccessibility() } else Modifier)
         .fillMaxWidth()
@@ -866,10 +888,10 @@ fun SharedTransitionScope.PhoneViewer(
         onDrop = onDrop.takeIf { mode == ViewerMode.Tab },
         statsTakeTaps = statsTakeTaps,
         modifier = Modifier.draggable(
-          rememberDraggableState { sheet.dragBy(it) },
+          sheetDragState,
           Orientation.Vertical,
           enabled = !closing,
-          onDragStopped = { sheet.settle(it) },
+          onDragStopped = { sheetDrag.stop(it) },
         ),
       )
       if (!composeDetails) Spacer(Modifier.weight(1f)) else PostDetails(
@@ -918,7 +940,9 @@ fun SharedTransitionScope.PhoneViewer(
             pillLine()
           }
           translationY = line - rowHalf
-        },
+        }
+        .onGloballyPositioned { barBox[0] = it }
+        .then(if (barSpot == BarSpotTaker.Bar) Modifier.holdsTouches() else Modifier),
     )
 
     val currentId by rememberUpdatedState(post.id)
@@ -1003,6 +1027,11 @@ private val ORIGIN_MAX_WIDTH = 240.dp
 private fun dragFade(fraction: Float): Float = (1f - fraction * 3f).coerceAtLeast(0f)
 
 private const val CONTROLS_SHOWN_AT = 0.9f
+
+internal fun controlsShown(progress: Float, sheetDragged: Boolean, closing: Boolean, leaving: Boolean): Boolean =
+  !leaving && (progress > CONTROLS_SHOWN_AT || sheetDragged && !closing)
+
+internal fun sheetStops(peekTop: Float, height: Float): SheetStops = SheetStops(half = peekTop - height * HALF_TOP, full = peekTop)
 
 private val SEEK_ROW_GAP = 12.dp
 
