@@ -35,7 +35,6 @@ import dev.marzahn.sankaku.queue.FeedMarksStore
 import dev.marzahn.sankaku.queue.QueueKind
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.queue.TodayStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -101,9 +100,9 @@ class QueuePageFollowingTest {
     setContent {
       SankakuTheme {
         Box(Modifier.requiredSize(412.dp, 915.dp)) {
-          QueuePage(
+          PhoneQueuePage(
             onDismiss = { dismissed++ }, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-            clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {},
+            interacted = { true }, onInteract = {},
             today = today, onSort = onSort, following = following, catchUp = catchUp,
           )
         }
@@ -183,7 +182,7 @@ class QueuePageFollowingTest {
   }
 
   @Test
-  fun sortAndClearViewedSitAtTheBottomAboveContinue() = runComposeUiTest {
+  fun sortClearViewedAndContinueSitOnOneLineAtTheBottom() = runComposeUiTest {
     val route = Route.Grid(listOf("artist_new"))
     tabs.open(route, background = true)
     tabs.tabs.value.last().reportPreview(route, SourcePreview((1..9).map { QueueThumb("mn$it", "s") }, about = 80, loaded = 30))
@@ -193,13 +192,12 @@ class QueuePageFollowingTest {
     show(onSort = {})
 
     val actions = onNodeWithTag(QUEUE_ACTIONS_TAG).getBoundsInRoot()
-    val sort = onNodeWithText("Sort 1 new").getBoundsInRoot()
+    val sort = onNodeWithContentDescription("Sort 1 new").getBoundsInRoot()
     val clear = onNodeWithContentDescription("Clear viewed", substring = true).getBoundsInRoot()
-    val proceed = onNodeWithText("Continue", substring = true).getBoundsInRoot()
+    val proceed = onNodeWithContentDescription("Continue", substring = true).getBoundsInRoot()
     val chips = onNodeWithText("All").getBoundsInRoot()
-    assertEquals((sort.top + sort.bottom) / 2, (clear.top + clear.bottom) / 2)
-    assertTrue(sort.right <= clear.left, "$sort, $clear")
-    assertTrue(actions.bottom <= proceed.top + 1.dp, "$actions above $proceed")
+    listOf(clear, proceed).forEach { assertEquals((sort.top + sort.bottom) / 2, (it.top + it.bottom) / 2) }
+    assertTrue(sort.right <= clear.left && clear.right <= proceed.left, "$sort, $clear, $proceed")
     assertTrue(actions.top > 915.dp / 2 && actions.top > chips.bottom, "$actions")
   }
 

@@ -40,7 +40,7 @@ class ClosedSourceBlockTest {
 
     assertNotNull(closed)
     assertEquals(2, closed.keptStay)
-    assertEquals("Closed “Artist X” · 2 kept stay", closed.closedText)
+    assertEquals("Closed “Artist X” · 2 kept stay", Closing.Closed.words(closed).spoken)
     assertEquals(listOf("Browse", "p1", "p2", "Other", "p3"), titles())
     assertEquals(listOf("artist_x"), tab("p1").closedSource)
     assertEquals(listOf("artist_x"), tab("p2").closedSource)
@@ -57,7 +57,7 @@ class ClosedSourceBlockTest {
 
     assertNotNull(closed)
     assertEquals(0, closed.keptStay)
-    assertEquals("Closed “Artist X”", closed.closedText)
+    assertEquals("Closed “Artist X”", Closing.Closed.words(closed).spoken)
   }
 
   @Test

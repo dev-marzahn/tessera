@@ -11,7 +11,6 @@ import androidx.compose.runtime.setValue
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.api.dto.PostDto
 import dev.marzahn.sankaku.queue.SourceKey
-import dev.marzahn.sankaku.ui.components.CountPillText
 import org.koin.mp.KoinPlatform
 
 class SortDeck(
@@ -281,7 +280,7 @@ class SortDeck(
     val wasGoneIn = goneIn == id && !inKept
     val closed = tabs.close(id) ?: return
     if (!wasCard && !wasGoneIn) {
-      undo.opened(closed, alsoUndo)
+      undo.opened(closed, alsoUndo = alsoUndo)
       return
     }
     if (wasGoneIn) {
@@ -349,6 +348,11 @@ class SortDeck(
       return
     }
     if (pastBlock(source, id)) backToDeck()
+  }
+
+  fun goneInEndsAt(next: TabId?): Boolean {
+    val source = goneIn ?: return false
+    return next == null || pastBlock(source, next)
   }
 
   private fun pastBlock(source: TabId, id: TabId): Boolean {
@@ -439,13 +443,6 @@ class SortDeck(
     startedFrom = null
   }
 
-  fun pillText(): CountPillText? = if (running && goneIn != null) {
-    val at = position + 1
-    CountPillText(SORT, "$at / $total", "Sort, card $at of $total. Back to the deck")
-  } else {
-    null
-  }
-
   private fun answerLater(id: TabId) {
     val all = tabs.tabs.value
     val tab = all.firstOrNull { it.id == id } ?: return
@@ -458,7 +455,7 @@ class SortDeck(
   }
 
   private fun answerDone(id: TabId, closed: ClosedTab?, alsoUndo: (() -> Unit)? = null, followed: Boolean = false) {
-    closed?.let { undo.opened(it, alsoUndo) }
+    closed?.let { undo.opened(it, alsoUndo = alsoUndo) }
     val kind = if (followed) Answer.Kind.Followed else Answer.Kind.Done
     answer(kind)
     lastLater = null

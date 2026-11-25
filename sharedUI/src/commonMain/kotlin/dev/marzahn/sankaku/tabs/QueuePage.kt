@@ -24,7 +24,6 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -50,8 +49,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,7 +56,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -100,15 +96,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -148,12 +139,16 @@ import dev.marzahn.sankaku.features.grid.Rating
 import dev.marzahn.sankaku.features.settings.ClearEverythingConfirm
 import dev.marzahn.sankaku.queue.QueueKind
 import dev.marzahn.sankaku.queue.SeenStore
+import dev.marzahn.sankaku.ui.components.ConnectedButtonLine
+import dev.marzahn.sankaku.ui.components.FocusOnFirstShow
 import dev.marzahn.sankaku.ui.components.GroupedMenu
+import dev.marzahn.sankaku.ui.components.LARGE_FONT_SCALE
+import dev.marzahn.sankaku.ui.components.LineButton
+import dev.marzahn.sankaku.ui.components.LineButtonStyle
 import dev.marzahn.sankaku.ui.components.LiveAnnouncement
 import dev.marzahn.sankaku.ui.components.MenuAction
 import dev.marzahn.sankaku.ui.components.MenuGroup
 import dev.marzahn.sankaku.ui.components.PrimaryIconButton
-import dev.marzahn.sankaku.ui.components.TonalButton
 import dev.marzahn.sankaku.ui.components.TonalToggleIconButton
 import kotlinx.coroutines.delay
 import kotlinx.datetime.TimeZone
@@ -165,7 +160,6 @@ import org.koin.compose.koinInject
 @Composable
 fun QueuePage(
   onDismiss: () -> Unit,
-  onSwipeClosed: (ClosedTab) -> Unit = {},
   onMenu: (() -> Unit)? = null,
   menuBadge: MenuBadge = MenuBadge.None,
   controller: TabsController = koinInject(),
@@ -173,6 +167,7 @@ fun QueuePage(
   privacy: PrivacySettings = koinInject(),
   seen: SeenStore? = koinInject<SeenStore>(),
   clearViewed: ClearViewed = koinInject(),
+  undo: ClosedTabUndo = koinInject(),
   interacted: () -> Boolean = koinInject<QueueStart>()::interacted,
   onInteract: () -> Unit = koinInject<QueueStart>()::interact,
   onListTop: (Dp) -> Unit = {},
@@ -297,9 +292,24 @@ fun QueuePage(
   val scope = rememberCoroutineScope()
   val activeTab = liveTabs.firstOrNull { it.id == active }
   val clearStatus = clearViewed.status()
+  val pending by undo.pending.collectAsStateWithLifecycle()
+  val clearedShown = pending?.takeIf { it.closing == Closing.Cleared && it.closed in closed }
   val sort = onSort?.takeIf { newSources > 0 }
-  val hasActions = sort != null || clearStatus.count > 0 || later.isNotEmpty()
-  var continueRoom by remember { mutableStateOf(if (hasActions) CONTINUE_ROOM + ACTIONS_ROOM else CONTINUE_ROOM) }
+  val lineButtons = buildList {
+    if (sort != null) add(sortButton(newSources, sort))
+    when {
+      clearedShown != null -> add(
+        undoClearButton(clearedShown.closed, FocusOnFirstShow(clearedShown.closed.key) { focused.add(clearedShown.closed.key) }) {
+          interact()
+          undo.undo()
+        },
+      )
+      clearStatus.count > 0 -> add(clearViewedButton(clearStatus) { clearViewed() })
+    }
+    if (later.isNotEmpty()) add(goThroughLaterButton(later.size) { goThroughLater(null) })
+    if (activeTab != null) add(continueButton(activeTab.title, dismiss))
+  }
+  var bottomRoom by remember { mutableStateOf(if (lineButtons.isNotEmpty()) BOTTOM_LINE_ROOM else 0.dp) }
 
   var moved by remember { mutableStateOf("") }
   LaunchedEffect(moved) {
@@ -343,7 +353,7 @@ fun QueuePage(
   ) {
     val sideColumn = query == null && maxHeight < SIDE_COLUMN_MAX_HEIGHT && maxWidth >= SIDE_COLUMN_MIN_WIDTH
     val sideScroll = rememberScrollState()
-    val listBottom = if (sideColumn) 0.dp else continueRoom
+    val listBottom = if (sideColumn) 0.dp else bottomRoom
     LiveAnnouncement(moved)
     val controls: @Composable () -> Unit = {
       if (counts != null) TodayStrip(counts, goneThrough, seenToday)
@@ -375,17 +385,11 @@ fun QueuePage(
       }
     }
     val actions: @Composable () -> Unit = {
-      if (hasActions) {
-        FlowRow(
-          Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp).testTag(QUEUE_ACTIONS_TAG),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          itemVerticalAlignment = Alignment.CenterVertically,
-          maxItemsInEachRow = if (LocalDensity.current.fontScale > LARGE_FONT) 1 else 2,
-        ) {
-          if (sort != null) SortButton(newSources, sort, Modifier.weight(1f))
-          ClearViewedButton(clearStatus, onClick = { clearViewed() }, Modifier.weight(1f))
-          if (later.isNotEmpty()) GoThroughLaterButton(later.size, onClick = { goThroughLater(null) }, Modifier.weight(1f))
-        }
+      if (lineButtons.isNotEmpty()) {
+        ConnectedButtonLine(
+          lineButtons,
+          modifier = Modifier.fillMaxWidth().testTag(QUEUE_ACTIONS_TAG).padding(horizontal = 16.dp, vertical = 8.dp),
+        )
       }
     }
     val density = LocalDensity.current
@@ -431,16 +435,12 @@ fun QueuePage(
           step = ::step,
           onClose = { id ->
             interact()
-            controller.close(id)?.let {
-              swiped = it
-              onSwipeClosed(it)
-            }
+            undo.close(id, Closing.OnQueuePage)?.let { swiped = it }
           },
           firstShow = focused::add,
           onUndo = {
             interact()
-            swiped = null
-            controller.reopen(it, inPlace = true)
+            undo.undo(it, Closing.OnQueuePage)
           },
           reopened = reopened,
           onReopen = {
@@ -473,6 +473,7 @@ fun QueuePage(
           onFind = { query = "" },
           onBulk = { ids ->
             controller.closeAll(ids)?.let {
+              undo.opened(it, Closing.OnQueuePage)
               swiped = it
               reveal = it.key
             }
@@ -500,7 +501,6 @@ fun QueuePage(
           Column(Modifier.width(SIDE_COLUMN_WIDTH).fillMaxHeight().testTag(SIDE_COLUMN_TAG)) {
             Column(Modifier.weight(1f).verticalScroll(sideScroll)) { controls() }
             actions()
-            if (activeTab != null) ContinueButton(activeTab.title, dismiss, Modifier)
           }
           Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
         }
@@ -511,15 +511,14 @@ fun QueuePage(
       }
     }
     if (!sideColumn && query == null) {
-      Column(
+      Box(
         Modifier
           .align(Alignment.BottomCenter)
           .fillMaxWidth()
           .background(MaterialTheme.colorScheme.surfaceContainerLow)
-          .onSizeChanged { continueRoom = with(density) { it.height.toDp() } },
+          .onSizeChanged { bottomRoom = with(density) { it.height.toDp() } },
       ) {
         actions()
-        if (activeTab != null) ContinueButton(activeTab.title, dismiss, Modifier) else Spacer(Modifier.height(8.dp))
       }
     }
     if (leaving) {
@@ -678,22 +677,44 @@ private fun HeaderLayout(
   }
 }
 
-@Composable
-private fun ClearViewedButton(status: ClearViewed.Status, onClick: () -> Unit, modifier: Modifier = Modifier) {
-  if (status.count <= 0) return
-  val text = "Clear viewed · ${status.count}"
-  val described = modifier.clearAndSetSemantics {
-    contentDescription = clearViewedLabel(status.count)
-    role = Role.Button
-    onClick { onClick(); true }
-  }
-  if (status.suggested) PrimaryIconButton(text, check, onClick, described) else TonalButton(text, check, onClick, described)
+private fun sortButton(count: Int, onClick: () -> Unit) =
+  LineButton(id = "sort", label = "Sort ${grouped(count)} new", icon = view_agenda, style = LineButtonStyle.Tonal, onClick = onClick)
+
+private fun clearViewedButton(status: ClearViewed.Status, onClick: () -> Unit) = LineButton(
+  id = "clear viewed",
+  label = "Clear viewed · ${status.count}",
+  icon = check,
+  style = if (status.suggested) LineButtonStyle.Emphasized else LineButtonStyle.Tonal,
+  onClick = onClick,
+  name = clearViewedLabel(status.count),
+)
+
+private fun undoClearButton(cleared: ClosedTab, focusOnFirstShow: FocusOnFirstShow, onUndo: () -> Unit): LineButton {
+  val words = Closing.Cleared.words(cleared)
+  val label = "Undo · cleared ${cleared.size}"
+  return LineButton(
+    id = "undo clear",
+    label = label,
+    icon = undo,
+    style = LineButtonStyle.Inverse,
+    onClick = onUndo,
+    name = "$label, ${words.undo}",
+    announcedState = words.spoken,
+    focusOnFirstShow = focusOnFirstShow,
+  )
 }
 
-@Composable
-private fun SortButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-  PrimaryIconButton("Sort ${grouped(count)} new", view_agenda, onClick, modifier)
-}
+private fun goThroughLaterButton(count: Int, onClick: () -> Unit) =
+  LineButton(id = "go through later", label = goThroughLaterLabel(count), icon = replay, style = LineButtonStyle.Tonal, onClick = onClick)
+
+private fun continueButton(title: String, onClick: () -> Unit) = LineButton(
+  id = "continue",
+  label = "Continue",
+  icon = play_arrow,
+  style = LineButtonStyle.Filled,
+  onClick = onClick,
+  name = "Continue · $title",
+)
 
 @Composable
 private fun MoreAbove(count: Int, onClick: () -> Unit) {
@@ -712,11 +733,6 @@ private fun MoreAbove(count: Int, onClick: () -> Unit) {
     Icon(arrow_upward, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
     Text("${grouped(count)} more above", style = MaterialTheme.typography.labelLarge, color = colors.primary)
   }
-}
-
-@Composable
-private fun GoThroughLaterButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-  TonalButton(goThroughLaterLabel(count), replay, onClick, modifier)
 }
 
 @Composable
@@ -752,19 +768,6 @@ private fun FindField(query: String, onQuery: (String) -> Unit, onClose: () -> U
       shape = RoundedCornerShape(28.dp),
       modifier = Modifier.weight(1f).focusRequester(focus),
     )
-  }
-}
-
-@Composable
-private fun ContinueButton(title: String, onClick: () -> Unit, modifier: Modifier) {
-  Button(
-    onClick = onClick,
-    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-    modifier = modifier.padding(16.dp).fillMaxWidth().heightIn(min = CONTINUE_HEIGHT),
-  ) {
-    Icon(play_arrow, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-    Text("Continue · $title", maxLines = rowTextLines(), overflow = TextOverflow.Ellipsis)
   }
 }
 
@@ -1023,51 +1026,12 @@ private fun ClosedBlockRow(
 
 private fun LazyListScope.inlineUndoRow(closedTab: ClosedTab, firstShow: (Long) -> Boolean, onUndo: (ClosedTab) -> Unit) {
   item(key = rowKey(QueueRow.Inline(closedTab))) {
-    val colors = MaterialTheme.colorScheme
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (firstShow(closedTab.key)) focus.requestFocus() }
-    Row(
-      Modifier
-        .animateItem()
-        .padding(horizontal = 12.dp, vertical = 4.dp)
-        .fillMaxWidth()
-        .heightIn(min = 56.dp)
-        .clip(RoundedCornerShape(16.dp))
-        .background(colors.inverseSurface)
-        .padding(start = 16.dp, end = 8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Column(
-        Modifier.weight(1f).padding(vertical = 8.dp).semantics(mergeDescendants = true) {
-          contentDescription = if (closedTab.size > 1) "Closed ${closedTab.size} items" else closedTab.closedText
-          liveRegion = LiveRegionMode.Polite
-        },
-      ) {
-        Text(
-          closedTab.closedLabel,
-          style = MaterialTheme.typography.bodyMedium,
-          color = colors.inverseOnSurface,
-          maxLines = rowTextLines(),
-          overflow = TextOverflow.Ellipsis,
-        )
-        if (closedTab.keptStay > 0) {
-          Text(
-            "${closedTab.keptStay} kept stay",
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.inverseOnSurface.copy(alpha = 0.8f),
-          )
-        }
-      }
-      TextButton(
-        onClick = { onUndo(closedTab) },
-        colors = ButtonDefaults.textButtonColors(contentColor = colors.inversePrimary),
-        modifier = Modifier.focusRequester(focus),
-      ) {
-        Icon(undo, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Undo")
-      }
-    }
+    UndoRow(
+      closedTab,
+      firstShow = firstShow,
+      onUndo = { onUndo(closedTab) },
+      modifier = Modifier.animateItem().padding(horizontal = 12.dp, vertical = 4.dp),
+    )
   }
 }
 
@@ -1410,9 +1374,7 @@ private fun kindOf(route: Route?): String = when (route) {
 private val ROW_HEIGHT = 72.dp
 
 @Composable
-internal fun rowTextLines(): Int = if (LocalDensity.current.fontScale > LARGE_FONT) Int.MAX_VALUE else 1
-
-private const val LARGE_FONT = 1.3f
+internal fun rowTextLines(): Int = if (LocalDensity.current.fontScale > LARGE_FONT_SCALE) Int.MAX_VALUE else 1
 private val THUMBNAIL_SIZE = 48.dp
 private val KEPT_THUMBNAIL_SIZE = 40.dp
 
@@ -1445,11 +1407,7 @@ internal const val BLURRED_TAG = "blurred"
 
 internal fun mosaicThumbTag(index: Int) = "mosaic thumb $index"
 
-private val CONTINUE_HEIGHT = 52.dp
-
-private val CONTINUE_ROOM = CONTINUE_HEIGHT + 32.dp
-
-private val ACTIONS_ROOM = 56.dp
+private val BOTTOM_LINE_ROOM = 72.dp
 
 internal val SIDE_COLUMN_MAX_HEIGHT = 480.dp
 

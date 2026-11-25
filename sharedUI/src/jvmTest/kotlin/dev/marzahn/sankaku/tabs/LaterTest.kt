@@ -2,7 +2,6 @@ package dev.marzahn.sankaku.tabs
 
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
-import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,7 +19,7 @@ class LaterTest {
     override fun now() = now
   }
   private val tabs = TabsController(RecordingTabStateStore(), clock = clock)
-  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
+  private val upNext = noUpNext(tabs)
   private val undo = ClosedTabUndo(tabs)
   private val seen = SeenStore(InMemoryTextFile(), clock)
 

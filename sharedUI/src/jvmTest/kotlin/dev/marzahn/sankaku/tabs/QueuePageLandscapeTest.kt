@@ -24,7 +24,6 @@ import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.queue.TodayStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -56,9 +55,9 @@ class QueuePageLandscapeTest {
       CompositionLocalProvider(LocalDensity provides Density(1f, fontScale)) {
         SankakuTheme {
           Box(Modifier.requiredSize(width, height)) {
-            QueuePage(
+            PhoneQueuePage(
               onDismiss = {}, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-              clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {},
+              interacted = { true }, onInteract = {},
               today = today, onSort = {},
             )
           }
@@ -77,10 +76,10 @@ class QueuePageLandscapeTest {
     assertTrue(list.bottom >= LANDSCAPE_HEIGHT - 1.dp, "the list reaches the bottom: $list")
     assertTrue(list.left >= side.right, "the list is beside the column: $list, $side")
     assertTrue(list.bottom - list.top >= MIN_ROWS_HEIGHT, "rows get ${list.bottom - list.top} at $fontScale×")
-    val proceed = onNodeWithText("Continue", substring = true).getBoundsInRoot()
+    val proceed = onNodeWithContentDescription("Continue", substring = true).getBoundsInRoot()
     assertTrue(proceed.right <= list.left && proceed.bottom <= LANDSCAPE_HEIGHT, "Continue: $proceed")
     onNodeWithTag(TODAY_TAG).assertExists()
-    onNodeWithText("Sort 14 new").assertExists()
+    onNodeWithContentDescription("Sort 14 new").assertExists()
     onNodeWithText("New · 14").assertExists()
     for (item in 1..2) {
       val row = onNodeWithContentDescription("Item $item of 15", substring = true).getBoundsInRoot()
@@ -101,10 +100,10 @@ class QueuePageLandscapeTest {
     val chip = onNodeWithText("Started · 0")
     chip.assertIsNotDisplayed()
     val column = onNodeWithTag(SIDE_COLUMN_TAG).getBoundsInRoot()
-    val before = onNodeWithText("Continue", substring = true).getBoundsInRoot()
+    val before = onNodeWithContentDescription("Continue", substring = true).getBoundsInRoot()
 
     chip.performScrollTo().assertIsDisplayed()
-    assertEquals(before, onNodeWithText("Continue", substring = true).getBoundsInRoot())
+    assertEquals(before, onNodeWithContentDescription("Continue", substring = true).getBoundsInRoot())
     assertTrue(before.bottom >= column.bottom - CONTINUE_MARGIN, "Continue at the foot: $before in $column")
     chip.performClick()
     waitForIdle()

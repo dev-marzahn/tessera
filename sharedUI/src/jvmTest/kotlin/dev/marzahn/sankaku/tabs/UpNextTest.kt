@@ -6,6 +6,7 @@ import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -16,8 +17,6 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 import kotlin.time.TestTimeSource
 
-internal fun noUpNext(tabs: TabsController) = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
-
 class UpNextTest {
   private val start = Instant.parse("2026-11-01T12:00:00Z")
   private var now = start
@@ -26,7 +25,7 @@ class UpNextTest {
   }
   private val tabs = TabsController(clock = clock)
   private val privacy = PrivacySettings(InMemoryTextFile())
-  private val upNext = UpNextState(tabs, privacy)
+  private val upNext = noUpNext(tabs, privacy)
 
   private fun grid(vararg tags: String) = Route.Grid(tags.toList())
 
@@ -47,7 +46,7 @@ class UpNextTest {
     tabs.sessions.startNew()
     tabs.activate(tabs.tabs.value.last().id)
 
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     assertFalse(upNext.forward())
 
     assertEquals(UpNextCard.End, upNext.card)
@@ -63,7 +62,7 @@ class UpNextTest {
     tabs.activate(source("Middle").id)
 
     assertEquals(listOf("Browse", "Oldest", "Middle"), titles())
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     upNext.forward()
     assertEquals(UpNextCard.End, upNext.card)
   }
@@ -74,13 +73,13 @@ class UpNextTest {
     withFeeds()
     tabs.activate(source("Last").id)
 
-    assertEquals(Ahead.Item, upNext.ahead())
+    assertIs<Ahead.Item>(upNext.ahead())
     assertTrue(upNext.forward())
     assertEquals("Following", tabs.activeTab.title)
     assertTrue(upNext.forward())
     assertEquals("For you", tabs.activeTab.title)
 
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     assertFalse(upNext.forward())
     assertEquals(UpNextCard.End, upNext.card)
   }
@@ -94,7 +93,7 @@ class UpNextTest {
 
     assertTrue(upNext.forward())
     assertEquals("Later", tabs.activeTab.title)
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     upNext.forward()
     assertEquals(UpNextCard.End, upNext.card)
   }

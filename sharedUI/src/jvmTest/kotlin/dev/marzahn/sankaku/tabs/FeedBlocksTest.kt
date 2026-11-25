@@ -8,6 +8,7 @@ import dev.marzahn.sankaku.queue.FeedItems
 import dev.marzahn.sankaku.queue.SeenStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -121,11 +122,11 @@ class FeedBlocksTest {
     val upNext = noUpNext(tabs)
 
     tabs.activate(tab("B").id)
-    assertEquals(Ahead.Item, upNext.ahead())
+    assertIs<Ahead.Item>(upNext.ahead())
     tabs.activate(tab("Following").id)
-    assertEquals(Ahead.Item, upNext.ahead())
+    assertIs<Ahead.Item>(upNext.ahead())
     tabs.activate(tab("Post f1").id)
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     assertNull(tabs.neighbour(forward = true))
   }
 
@@ -139,7 +140,7 @@ class FeedBlocksTest {
 
     assertEquals("Post f1", tabs.neighbour(forward = true)?.title)
     val upNext = noUpNext(tabs)
-    assertEquals(Ahead.Item, upNext.ahead())
+    assertIs<Ahead.Item>(upNext.ahead())
     upNext.forward()
     assertEquals("Post f1", tabs.activeTab.title)
   }

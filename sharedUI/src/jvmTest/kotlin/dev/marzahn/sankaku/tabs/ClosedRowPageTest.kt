@@ -30,7 +30,6 @@ import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
 import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -103,9 +102,9 @@ class ClosedRowPageTest {
     setContent {
       CompositionLocalProvider(LocalDensity provides Density(2.625f)) {
         SankakuTheme {
-          QueuePage(
+          PhoneQueuePage(
             onDismiss = {}, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-            clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { used }, onInteract = {},
+            interacted = { used }, onInteract = {},
           )
         }
       }

@@ -548,7 +548,7 @@ private fun Shell(
         QueuePageAndTopLine(snackbar, pageTransitions) { onListTop ->
           QueuePage(
             onDismiss = start::closePage,
-            onSwipeClosed = undo::opened,
+            undo = undo,
             onMenu = toggleSidebar,
             menuBadge = menuBadge,
             onListTop = onListTop,

@@ -17,8 +17,6 @@ import androidx.compose.ui.geometry.Offset
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
-import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import kotlinx.coroutines.flow.flowOf
 import kotlin.test.Test
@@ -40,7 +38,7 @@ class QueuePageScaleTest {
     val privacy = PrivacySettings(InMemoryTextFile())
     setContent {
       SankakuTheme {
-        QueuePage(onDismiss = {}, controller = tabs, posts = posts, privacy = privacy, seen = null, clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()), interacted = { false }, onInteract = {})
+        PhoneQueuePage(onDismiss = {}, controller = tabs, posts = posts, privacy = privacy, seen = null, interacted = { false }, onInteract = {})
       }
     }
     waitForIdle()

@@ -1,5 +1,7 @@
 package dev.marzahn.sankaku.tabs
 
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.runComposeUiTest
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.queue.SeenStore
@@ -13,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -27,7 +30,7 @@ class ClearViewedTest {
   private val seen = SeenStore(InMemoryTextFile(), clock)
   private val tabs = TabsController(clock = clock)
   private val messages = Messages()
-  private val clearViewed = ClearViewed(tabs, seen, messages)
+  private val clearViewed = ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), messages))
 
   private fun grid(tag: String) = Route.Grid(listOf(tag))
 
@@ -304,10 +307,64 @@ class ClearViewedTest {
     assertTrue(tabs.tabs.value.any { it.top == post("p2") })
   }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun onThePillTheUndoIsItsArrowAndNothingShowsOnTheTopLine() = runTest(UnconfinedTestDispatcher()) {
+    queue()
+    see("p1")
+    see("p2")
+    val shown = mutableListOf<Message>()
+    backgroundScope.launch { messages.messages.collect { shown += it } }
+    val pill = ClosedTabUndo(tabs)
+
+    assertEquals(2, ClearViewed(tabs, seen, ClearedUndo { pill.opened(it, Closing.Cleared) })())
+
+    assertTrue(shown.isEmpty())
+    assertEquals(tabs.closed.value.last(), pill.pending.value?.closed)
+    assertFalse(tabs.tabs.value.any { it.top == post("p1") })
+
+    pill.undo()
+
+    assertTrue(tabs.tabs.value.any { it.top == post("p1") })
+    assertTrue(tabs.tabs.value.any { it.top == post("p2") })
+    assertNull(pill.pending.value)
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun thePillsUndoOutlivesTheClearsOwnMoveAndEndsAtTheNextAction() = runComposeUiTest {
+    queue()
+    see("p1")
+    see("p2")
+    tabs.activate(tabs.tabs.value.first { it.top == post("p1") }.id)
+    val pill = ClosedTabUndo(tabs)
+    setContent { EndUndoAtNextAction(pill, tabs) }
+
+    runOnIdle { ClearViewed(tabs, seen, ClearedUndo { pill.opened(it, Closing.Cleared) })() }
+    mainClock.advanceTimeBy(60_000)
+    runOnIdle { assertNotNull(pill.pending.value) }
+
+    runOnIdle { tabs.open(grid("c"), background = true) }
+    runOnIdle { assertNull(pill.pending.value) }
+  }
+
+  @Test
+  fun theClearedBatchSaysHowManyKeptPostsItCleared() {
+    queue()
+    see("p1")
+    see("p2")
+    val two = Closing.Cleared.words(assertNotNull(tabs.clearViewed(seen)))
+    assertEquals("Cleared 2 kept posts", two.shown)
+    assertEquals("Cleared 2 kept posts", two.spoken)
+    assertEquals("Undo clear", two.undo)
+
+    see("p3")
+    assertEquals("Cleared 1 kept post", Closing.Cleared.words(assertNotNull(tabs.clearViewed(seen))).shown)
+  }
+
   @Test
   fun theAccessibleNameCountsTheKeptPosts() {
     assertEquals("Clear viewed, 118 kept posts", clearViewedLabel(118))
-    assertEquals("Clear viewed, 1 kept post", clearViewedLabel(1, touch = true))
-    assertEquals("Clear viewed, 1 kept posts", clearViewedLabel(1, touch = false))
+    assertEquals("Clear viewed, 1 kept post", clearViewedLabel(1))
   }
 }

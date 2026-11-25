@@ -63,7 +63,7 @@ import com.google.fonts.icons.view_agenda
 @Composable
 fun CountPill(
   text: CountPillText,
-  onOpen: () -> Unit,
+  tap: PillTap,
   canReopen: Boolean,
   onReopen: () -> Boolean,
   actions: List<CustomAccessibilityAction>,
@@ -101,10 +101,10 @@ fun CountPill(
               indication = null,
               role = Role.Button,
               hapticFeedbackEnabled = false,
-              onClickLabel = "Show queue",
+              onClickLabel = tap.label,
               onLongClickLabel = if (canReopen) REOPEN_LABEL else null,
               onLongClick = reopen,
-              onClick = onOpen,
+              onClick = tap.action,
             )
             .semantics {
               contentDescription = description
@@ -221,6 +221,8 @@ private val PillSourceStyle: TextStyle
 
 private val PillBarHeight = 3.dp
 
+class PillTap(val label: String, val action: () -> Unit)
+
 data class CountPillText(
   val source: String?,
   val figures: String,
@@ -318,6 +320,7 @@ fun BlockEndLine(text: String, modifier: Modifier = Modifier) {
 fun UndoChip(
   visibleState: MutableTransitionState<Boolean>,
   onUndo: () -> Unit,
+  label: String,
   interactionSource: MutableInteractionSource,
   modifier: Modifier = Modifier,
 ) {
@@ -327,18 +330,18 @@ fun UndoChip(
     enter = expandHorizontally(spatialSpec(), expandFrom = Alignment.End) + fadeIn(effectsSpec()),
     exit = shrinkHorizontally(spatialSpec(), shrinkTowards = Alignment.End) + fadeOut(effectsSpec()),
   ) {
-    UndoChipBody(onUndo, interactionSource)
+    UndoChipBody(onUndo, label, interactionSource)
   }
 }
 
 @Composable
-private fun UndoChipBody(onUndo: () -> Unit, interactionSource: MutableInteractionSource) {
+private fun UndoChipBody(onUndo: () -> Unit, label: String, interactionSource: MutableInteractionSource) {
   val colors = MaterialTheme.colorScheme
   Box(
     Modifier
       .size(BottomRowLayout.PieceTarget)
       .clickable(interactionSource, indication = null, role = Role.Button, onClick = onUndo)
-      .semantics { contentDescription = UNDO_CLOSE_LABEL },
+      .semantics { contentDescription = label },
     contentAlignment = Alignment.Center,
   ) {
     Surface(
@@ -359,5 +362,3 @@ private fun UndoChipBody(onUndo: () -> Unit, interactionSource: MutableInteracti
     }
   }
 }
-
-const val UNDO_CLOSE_LABEL = "Undo close"

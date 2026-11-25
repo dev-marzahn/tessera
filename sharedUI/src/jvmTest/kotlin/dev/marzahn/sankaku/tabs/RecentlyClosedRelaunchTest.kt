@@ -97,7 +97,7 @@ class RecentlyClosedRelaunchTest {
 
     relaunch()
 
-    assertEquals("Closed “Artist A” · 2 kept stay", tabs.closed.value.single().closedText)
+    assertEquals("Closed “Artist A” · 2 kept stay", Closing.Closed.words(tabs.closed.value.single()).spoken)
     tabs.reopenClosed()
     val source = tab("Artist A")
     assertEquals(listOf("Browse", "Artist A", "Post p1", "Post p2"), titles())

@@ -117,7 +117,7 @@ class FollowInsteadTest {
   fun followAndCloseFollowsThenClosesAndOneUndoReversesBoth() {
     val artist = loaded(source("artist_y"))
 
-    follow.followAndClose(artist) { unfollow -> undo.close(artist.id, unfollow) }
+    follow.followAndClose(artist) { unfollow -> undo.close(artist.id, alsoUndo = unfollow) }
 
     assertTrue("t1" in followed)
     assertTrue(!isOpen(artist))
@@ -132,7 +132,7 @@ class FollowInsteadTest {
     val artist = loaded(source("artist_y"))
     followedMeanwhile = true
 
-    follow.followAndClose(artist) { alsoUndo -> undo.close(artist.id, alsoUndo) }
+    follow.followAndClose(artist) { alsoUndo -> undo.close(artist.id, alsoUndo = alsoUndo) }
 
     assertTrue(!isOpen(artist))
     undo.undo()
@@ -146,7 +146,7 @@ class FollowInsteadTest {
     val artist = loaded(source("artist_y"))
     followSucceeds = false
 
-    follow.followAndClose(artist) { unfollow -> undo.close(artist.id, unfollow) }
+    follow.followAndClose(artist) { unfollow -> undo.close(artist.id, alsoUndo = unfollow) }
 
     assertTrue(isOpen(artist))
     assertNull(undo.pending.value)

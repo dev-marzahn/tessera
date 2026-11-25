@@ -37,7 +37,6 @@ import dev.marzahn.sankaku.log.RequestLog
 import dev.marzahn.sankaku.net.ConnectivityState
 import dev.marzahn.sankaku.queue.SeenStore
 import dev.marzahn.sankaku.queue.TodayStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -104,9 +103,9 @@ class QueueBacklogTest {
   private fun ComposeUiTest.show(previews: SourcePreviews? = null) {
     setContent {
       SankakuTheme {
-        QueuePage(
+        PhoneQueuePage(
           onDismiss = {}, controller = tabs, posts = TabPosts.None, privacy = privacy, seen = seen,
-          clearViewed = ClearViewed(tabs, seen, Messages()), interacted = { true }, onInteract = {},
+          interacted = { true }, onInteract = {},
           previews = previews, today = today,
         )
       }

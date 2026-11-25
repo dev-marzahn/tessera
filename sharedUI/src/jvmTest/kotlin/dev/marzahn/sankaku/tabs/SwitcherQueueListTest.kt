@@ -66,7 +66,7 @@ class SwitcherQueueListTest {
           tabPosts = TabPosts.None,
           privacy = PrivacySettings(InMemoryTextFile()),
           seen = seen,
-          clearViewed = ClearViewed(tabs, seen, Messages()),
+          clearViewed = ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages())),
         )
       }
     }

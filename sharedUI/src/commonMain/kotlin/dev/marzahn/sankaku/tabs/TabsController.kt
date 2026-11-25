@@ -347,8 +347,6 @@ internal fun countedPosition(tabs: List<TabState>, index: Int): Int =
 
 internal fun headsKeptPosts(kind: QueueKind): Boolean = kind == QueueKind.Source || kind == QueueKind.Feed
 
-internal fun keptStaySuffix(kept: Int): String = if (kept > 0) " · $kept kept stay" else ""
-
 internal fun closeLabel(tab: TabState, keptStay: Int): String =
   if (keptStay > 0 && headsKeptPosts(tab.kind)) "Close ${tab.title}${keptStaySuffix(keptStay)}" else CLOSE_LABEL
 
@@ -359,87 +357,6 @@ internal fun closedSourceName(source: List<String>, names: TagNameLookup = NoTag
   "${tabTitle(searchSource(source), names = names)} (closed)"
 
 internal fun tabIsUntitled(top: Route?, loaded: String? = null): Boolean = top is Route.Post && top.label == null && loaded == null
-
-class ClosedTab internal constructor(
-  members: List<Member>,
-  internal val activeMember: Int? = null,
-  val key: Long = nextKey++,
-  val cleared: Boolean = false,
-  val keptStay: Int = 0,
-  private val tagNames: TagNameLookup = NoTagNames,
-  internal val closedAt: Instant = Instant.DISTANT_PAST,
-) {
-  internal data class Member(
-    val routes: List<Route>,
-    val index: Int,
-    val id: TabId? = null,
-    val block: TabId? = null,
-    val addedIn: SessionId = SessionId.EARLIER,
-    val place: GridPlace? = null,
-    val keptAt: Instant? = null,
-    val closedSource: List<String>? = null,
-    val title: String? = null,
-    val gridTouched: Boolean = false,
-    val mosaic: QueueMosaic? = null,
-    val openedFrom: TabId? = null,
-    val refines: List<String>? = null,
-    val preview: SourcePreview? = null,
-    val foundOn: FoundOn? = null,
-    val wayBack: TabId? = null,
-    val later: Boolean = false,
-  ) {
-    val top: Route? get() = routes.lastOrNull()
-  }
-
-  internal var members: List<Member> = members
-    private set
-
-  val size: Int get() = members.size
-
-  val routes: List<Route> get() = members.first().routes
-
-  internal val index: Int get() = members.first().index
-
-  val top: Route? get() = routes.lastOrNull()
-
-  val title: String
-    get() = when {
-      cleared -> if (size == 1) "1 post" else "$size posts"
-      size == 1 -> tabTitle(top, members.first().title, tagNames)
-      else -> batchTitle(size)
-    }
-
-  val untitled: Boolean get() = size == 1 && !cleared && tabIsUntitled(top, members.first().title)
-
-  internal fun moved(place: (Int) -> Int) =
-    ClosedTab(members.map { it.copy(index = place(it.index)) }, activeMember, key, cleared, keptStay, tagNames, closedAt)
-
-  internal fun renamed(ids: Map<TabId, TabId>) = ClosedTab(
-    members.map { member ->
-      val reopened = member.wayBack?.let(ids::get)?.let { member.copy(wayBack = it) } ?: member
-      val opener = reopened.openedFrom?.let(ids::get)?.let { reopened.copy(openedFrom = it) } ?: reopened
-      val head = opener.block?.let(ids::get) ?: return@map opener
-      opener.copy(block = head, closedSource = null)
-    },
-    activeMember, key, cleared, keptStay, tagNames, closedAt,
-  )
-
-  internal fun adopt(from: TabId, to: TabId) {
-    members = members.map { if (it.block == from && it.closedSource != null) it.copy(block = to, closedSource = null) else it }
-  }
-
-  val closedLabel: String get() = if (size == 1) "Closed “$title”" else "Closed $size"
-
-  val closedText: String get() = closedLabel + keptStaySuffix(keptStay)
-
-  override fun equals(other: Any?) = other is ClosedTab && other.key == key
-
-  override fun hashCode() = key.hashCode()
-
-  private companion object {
-    var nextKey = 0L
-  }
-}
 
 class TabsController(
   private val store: TabStateStore = TabStateStore.None,
@@ -527,7 +444,7 @@ class TabsController(
     laterStreak++
   }
 
-  fun movedOnPastEnd() {
+  fun movedOn() {
     movedOnFrom(activeTab)
   }
 
@@ -1174,7 +1091,7 @@ class TabsController(
   fun keepForLater(closedTab: ClosedTab): Boolean {
     if (closedTab !in _closed.value) return false
     val before = _tabs.value.mapTo(HashSet()) { it.id }
-    reopen(closedTab, stay = true)
+    bringBack(closedTab, BringBack.ForLater)
     val tab = _tabs.value.firstOrNull { it.id !in before } ?: return true
     tab.openedFrom = null
     returns.remove(tab.id)
@@ -1223,7 +1140,12 @@ class TabsController(
 
   val reopened: SharedFlow<Set<TabId>> = _reopened.asSharedFlow()
 
-  fun reopen(closedTab: ClosedTab, inPlace: Boolean = false, stay: Boolean = false) {
+  fun reopen(closedTab: ClosedTab, closing: Closing = Closing.of(closedTab)) =
+    bringBack(closedTab, if (closing.reopensInPlace) BringBack.InPlace else BringBack.ToFront)
+
+  private enum class BringBack { ToFront, InPlace, ForLater }
+
+  private fun bringBack(closedTab: ClosedTab, way: BringBack) {
     val position = _closed.value.indexOf(closedTab)
     if (position < 0) return
     val current = _closed.value[position]
@@ -1244,7 +1166,7 @@ class TabsController(
       member.id?.let { renamed[it] = tab.id }
       strip.add(at, tab)
       placed += at
-      if (!stay && ((current.size == 1 && !current.cleared && !inPlace) || current.activeMember == i)) activate = tab
+      if (way != BringBack.ForLater && ((current.size == 1 && way == BringBack.ToFront) || current.activeMember == i)) activate = tab
     }
     strip.forEach { tab ->
       tab.block?.let(renamed::get)?.let {

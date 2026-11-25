@@ -38,7 +38,7 @@ class FavouritedTabTest {
 
   private fun ComposeUiTest.show() {
     val seen = SeenStore(InMemoryTextFile())
-    setContent { SankakuTheme { TabStrip(controller = tabs, clearViewed = ClearViewed(tabs, seen, Messages()), tabPosts = posts) } }
+    setContent { SankakuTheme { TabStrip(controller = tabs, clearViewed = ClearViewed(tabs, seen, ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages())), tabPosts = posts) } }
     waitForIdle()
   }
 

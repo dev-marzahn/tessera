@@ -17,7 +17,7 @@ class DragDownMovesOnTest {
     override fun now() = start
   }
   private val tabs = TabsController(clock = clock)
-  private val upNext = UpNextState(tabs, PrivacySettings(InMemoryTextFile()))
+  private val upNext = noUpNext(tabs)
   private val undo = ClosedTabUndo(tabs)
 
   private fun grid(vararg tags: String) = Route.Grid(tags.toList())

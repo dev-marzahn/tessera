@@ -7,6 +7,7 @@ import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.queue.FeedItems
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -110,16 +111,16 @@ class FeedIsASourceTest {
     ownersQueue()
     val upNext = noUpNext(tabs)
     tabs.activate(tab("For you").id)
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
     assertNull(tabs.neighbour(forward = true))
     tabs.activate(tab("Post f2").id)
-    assertEquals(Ahead.Item, upNext.ahead())
+    assertIs<Ahead.Item>(upNext.ahead())
 
     tabs.open(grid("later"), background = true)
     tabs.activate(tab("For you").id)
-    assertEquals(Ahead.Item, upNext.ahead())
+    assertIs<Ahead.Item>(upNext.ahead())
     tabs.activate(tab("Later").id)
-    assertEquals(Ahead.End, upNext.ahead())
+    assertIs<Ahead.End>(upNext.ahead())
   }
 
   @Test

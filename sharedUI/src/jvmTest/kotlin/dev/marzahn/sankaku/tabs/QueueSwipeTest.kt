@@ -71,16 +71,19 @@ class QueueSwipeTest {
 
   @Test
   fun onACardASwipeGoesBackOnlyAndOnAnItemEitherWayWithSomewhereToGo() {
-    for (ahead in Ahead.entries) {
+    val item = Ahead.Item(TabsController().activeTab)
+    val end = Ahead.End(END_PANE)
+    for (ahead in listOf(item, Ahead.Sort, end, Ahead.Nothing)) {
       for (previous in listOf(true, false)) {
         assertEquals(SwipeWays(back = true, forward = false), swipeWays(cardUp = true, previous = previous, ahead = ahead), "card, $ahead")
       }
     }
-    assertEquals(SwipeWays(back = true, forward = true), swipeWays(cardUp = false, previous = true, ahead = Ahead.Item))
-    assertEquals(SwipeWays(back = false, forward = true), swipeWays(cardUp = false, previous = false, ahead = Ahead.End))
+    assertEquals(SwipeWays(back = true, forward = true), swipeWays(cardUp = false, previous = true, ahead = item))
+    assertEquals(SwipeWays(back = false, forward = true), swipeWays(cardUp = false, previous = false, ahead = Ahead.Sort))
+    assertEquals(SwipeWays(back = false, forward = true), swipeWays(cardUp = false, previous = false, ahead = end))
     assertEquals(SwipeWays(back = true, forward = false), swipeWays(cardUp = false, previous = true, ahead = Ahead.Nothing))
 
-    val card = swipeWays(cardUp = true, previous = false, ahead = Ahead.End)
+    val card = swipeWays(cardUp = true, previous = false, ahead = end)
     assertEquals(QueueMove.Stay, swipeTarget(-399f, -1000f, 400f, 400f, card.back, card.forward))
     assertEquals(QueueMove.Previous, swipeTarget(201f, 0f, 400f, 400f, card.back, card.forward))
     assertEquals(QueueMove.Previous, swipeTarget(20f, 1000f, 400f, 400f, card.back, card.forward))

@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -24,8 +25,6 @@ import coil3.memory.MemoryCache
 import dev.marzahn.sankaku.Route
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PrivacySettings
-import dev.marzahn.sankaku.queue.SeenStore
-import dev.marzahn.sankaku.ui.Messages
 import dev.marzahn.sankaku.ui.theme.SankakuTheme
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -71,13 +70,12 @@ class QueuePageBlurRenderTest {
     setContent {
       CompositionLocalProvider(LocalDensity provides Density(2.625f)) {
         SankakuTheme {
-          QueuePage(
+          PhoneQueuePage(
             onDismiss = {},
             controller = tabs,
             posts = TabPosts.None,
             privacy = PrivacySettings(InMemoryTextFile()),
             seen = null,
-            clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
             interacted = { false }, onInteract = {},
           )
         }
@@ -113,13 +111,12 @@ class QueuePageBlurRenderTest {
         SankakuTheme {
           val current = start
           if (current.pageOpen) {
-            QueuePage(
+            PhoneQueuePage(
               onDismiss = current::closePage,
               controller = tabs,
               posts = TabPosts.None,
               privacy = privacy,
               seen = null,
-              clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()),
               interacted = current::interacted,
               onInteract = current::interact,
             )
@@ -146,7 +143,7 @@ class QueuePageBlurRenderTest {
     assertEquals(0, blurred())
     frame("2-after-one-touch.png")
 
-    onNodeWithText("Continue", substring = true).performClick()
+    onNodeWithContentDescription("Continue", substring = true).performClick()
     waitForIdle()
     start.left()
     time += QueueStart.AWAY + 1.seconds

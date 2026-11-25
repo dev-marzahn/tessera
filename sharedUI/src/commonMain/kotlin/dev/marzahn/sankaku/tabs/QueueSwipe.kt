@@ -416,11 +416,11 @@ fun QueueSwipeHost(
   preload: @Composable (shown: TabState, neighbours: List<TabState>) -> Map<String, LoadedNeighbour> = { shown, near -> PreloadNeighbours(shown, near) },
   undo: ClosedTabUndo = koinInject(),
   onMoved: () -> Unit = {},
-  sort: SortDeck? = sortDeckOrNull(),
 ) {
   val closeUndo by rememberUpdatedState(undo)
   val moved by rememberUpdatedState(onMoved)
-  val deckWaiting = sort != null && sort.goneIn != null && active.backStack.size == 1
+  val goneInto = upNext.sortGoneInto
+  val deckWaiting = goneInto != null && active.backStack.size == 1
   val deckWaitingNow by rememberUpdatedState(deckWaiting)
   val tabList by tabs.tabs.collectAsStateWithLifecycle()
   val gOnly by upNext.gOnly.collectAsStateWithLifecycle()
@@ -450,12 +450,13 @@ fun QueueSwipeHost(
   }
   val index = tabList.indexOf(active)
   val previous = remember(tabList, active) { tabs.neighbour(forward = false) }
-  val next = remember(tabList, active) { tabs.neighbour(forward = true) }
   val opener = tabs.openerOf(active)
   val returnTo = tabs.backReturnOf(active, moves = !deckWaiting)
   val inKeptRun = tabs.keptPlace() != null
   val card = upNext.card
   val ahead = upNext.ahead()
+  val next = (ahead as? Ahead.Item)?.next
+  val pane = ahead as? Ahead.Pane
   val ways = swipeWays(cardUp = card != null, previous = previous != null, ahead = ahead)
   val overscroll = rememberOverscrollEffect()
   val direction = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else -1f
@@ -468,14 +469,14 @@ fun QueueSwipeHost(
   LaunchedEffect(active.id) { if (state.leaving != null && state.leaving != active.id) state.landed() }
   val loaded = preload(
     active,
-    if (card != null) listOf(active) else listOfNotNull(previous, next.takeIf { ahead == Ahead.Item }),
+    if (card != null) listOf(active) else listOfNotNull(previous, next),
   )
   val back = queueBack(
     cardUp = card != null,
     lonePost = active.backsLikeALonePost,
     previous = previous != null,
     opened = opener != null,
-    sorting = sort != null && sort.goneIn == active.id && active.backStack.size == 1,
+    sorting = goneInto == active.id && active.backStack.size == 1,
     deckWaiting = deckWaiting,
     jumped = returnTo != null,
     keptRun = inKeptRun && active.backStack.size == 1,
@@ -495,7 +496,7 @@ fun QueueSwipeHost(
     onBack = {
       when {
         backMove != null -> state.back(active.id, backMove)
-        back == QueueBack.Deck -> sort?.backToDeck()
+        back == QueueBack.Deck -> upNext.backToSort()
         else -> {
           if (inKeptRun) tabs.endKeptRun()
           openQueuePage()
@@ -506,8 +507,7 @@ fun QueueSwipeHost(
 
   val cardBackLabel = if (card != null) backToLabel(active.title) else null
   val hasPrevious = previous != null
-  val endName = if (ahead == Ahead.End) upNext.endName() else null
-  val actions = remember(cardBackLabel, hasPrevious, ahead, endName, upNext, tabs) {
+  val actions = remember(cardBackLabel, hasPrevious, ahead, upNext, tabs) {
     if (cardBackLabel != null) {
       listOf(CustomAccessibilityAction(cardBackLabel) { upNext.dismiss(); true })
     } else {
@@ -525,26 +525,24 @@ fun QueueSwipeHost(
     return PicturePeek(tab.title, kindLabel(tab, tabs.sourceOf(tab)), picture, leavingFor(tab))
   }
   val previousPeek = picturePeek(previous.takeIf { card == null && active.top is Route.Post })
-  val nextPeek = picturePeek(next.takeIf { card == null && active.top is Route.Post && ahead == Ahead.Item })
+  val nextPeek = picturePeek(next.takeIf { active.top is Route.Post })
   val barInsets = rememberBarInsets()
-  val closeNext = next.takeIf { card == null && ahead == Ahead.Item }
-  val closeLoaded = (closeNext?.top as? Route.Post)?.let { loaded[it.id] }
+  val closeLoaded = (next?.top as? Route.Post)?.let { loaded[it.id] }
   val closePeek = when {
-    closeNext != null -> ClosePeek(closeNext.title) {
+    next != null -> ClosePeek(next.title) {
       QueuePeek(
-        closeNext,
-        source = tabs.sourceOf(closeNext),
+        next,
+        source = tabs.sourceOf(next),
         loaded = closeLoaded,
         origin = null,
         gOnly = gOnly,
         barInsets = barInsets,
-        leaving = leavingFor(closeNext),
+        leaving = leavingFor(next),
         forward = true,
         modifier = Modifier,
       )
     }
-    card == null && ahead == Ahead.End && previous != null -> ClosePeek(upNext.endName()) { CardPeek(upNext.endName(), leavingLabel(place), Modifier) }
-    else -> null
+    else -> ahead.closePane(previous != null)?.let { closing -> ClosePeek(closing.title) { CardPeek(closing.title, leavingLabel(place), Modifier) } }
   }
   val drawnBy = remember(state, active.id) { mutableStateOf(0) }
   val pictureSwipe = remember(state, active.id, previousPeek, nextPeek) {
@@ -556,7 +554,7 @@ fun QueueSwipeHost(
     val neighbour = when {
       pictureSide -> null
       showing > 0f -> if (card != null) active else if (state.closing && backTo != null) backTo else previous
-      showing < 0f -> next.takeIf { ahead == Ahead.Item && card == null }
+      showing < 0f -> next
       else -> null
     }
     val peekLayer = Modifier.graphicsLayer {
@@ -577,8 +575,8 @@ fun QueueSwipeHost(
         modifier = peekLayer,
       )
     } else if (pictureSide) {
-    } else if (showing < 0f && card == null && ahead == Ahead.End) {
-      CardPeek(upNext.endName(), leavingLabel(place), peekLayer)
+    } else if (showing < 0f && pane != null) {
+      CardPeek(pane.title, leavingLabel(place), peekLayer)
     }
     val description = queueItemDescription(
       countedPosition(tabList, index),
@@ -586,7 +584,7 @@ fun QueueSwipeHost(
       active,
       tabs.sourceOf(active),
       place = place,
-      next = aheadTitle(ahead, next, upNext.endName()),
+      next = ahead.title,
     )
     Box(
       Modifier

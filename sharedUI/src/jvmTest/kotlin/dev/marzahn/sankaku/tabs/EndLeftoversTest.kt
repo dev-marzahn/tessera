@@ -39,47 +39,35 @@ class EndLeftoversTest {
   }
   private val tabs = TabsController(clock = clock)
   private val privacy = PrivacySettings(InMemoryTextFile())
-  private val upNext = UpNextState(tabs, privacy)
+  private val deck = SortDeck(tabs, ClosedTabUndo(tabs))
+  private val upNext = noUpNext(tabs, privacy, deck)
   private val seen = SeenStore(InMemoryTextFile(), clock)
   private val today = TodayStore(InMemoryTextFile(), clock, { TimeZone.UTC })
-  private val deck = SortDeck(tabs, ClosedTabUndo(tabs))
   private val seenSince = { tab: TabState -> tab.seenSinceKept(seen) }
-
-  private fun source(tag: String, shown: Boolean = false): TabState {
-    val route = Route.Grid(listOf(tag))
-    tabs.open(route, background = !shown)
-    return tabs.tabs.value.single { it.top == route }
-  }
-
-  private fun keepInto(into: TabState, id: String, rating: String = "s"): TabState {
-    tabs.activate(into.id)
-    tabs.openInBlock(listOf(Route.Post(id, md5 = "m$id", originTags = emptyList(), label = "Post $id", rating = rating)))
-    return tabs.tabs.value.first { (it.top as? Route.Post)?.id == id }
-  }
 
   private fun TabState.started() = reportPlace(top as Route.Grid, GridPlace("p1", "c1", 0, index = 0))
 
   private fun leftovers(gOnly: Boolean = false) =
-    endLeftovers(tabs.tabs.value, gOnly, { null }, seenSince, sorting = true, today.counts().found, now, TimeZone.UTC)
+    endLeftovers(tabs.tabs.value, gOnly, { null }, seenSince, today.counts().found, now, TimeZone.UTC)
 
   private fun queuePageKept(gOnly: Boolean = false) = keptRunRows(tabs.tabs.value, gOnly) { null }.map { it.tab }
 
   private fun queuePageNew(gOnly: Boolean = false) = newSources(tabs.tabs.value, gOnly).size
 
   private fun session() {
-    val a = source("artist_a")
-    val b = source("artist_b")
+    val a = tabs.openSource("artist_a")
+    val b = tabs.openSource("artist_b")
     a.started()
     b.started()
-    keepInto(a, "p1")
-    keepInto(a, "p2")
+    tabs.keepInto(a, "p1")
+    tabs.keepInto(a, "p2")
     now += 1.minutes
-    keepInto(b, "p3")
+    tabs.keepInto(b, "p3")
     now += 1.minutes
     seen.record("p1", "mp1")
-    source("new_one")
-    source("new_two")
-    source("last", shown = true).started()
+    tabs.openSource("new_one")
+    tabs.openSource("new_two")
+    tabs.openSource("last", shown = true).started()
     tabs.activate(tabs.tabs.value.last().id)
   }
 
@@ -99,15 +87,15 @@ class EndLeftoversTest {
 
   @Test
   fun oneBlockSaysWhenAPostWasLastKeptThere() {
-    val a = source("artist_a")
+    val a = tabs.openSource("artist_a")
     a.started()
-    keepInto(a, "p1")
+    tabs.keepInto(a, "p1")
     assertEquals("Artist A · kept 16:00", leftovers().keptWhere)
   }
 
   @Test
   fun nothingWaitingIsNone() {
-    source("last", shown = true).started()
+    tabs.openSource("last", shown = true).started()
     val waiting = leftovers()
     assertTrue(waiting.none)
     assertNull(waiting.keptWhere)
@@ -115,11 +103,11 @@ class EndLeftoversTest {
 
   @Test
   fun gOnlyLeavesOutTheKeptPostsTheQueuePageHides() {
-    val a = source("artist_a")
+    val a = tabs.openSource("artist_a")
     a.started()
-    keepInto(a, "p1")
-    keepInto(a, "p2", rating = "e")
-    source("last", shown = true).started()
+    tabs.keepInto(a, "p1")
+    tabs.keepInto(a, "p2", rating = "e")
+    tabs.openSource("last", shown = true).started()
 
     assertEquals(2, leftovers().keptUnseen)
     assertEquals(queuePageKept(gOnly = true), leftovers(gOnly = true).kept)
@@ -128,8 +116,8 @@ class EndLeftoversTest {
 
   @Test
   fun gOnlyCountsWhatTheQueuePageListsThen() {
-    source("rating:q").let { tabs.activate(it.id) }
-    source("last", shown = true).started()
+    tabs.openSource("rating:q").let { tabs.activate(it.id) }
+    tabs.openSource("last", shown = true).started()
     assertEquals(queuePageNew(gOnly = true), leftovers(gOnly = true).newSources)
     assertEquals(0, leftovers(gOnly = true).newSources)
   }
@@ -139,7 +127,7 @@ class EndLeftoversTest {
     assertEquals(UpNextCard.End, upNext.card)
     setContent {
       SankakuTheme {
-        UpNextCardView(state = upNext, leftovers = EndLeftoverSources(seen, today = today, sort = deck))
+        UpNextCardView(state = upNext, leftovers = EndLeftoverSources(seen, today = today))
       }
     }
   }
@@ -203,7 +191,7 @@ class EndLeftoversTest {
 
   @Test
   fun withNothingWaitingTheCardIsUnchanged() = runComposeUiTest {
-    source("last", shown = true).started()
+    tabs.openSource("last", shown = true).started()
     card()
     onNodeWithText("Nothing else is waiting.").assertExists()
     onNodeWithText("Still waiting earlier in the queue:").assertDoesNotExist()
@@ -213,13 +201,13 @@ class EndLeftoversTest {
 
   @Test
   fun aRowWithNothingIsLeftOut() = runComposeUiTest {
-    val a = source("artist_a")
+    val a = tabs.openSource("artist_a")
     a.started()
-    keepInto(a, "p1")
+    tabs.keepInto(a, "p1")
     now += 1.minutes
     seen.record("p1", "mp1")
-    source("new_one")
-    source("last", shown = true).started()
+    tabs.openSource("new_one")
+    tabs.openSource("last", shown = true).started()
     tabs.activate(tabs.tabs.value.last().id)
     card()
     onNodeWithText("Sort 1 new").assertExists()

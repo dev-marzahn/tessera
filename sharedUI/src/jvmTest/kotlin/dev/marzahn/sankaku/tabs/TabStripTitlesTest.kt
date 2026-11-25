@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class TabStripTitlesTest {
   private val tabs = TabsController()
-  private val clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages())
+  private val clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages()))
 
   private fun post(id: String, label: String) = Route.Post(id, md5 = null, originTags = listOf("xingtong"), label = label)
 

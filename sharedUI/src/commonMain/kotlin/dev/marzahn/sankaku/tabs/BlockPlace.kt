@@ -63,12 +63,6 @@ internal fun nextLine(next: String): String = "Next: $next"
 internal fun blockEndSpoken(place: BlockPlace?, next: String?): String =
   if (place is BlockPlace.Kept && place.last && next != null) ", last, next $next" else ""
 
-internal fun aheadTitle(ahead: Ahead, next: TabState?, endName: String = END_PANE): String? = when (ahead) {
-  Ahead.Item -> next?.title
-  Ahead.End -> endName
-  Ahead.Nothing -> null
-}
-
 internal fun leavingLabel(place: BlockPlace?): String? = place?.let { "Leaving ${it.source}" }
 
 internal const val KEPT_PILL = "Kept"

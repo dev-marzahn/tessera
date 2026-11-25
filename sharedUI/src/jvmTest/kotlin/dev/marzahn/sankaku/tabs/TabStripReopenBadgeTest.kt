@@ -39,7 +39,7 @@ class TabStripReopenBadgeTest {
   private val tag = Route.Grid(listOf("tag_t"))
 
   private fun ComposeUiTest.strip() = setContent {
-    SankakuTheme { TabStrip(controller = tabs, clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), Messages()), tabPosts = TabPosts.None) }
+    SankakuTheme { TabStrip(controller = tabs, clearViewed = ClearViewed(tabs, SeenStore(InMemoryTextFile()), ClearedUndoOnTopLine(ClosedTabUndo(tabs), Messages())), tabPosts = TabPosts.None) }
   }
 
   private fun ComposeUiTest.badge() = onNodeWithContentDescription(REOPEN_TAB_LABEL)

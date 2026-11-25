@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,12 +34,12 @@ import dev.marzahn.sankaku.ui.components.CountPill
 import dev.marzahn.sankaku.ui.components.HideOnScroll
 import dev.marzahn.sankaku.ui.components.LiveAnnouncement
 import dev.marzahn.sankaku.ui.components.PillRow
+import dev.marzahn.sankaku.ui.components.PillTap
 import dev.marzahn.sankaku.ui.components.PillWithLine
 import dev.marzahn.sankaku.ui.components.TipAnchor
 import dev.marzahn.sankaku.ui.TipAction
 import dev.marzahn.sankaku.ui.keptWaitsText
 import dev.marzahn.sankaku.ui.openedInFrontText
-import dev.marzahn.sankaku.ui.components.UNDO_CLOSE_LABEL
 import dev.marzahn.sankaku.ui.components.UndoChip
 import dev.marzahn.sankaku.ui.components.hidesOnScroll
 import kotlin.math.roundToInt
@@ -55,7 +56,6 @@ fun QueueBar(
   settings: AccessibilitySettings = koinInject(),
   tips: Tips = koinInject(),
   upNext: UpNextState = koinInject(),
-  sort: SortDeck? = sortDeckOrNull(),
   blockFinds: BlockFinds? = blockFindsOrNull(),
   blockOffer: BlockOffer? = blockOfferOrNull(),
   openOnly: Boolean = false,
@@ -66,11 +66,14 @@ fun QueueBar(
   val active by controller.active.collectAsStateWithLifecycle()
   val closed by controller.closed.collectAsStateWithLifecycle()
   val pending by undo.pending.collectAsStateWithLifecycle()
+  val undoWords = pending?.let { it.closing.words(it.closed) }
+  val wordsLeaving = remember { arrayOfNulls<Closing.Words>(1) }
+  val chipWords = undoWords ?: wordsLeaving[0]
+  SideEffect { if (undoWords != null) wordsLeaving[0] = undoWords }
   val showButtons by settings.showQueueButtons.collectAsStateWithLifecycle()
   val buttons = showButtons && !openOnly
   val index = tabs.indexOfFirst { it.id == active }.coerceAtLeast(0)
   val previous = controller.neighbour(forward = false)
-  val next = controller.neighbour(forward = true)
   val cardUp = upNext.card != null
   val ahead = upNext.ahead()
   val goPrevious = { if (cardUp) upNext.dismiss() else controller.previous() }
@@ -78,13 +81,13 @@ fun QueueBar(
     tips.used(Tip.QueueSwipe)
     upNext.forward()
   }
-  val close = { undo.close(active) }
+  val close: () -> Unit = { undo.close(active) }
   val current = tabs.getOrNull(index)
   val feed = current?.takeIf { it.kind == QueueKind.Feed }?.title
   val closable = current == null || controller.canClose(current)
   val closeName = current?.let { queueCloseLabel(it, controller.keptPostsOf(it)) } ?: CLOSE_LABEL
   val doneWith = blockOffer?.title?.takeIf {
-    blockOffer.pending != null && !openOnly && !cardUp && sort?.pillText() == null && blockFinds?.offer == null
+    blockOffer.pending != null && !openOnly && !cardUp && upNext.sortGoneInto == null && blockFinds?.offer == null
   }
   val doneWithName = doneWith?.let { title ->
     val keptStay = tabs.firstOrNull { it.id == blockOffer?.pending }?.let { controller.keptPostsOf(it) } ?: 0
@@ -96,18 +99,20 @@ fun QueueBar(
     if (cardUp) CustomAccessibilityAction(PREVIOUS_ITEM) { upNext.dismiss(); true } else previous?.let { CustomAccessibilityAction(PREVIOUS_ITEM) { controller.previous() } },
     aheadAction(ahead, upNext),
     CustomAccessibilityAction(closeName) { close(); true }.takeIf { closable },
-    pending?.let { CustomAccessibilityAction(UNDO_CLOSE_LABEL) { undo.undo(); true } },
+    undoWords?.let { CustomAccessibilityAction(it.undo) { undo.undo(); true } },
   )
   val slide = Modifier.offset { IntOffset(0, hideOnScroll?.hiddenBy?.roundToInt() ?: 0) }
   val place = blockPlace(tabs, index)
-  val aheadName = if (cardUp || openOnly) null else aheadTitle(ahead, next, upNext.endName())
-  val sortText = if (openOnly) null else sort?.pillText()
-  val open = if (sort != null && sortText != null) sort::backToDeck else onOpenQueue
+  val aheadName = if (cardUp || openOnly) null else ahead.title
+  val tapBacksToSort = upNext.sortGoneInto != null && !openOnly
+  val pillTap = remember(tapBacksToSort, upNext, onOpenQueue) {
+    if (tapBacksToSort) PillTap(BACK_TO_SORT, upNext::backToSort) else PillTap(SHOW_QUEUE, onOpenQueue)
+  }
   val findsText = if (openOnly) null else blockFinds?.pillText()
   val runKind = controller.keptRunKind()
   val keptText = if (openOnly || cardUp || runKind == null) null else controller.runProgress()?.let { runPillText(runKind, it) }
   val decisions = if (place is BlockPlace.Kept) controller.blockDecisions(tabs, index) else null
-  val text = sortText ?: findsText ?: keptText ?: pillText(
+  val text = findsText ?: keptText ?: pillText(
     place, countedPosition(tabs, index), countedItems(tabs), feed, upNext.card, aheadName, decisions = decisions, run = runKind,
   )
   val endLine = blockEndLine(place, aheadName)
@@ -115,9 +120,9 @@ fun QueueBar(
   val keptAfter = (place as? BlockPlace.Head)?.source?.takeIf { fullPill && swipesQueue }
   val pillTip = if (overPicture) null else rememberPillTip(
     tips,
-    swipeDue = ahead == Ahead.Item && fullPill && swipesQueue,
+    swipeDue = ahead is Ahead.Item && fullPill && swipesQueue,
     twoTabs = tabs.size >= 2,
-    reopenable = closed.isNotEmpty() && pending == null && !undo.undoOnLine && !openOnly,
+    reopenable = closed.isNotEmpty() && pending == null && !openOnly,
     barOut = { (hideOnScroll?.hiddenBy ?: 0f) == 0f },
     openedInFront = current?.takeIf { fullPill && it.top?.isLone != true && controller.openerOf(it) != null }?.title,
     keptAfter = keptAfter,
@@ -138,10 +143,11 @@ fun QueueBar(
       UndoChip(
         visibleState = rememberUndoShown(pending, undo),
         onUndo = undo::undo,
+        label = chipWords?.undo ?: UNDO_CLOSE_LABEL,
         interactionSource = undoPresses,
         modifier = slide,
       )
-      LiveAnnouncement(pending?.let { "${it.closed.closedText}. Undo available" } ?: "")
+      LiveAnnouncement(undoWords?.let { "${it.spoken}. Undo available" } ?: "")
       LiveAnnouncement(doneWith?.let { "Done with $it? Close available" } ?: "")
     },
     pill = {
@@ -154,7 +160,7 @@ fun QueueBar(
       PillWithLine(line = line, modifier = Modifier.hidesOnScroll(hideOnScroll)) {
         CountPill(
           text = text,
-          onOpen = open,
+          tap = pillTap,
           canReopen = closed.isNotEmpty() && !openOnly,
           onReopen = undo::reopenLatest,
           actions = actions,
@@ -162,7 +168,7 @@ fun QueueBar(
           onPrevious = { goPrevious() },
           onNext = { goNext() },
           previousLabel = if (cardUp) backToLabel(current?.title ?: PREVIOUS_ITEM) else previous?.let { "$PREVIOUS_ITEM: ${it.title}" } ?: PREVIOUS_ITEM,
-          nextLabel = aheadLabel(ahead, next, upNext.endName()),
+          nextLabel = aheadLabel(ahead),
           previousEnabled = cardUp || previous != null,
           nextEnabled = ahead != Ahead.Nothing,
           modifier = Modifier.testTag(COUNT_PILL),
@@ -176,14 +182,14 @@ fun QueueBar(
 internal fun queueCloseLabel(tab: TabState, keptStay: Int): String = closeLabel(tab, keptStay)
 
 internal fun aheadAction(ahead: Ahead, upNext: UpNextState): CustomAccessibilityAction? = when (ahead) {
-  Ahead.Item -> CustomAccessibilityAction(NEXT_ITEM) { upNext.forward() }
-  Ahead.End -> CustomAccessibilityAction(upNext.endName()) { upNext.forward(); true }
+  is Ahead.Item -> CustomAccessibilityAction(NEXT_ITEM) { upNext.forward() }
+  is Ahead.Pane -> CustomAccessibilityAction(ahead.label) { upNext.forward(); true }
   Ahead.Nothing -> null
 }
 
-internal fun aheadLabel(ahead: Ahead, next: TabState?, endName: String = END_PANE): String = when (ahead) {
-  Ahead.Item -> next?.let { "$NEXT_ITEM: ${it.title}" } ?: NEXT_ITEM
-  Ahead.End -> endName
+internal fun aheadLabel(ahead: Ahead): String = when (ahead) {
+  is Ahead.Item -> "$NEXT_ITEM: ${ahead.title}"
+  is Ahead.Pane -> ahead.label
   Ahead.Nothing -> NEXT_ITEM
 }
 
@@ -239,3 +245,5 @@ private fun keptBooks(tabs: List<TabState>, head: TabState): Boolean =
   tabs.firstOrNull { it.block == head.id && it.kind.isKept }?.kind == QueueKind.KeptBook
 
 internal const val SHOW_QUEUE = "Show queue"
+
+internal val BACK_TO_SORT = backToLabel(SORT)
