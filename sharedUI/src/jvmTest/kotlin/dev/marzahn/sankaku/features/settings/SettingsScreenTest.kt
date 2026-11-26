@@ -87,6 +87,7 @@ import dev.marzahn.sankaku.auth.TokenStore
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PostSizes
 import dev.marzahn.sankaku.data.TextFile
+import dev.marzahn.sankaku.data.TextFiles
 import dev.marzahn.sankaku.di.authModule
 import dev.marzahn.sankaku.di.sharedModule
 import dev.marzahn.sankaku.di.shellModule
@@ -130,6 +131,7 @@ class SettingsScreenTest {
       single(CACHE_DIR) { cache.toOkioPath() }
       listOf(KNOWN_TAGS_FILE, PLAYER_FILE, REOPEN_HINT_FILE, PRIVACY_FILE, ACCESSIBILITY_FILE, QUEUE_FILE, GRID_FILE, CACHE_FILE, TIPS_FILE, SEEN_FILE, UPDATES_FILE, FIRST_LAUNCH_FILE, READING_FILE, OUTBOX_FILE)
         .forEach { name -> single<TextFile>(name) { InMemoryTextFile() } }
+      single { TextFiles { InMemoryTextFile() } }
       single<TabStateStore> { FileTabStateStore(InMemoryTextFile()) }
       single<PlatformContext> { PlatformContext.INSTANCE }
     }
