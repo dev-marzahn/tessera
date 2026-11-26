@@ -95,6 +95,35 @@ val checkMacReleaseProperties = registerPropertyCheck(
   },
 )
 
+fun projectsReachedFrom(root: ResolvedComponentResult): Set<String> {
+  val reached = mutableSetOf<ResolvedComponentResult>()
+  val next = ArrayDeque(listOf(root))
+  while (next.isNotEmpty()) {
+    val component = next.removeFirst()
+    if (reached.add(component)) next += component.dependencies.filterIsInstance<ResolvedDependencyResult>().map { it.selected }
+  }
+  return reached.mapNotNull { (it.id as? ProjectComponentIdentifier)?.projectPath }.toSet()
+}
+
+fun registerNoDemoCheck(app: Project, name: String, classpath: String, shipped: String): TaskProvider<Task> {
+  val demo = projects.demo.path
+  val guard = app.tasks.register(name) {
+    group = "verification"
+    description = "Fails if the $shipped's classpath contains $demo."
+    val shippedProjects = app.configurations.named(classpath).flatMap { files ->
+      files.incoming.resolutionResult.rootComponent.map { root -> projectsReachedFrom(root) }
+    }
+    doLast { check(demo !in shippedProjects.get()) { "$demo is on the $shipped's classpath" } }
+  }
+  app.tasks.named { it == "check" }.configureEach { dependsOn(guard) }
+  return guard
+}
+
+val releaseApkHasNoDemo =
+  registerNoDemoCheck(project(projects.androidApp.path), "checkReleaseApkHasNoDemo", "releaseRuntimeClasspath", "release APK")
+
+val dmgHasNoDemo = registerNoDemoCheck(project(projects.desktopApp.path), "checkDmgHasNoDemo", "runtimeClasspath", "DMG")
+
 val releaseApk = registerReleaseCopy(
   "releaseApk",
   mapOf(
@@ -104,7 +133,7 @@ val releaseApk = registerReleaseCopy(
   keep = listOf("*.dmg"),
 ) {
   description = "Builds the signed, R8-minified release APK and its mapping into build/release/."
-  dependsOn(checkAndroidReleaseProperties, ":androidApp:assembleRelease")
+  dependsOn(checkAndroidReleaseProperties, releaseApkHasNoDemo, ":androidApp:assembleRelease")
 }
 
 val releaseMac = registerReleaseCopy(
@@ -113,7 +142,7 @@ val releaseMac = registerReleaseCopy(
   keep = listOf("*.apk", "*-mapping.txt"),
 ) {
   description = "Builds the release DMG (notarized when configured) into build/release/."
-  dependsOn(checkMacReleaseProperties, ":desktopApp:releaseDmg")
+  dependsOn(checkMacReleaseProperties, dmgHasNoDemo, ":desktopApp:releaseDmg")
   mustRunAfter(releaseApk)
 }
 

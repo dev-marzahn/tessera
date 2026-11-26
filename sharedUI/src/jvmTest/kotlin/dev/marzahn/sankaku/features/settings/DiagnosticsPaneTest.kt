@@ -17,6 +17,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import dev.marzahn.sankaku.NoAppForLink
 import dev.marzahn.sankaku.OpenUrlResult
+import dev.marzahn.sankaku.data.InMemoryTextFile
+import dev.marzahn.sankaku.data.TextFiles
 import dev.marzahn.sankaku.log.AppEnvironment
 import dev.marzahn.sankaku.log.Diagnostics
 import dev.marzahn.sankaku.log.RequestLog
@@ -39,6 +41,8 @@ import kotlin.time.Instant
 
 @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 class DiagnosticsPaneTest {
+  private val noFiles = TextFiles { InMemoryTextFile() }
+
   private val clock = object : Clock {
     override fun now(): Instant = Instant.parse("2026-10-29T12:00:00Z")
   }
@@ -70,7 +74,7 @@ class DiagnosticsPaneTest {
         LaunchedEffect(messages) { messages.messages.collect { shown += it.text } }
         CompositionLocalProvider(LocalClipboard provides clipboard) {
           Column {
-            DiagnosticsSection(diagnostics, messages, open = {
+            DiagnosticsSection(diagnostics, messages, files = noFiles, open = {
               opened += it
               OpenUrlResult.Opened
             })
@@ -115,7 +119,7 @@ class DiagnosticsPaneTest {
     val log = RequestLog(clock)
     setContent {
       SankakuTheme {
-        Column { DiagnosticsSection(Diagnostics(log, environment), Messages(), open = { OpenUrlResult.Opened }) }
+        Column { DiagnosticsSection(Diagnostics(log, environment), Messages(), files = noFiles, open = { OpenUrlResult.Opened }) }
       }
     }
     onNodeWithText("No requests yet").assertExists()
@@ -127,7 +131,7 @@ class DiagnosticsPaneTest {
     setContent {
       SankakuTheme {
         Column {
-          DiagnosticsSection(Diagnostics(RequestLog(clock), environment), Messages(), open = { OpenUrlResult.Opened }, exportQueue = { exports++ })
+          DiagnosticsSection(Diagnostics(RequestLog(clock), environment), Messages(), files = noFiles, open = { OpenUrlResult.Opened }, exportQueue = { exports++ })
         }
       }
     }
@@ -141,7 +145,7 @@ class DiagnosticsPaneTest {
     setContent {
       SankakuTheme {
         Column {
-          DiagnosticsSection(Diagnostics(RequestLog(clock), environment), Messages(), open = { OpenUrlResult.Opened }, exportQueue = null)
+          DiagnosticsSection(Diagnostics(RequestLog(clock), environment), Messages(), files = noFiles, open = { OpenUrlResult.Opened }, exportQueue = null)
         }
       }
     }

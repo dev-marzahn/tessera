@@ -88,8 +88,6 @@ expect fun platformShareFile(fileName: String, mimeType: String, text: String)
 
 expect fun platformClearExports()
 
-expect fun platformAppDataText(name: String): String?
-
 expect fun plainTextClip(text: String): ClipEntry
 
 expect fun processMemoryBytes(): Long?

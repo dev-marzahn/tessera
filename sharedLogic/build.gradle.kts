@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 plugins {
   alias(libs.plugins.kotlinMultiplatform)
@@ -23,6 +24,14 @@ val generateAppVersion by tasks.registering {
 }
 
 kotlin {
+  applyDefaultHierarchyTemplate {
+    common {
+      group("jvmAndAndroid") {
+        withCompilations { it.platformType in setOf(KotlinPlatformType.jvm, KotlinPlatformType.androidJvm) }
+      }
+    }
+  }
+
   jvm()
 
   android {

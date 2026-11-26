@@ -35,19 +35,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlin.system.exitProcess
 
-@OptIn(ExperimentalComposeUiApi::class)
-fun main() {
-  val mainThread = Thread.currentThread()
-  val crashReports = desktopCrashReports().also {
-    it.installUncaughtHandler(closesApp = { Thread.currentThread() === mainThread })
-  }
-  LaunchFocus.remember()
-  migrateAppData()
-  val instance = SingleInstance.acquire(APP_DATA_DIR) ?: exitProcess(0)
-  val focusRequests = Channel<Unit>(Channel.CONFLATED)
-  instance.listen { focusRequests.trySend(Unit) }
+fun main() = runApp(DesktopLaunch.Installed())
 
-  val koin = startSankakuKoin(desktopPlatformModule(crashReports)).koin
+@OptIn(ExperimentalComposeUiApi::class)
+fun runApp(launch: DesktopLaunch) {
+  val mainThread = Thread.currentThread()
+  launch.crashReports.installUncaughtHandler(closesApp = { Thread.currentThread() === mainThread })
+  LaunchFocus.remember()
+  val focusRequests = Channel<Unit>(Channel.CONFLATED)
+  if (!launch.claim { focusRequests.trySend(Unit) }) exitProcess(0)
+
+  val koin = startSankakuKoin(desktopPlatformModule(launch.crashReports), launch.overrides).koin
   val tabs = koin.get<TabsController>()
   val navigator = koin.get<Navigator>()
   val refresh = koin.get<GridRefresh>()
@@ -59,7 +57,7 @@ fun main() {
   keepAccessibleFocusInBackground()
   application {
     val windowState = rememberWindowState(width = 1280.dp, height = 860.dp)
-    CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides recordingWindowCrashes(crashReports)) {
+    CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides recordingWindowCrashes(launch.crashReports)) {
       Window(
         onCloseRequest = ::exitApplication,
         title = "Tessera",

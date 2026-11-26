@@ -30,7 +30,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.SimpleCache
@@ -40,10 +39,10 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.compose.runtime.snapshotFlow
 import dev.marzahn.sankaku.data.CacheSettings
+import org.koin.mp.KoinPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @OptIn(UnstableApi::class)
 private object VideoDiskCache {
@@ -56,14 +55,11 @@ private object VideoDiskCache {
   }
 
   @Synchronized
-  fun get(context: Context): SimpleCache = cache ?: run {
-    val app = context.applicationContext
-    val database = StandaloneDatabaseProvider(app)
-    val old = File(app.cacheDir, "compose_media_player_cache")
-    if (old.exists()) Thread { runCatching { SimpleCache.delete(old, database) } }.start()
-    val maxBytes = org.koin.mp.KoinPlatform.getKoin().get<CacheSettings>().videoBytes.value
-    val lru = ResizableLruEvictor(maxBytes).also { evictor = it }
-    SimpleCache(File(app.cacheDir, "video"), lru, database).also { cache = it }
+  fun get(): SimpleCache = cache ?: run {
+    val koin = KoinPlatform.getKoin()
+    val storage = koin.get<VideoCacheStorage>()
+    val lru = ResizableLruEvictor(koin.get<CacheSettings>().videoBytes.value).also { evictor = it }
+    SimpleCache(storage.folder, lru, storage.database).also { cache = it }
   }
 }
 
@@ -78,7 +74,7 @@ private class ExoVideoPlayback(context: Context) : VideoPlayback {
     .setMediaSourceFactory(
       DefaultMediaSourceFactory(
         CacheDataSource.Factory()
-          .setCache(VideoDiskCache.get(context))
+          .setCache(VideoDiskCache.get())
           .setUpstreamDataSourceFactory(DefaultDataSource.Factory(context))
           .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR),
       ),
@@ -258,9 +254,8 @@ internal actual fun VideoPlaybackSurface(playback: VideoPlayback, modifier: Modi
 
 @OptIn(UnstableApi::class)
 actual suspend fun clearVideoCache() {
-  val context = org.koin.mp.KoinPlatform.getKoin().get<Context>()
   withContext(Dispatchers.IO) {
-    val cache = VideoDiskCache.get(context)
+    val cache = VideoDiskCache.get()
     cache.keys.toList().forEach(cache::removeResource)
   }
 }
@@ -274,7 +269,6 @@ actual suspend fun resizeVideoCache(bytes: Long) {
 
 @OptIn(UnstableApi::class)
 actual suspend fun videoCacheBytes(): Long {
-  val context = org.koin.mp.KoinPlatform.getKoin().get<Context>()
-  return withContext(Dispatchers.IO) { VideoDiskCache.get(context).cacheSpace }
+  return withContext(Dispatchers.IO) { VideoDiskCache.get().cacheSpace }
 }
 
