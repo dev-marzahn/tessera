@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import java.time.Duration
 
 plugins {
   alias(libs.plugins.kotlinMultiplatform)
@@ -46,6 +47,7 @@ kotlin {
     jvmTest.dependencies {
       implementation(libs.kotlin.test)
       implementation(libs.androidx.paging.testing)
+      implementation(libs.kotlinx.coroutines.test)
       implementation(libs.java.keyring)
       implementation(libs.androidx.navigation3.runtime)
       implementation(libs.androidx.lifecycle.viewmodelCompose)
@@ -57,5 +59,7 @@ tasks.named<Test>("jvmTest") {
   val dataDir = layout.buildDirectory.dir("test-app-data").get().asFile
   systemProperty("sankaku.debug.dataDir", dataDir.path)
   systemProperty("sankaku.debug.safeOnly", "true")
+  timeout.set(Duration.ofMinutes(3))
+  testLogging { events("started", "failed") }
   doFirst { dataDir.deleteRecursively() }
 }

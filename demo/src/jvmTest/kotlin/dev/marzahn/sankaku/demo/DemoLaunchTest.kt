@@ -31,9 +31,18 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.request.get
 import io.ktor.client.statement.readRawBytes
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
+import java.util.concurrent.Executors
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.io.Buffer
 import kotlinx.io.writeString
 import org.koin.core.Koin
@@ -42,6 +51,7 @@ import org.koin.core.context.stopKoin
 import org.koin.core.parameter.parametersOf
 import org.koin.mp.KoinPlatform
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -51,8 +61,12 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DemoLaunchTest {
   private var keyringOpened = false
+
+  private val main = Executors.newSingleThreadExecutor { Thread(it, "demo-test-main").apply { isDaemon = true } }
+    .asCoroutineDispatcher()
 
   private fun launch(): Koin {
     val platform = desktopPlatformModule(CrashReports(InMemoryTextFile())) {
@@ -67,13 +81,20 @@ class DemoLaunchTest {
     stopKoin()
   }
 
+  private fun bounded(test: suspend CoroutineScope.() -> Unit) = runBlocking { withTimeout(30.seconds, test) }
+
+  @BeforeTest
+  fun runTheAppsMainOnATestThread() = Dispatchers.setMain(main)
+
   @AfterTest
   fun stopAnyLaunch() {
     KoinPlatform.getKoinOrNull()?.stop()
+    Dispatchers.resetMain()
+    main.close()
   }
 
   @Test
-  fun everyRequestIsAnsweredInsideTheApp() = runBlocking {
+  fun everyRequestIsAnsweredInsideTheApp() = bounded {
     val koin = launch()
     val engine = koin.get<HttpClientEngine>()
     assertIs<MockEngine>(engine)
@@ -92,7 +113,7 @@ class DemoLaunchTest {
   }
 
   @Test
-  fun nothingIsStoredAndNoKeyringIsOpened() = runBlocking {
+  fun nothingIsStoredAndNoKeyringIsOpened() = bounded {
     val koin = launch()
     koin.get<AuthSession>().signIn("demo", "demo")
     koin.get<PostsApi>().favourite("demo-portrait-image")
@@ -108,19 +129,20 @@ class DemoLaunchTest {
   }
 
   @Test
-  fun everyLaunchStartsOnTheSameGrid() = runBlocking {
+  fun everyLaunchStartsOnTheSameGrid() = bounded {
     repeat(2) {
       val koin = launch()
       val start = koin.get<TabsController>().tabs.value.single().backStack.single()
       assertIs<Route.Grid>(start)
       val grid = koin.get<GridViewModel> { parametersOf(start.tags, null) }
       assertEquals(GRID_ORDER, grid.posts.asSnapshot().map { it.id })
+      grid.viewModelScope.cancel()
       koin.stop()
     }
   }
 
   @Test
-  fun aSecondLaunchForgetsTheFirst() = runBlocking {
+  fun aSecondLaunchForgetsTheFirst() = bounded {
     launch().apply {
       get<AuthSession>().signIn("demo", "demo")
       get<PostsApi>().favourite(GRID_ORDER.first())
@@ -135,7 +157,7 @@ class DemoLaunchTest {
   }
 
   @Test
-  fun eachMediaTypeHasItsPlaceAndVideosPlayFromTheScratchFolder() = runBlocking {
+  fun eachMediaTypeHasItsPlaceAndVideosPlayFromTheScratchFolder() = bounded {
     val koin = launch()
     val posts = koin.get<PostsApi>().keyset(emptyList()).data
     val kinds = posts.take(6).map { it.fileType to (it.fileWidth!! > it.fileHeight!!) }
