@@ -7,11 +7,41 @@ plugins {
   alias(libs.plugins.composeCompiler)
 }
 
+val demoLauncher by sourceSets.creating {
+  compileClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+}
+
 dependencies {
   implementation(projects.sharedUI)
   implementation(compose.desktop.currentOs)
   implementation(libs.kotlinx.coroutines.swing)
   implementation(libs.jna)
+  demoLauncher.implementationConfigurationName(projects.demo)
+  testImplementation(libs.kotlin.test)
+}
+
+sourceSets.test {
+  compileClasspath += demoLauncher.output
+  runtimeClasspath += demoLauncher.output + demoLauncher.runtimeClasspath
+}
+
+tasks.test {
+  val dataDir = layout.buildDirectory.dir("test-app-data").get().asFile
+  systemProperty("sankaku.debug.dataDir", dataDir.path)
+  doFirst { dataDir.deleteRecursively() }
+}
+
+val runDemo by tasks.registering(JavaExec::class) {
+  group = "compose desktop"
+  description = "Runs the app in demo mode: bundled demo posts, no Sankaku connection, nothing stored."
+  javaLauncher = tasks.named<JavaExec>("run").flatMap { it.javaLauncher }
+  val appJvmArgs = tasks.named<JavaExec>("run").map { app ->
+    app.jvmArgs.orEmpty() + app.systemProperties.map { (key, value) -> "-D$key=$value" }
+  }
+  dependsOn("prepareAppResources")
+  mainClass = "dev.marzahn.sankaku.DemoMainKt"
+  classpath(sourceSets.main.map { it.runtimeClasspath }, demoLauncher.output, demoLauncher.runtimeClasspath)
+  jvmArgumentProviders += CommandLineArgumentProvider { appJvmArgs.get() }
 }
 
 tasks.withType<JavaExec>().configureEach {

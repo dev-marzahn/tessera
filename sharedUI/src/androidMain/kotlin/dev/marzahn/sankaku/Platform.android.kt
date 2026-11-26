@@ -41,19 +41,21 @@ import dev.marzahn.sankaku.auth.TokenStorageStatus
 import dev.marzahn.sankaku.auth.TokenStore
 import dev.marzahn.sankaku.data.DiskTextFile
 import dev.marzahn.sankaku.data.PostSizes
-import dev.marzahn.sankaku.data.TextFile
-import dev.marzahn.sankaku.log.AppEnvironment
-import dev.marzahn.sankaku.log.CrashReports
+import dev.marzahn.sankaku.data.TextFiles
+import dev.marzahn.sankaku.di.storedFilesModule
 import dev.marzahn.sankaku.features.post.MediaStoreSaveFolder
 import dev.marzahn.sankaku.features.post.SaveFolder
+import dev.marzahn.sankaku.features.post.VideoCacheStorage
+import dev.marzahn.sankaku.log.AppEnvironment
+import dev.marzahn.sankaku.log.CrashReports
 import dev.marzahn.sankaku.net.DefaultNetworkCallback
-import dev.marzahn.sankaku.tabs.FileTabStateStore
-import dev.marzahn.sankaku.tabs.TabStateStore
+import okio.Path
+import okio.Path.Companion.toOkioPath
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
-import okio.Path.Companion.toOkioPath
 import org.koin.dsl.module
 import org.koin.mp.KoinPlatform
+import java.io.File
 
 fun launchDebugFlags(context: Context, intent: Intent): DebugFlags =
   if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) {
@@ -79,39 +81,23 @@ private fun systemProperty(name: String): String? = runCatching {
 }.getOrNull()
 
 fun androidCrashReports(context: Context): CrashReports =
-  CrashReports(DiskTextFile(java.io.File(context.filesDir, "crash.txt")))
+  CrashReports(DiskTextFile(File(context.filesDir, "crash.txt")))
 
 fun androidPlatformModule(flags: DebugFlags, crashReports: CrashReports): Module = module {
+  includes(storedFilesModule)
   single<TokenStore> { TinkTokenStore.create(androidContext()) }
   single { TokenStorageStatus.Encrypted }
   single { flags }
   single { crashReports }
   single(CACHE_DIR) { androidContext().cacheDir.toOkioPath() }
-  single<TextFile>(KNOWN_TAGS_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "tags.json")) }
-  single<TextFile>(PLAYER_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "player.json")) }
-  single<TextFile>(REOPEN_HINT_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "reopen-hint.json")) }
-  single<TextFile>(PRIVACY_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "privacy.json")) }
-  single<TextFile>(FIRST_LAUNCH_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "first-launch.json")) }
-  single<TextFile>(ACCESSIBILITY_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "accessibility.json")) }
-  single<TextFile>(QUEUE_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "queue.json")) }
-  single<TextFile>(GRID_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "grid.json")) }
-  single<TextFile>(CACHE_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "cache.json")) }
-  single<TextFile>(UPDATES_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "updates.json")) }
-  single<TextFile>(TIPS_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "tips.json")) }
-  single<TextFile>(SEEN_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "seen.json")) }
-  single<TextFile>(FEED_MARKS_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "feed-marks.json")) }
-  single<TextFile>(TODAY_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "today.json")) }
-  single<TextFile>(READING_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "readings.json")) }
-  single<TextFile>(OUTBOX_FILE) { DiskTextFile(java.io.File(androidContext().filesDir, "outbox.json")) }
-  single<TabStateStore> {
-    val files = androidContext().filesDir
-    FileTabStateStore(
-      DiskTextFile(java.io.File(files, "tabs.json")),
-      backup = DiskTextFile(java.io.File(files, "tabs.v1.bak")),
-      broken = DiskTextFile(java.io.File(files, "tabs.json.broken")),
-    )
-  }
+  single { TextFiles { name -> DiskTextFile(File(androidContext().filesDir, name)) } }
+  single(ACCESSIBILITY_FILE) { get<TextFiles>().named("accessibility.json") }
   single<SaveFolder> { MediaStoreSaveFolder(androidContext()) }
+  single { ExportsFolder.inCache(androidContext().cacheDir) }
+  single {
+    VideoCacheStorage((get<Path>(CACHE_DIR) / "video").toFile(), VideoCacheStorage.appDatabase(androidContext()))
+      .apply { deleteLegacyCache(androidContext()) }
+  }
   single(createdAtStart = true) { DefaultNetworkCallback.register(androidContext(), get()) }
 }
 
@@ -144,7 +130,7 @@ actual fun platformShareText(text: String) {
 
 actual fun platformShareFile(fileName: String, mimeType: String, text: String) {
   val context = KoinPlatform.getKoin().get<Context>()
-  val file = java.io.File(exportsDir(context).apply { mkdirs() }, fileName)
+  val file = File(exportsDir().apply { mkdirs() }, fileName)
   file.writeText(text)
   val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
   val send = Intent(Intent.ACTION_SEND)
@@ -156,15 +142,10 @@ actual fun platformShareFile(fileName: String, mimeType: String, text: String) {
 }
 
 actual fun platformClearExports() {
-  exportsDir(KoinPlatform.getKoin().get<Context>()).deleteRecursively()
+  exportsDir().deleteRecursively()
 }
 
-private fun exportsDir(context: Context) = java.io.File(context.cacheDir, "exports")
-
-actual fun platformAppDataText(name: String): String? {
-  val context = KoinPlatform.getKoin().get<Context>()
-  return runCatching { java.io.File(context.filesDir, name).readText() }.getOrNull()
-}
+private fun exportsDir() = KoinPlatform.getKoin().get<ExportsFolder>().dir
 
 actual fun plainTextClip(text: String): ClipEntry = ClipEntry(ClipData.newPlainText(text, text))
 

@@ -19,12 +19,15 @@ val releaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPasswo
 
 dependencies {
   implementation(projects.sharedUI)
+  debugImplementation(projects.demo)
 
   implementation(libs.androidx.activity.compose)
   implementation(libs.koin.android)
 
   implementation(libs.compose.uiToolingPreview)
   debugImplementation(libs.compose.uiTooling)
+
+  testImplementation(libs.kotlin.test.junit)
 }
 
 android {

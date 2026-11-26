@@ -1,6 +1,7 @@
 package dev.marzahn.sankaku.features.settings
 
-import dev.marzahn.sankaku.platformAppDataText
+import dev.marzahn.sankaku.di.SEEN_FILE_NAME
+import dev.marzahn.sankaku.di.TABS_FILE_NAME
 import dev.marzahn.sankaku.platformShareFile
 import dev.marzahn.sankaku.ui.Messages
 import kotlin.coroutines.cancellation.CancellationException
@@ -35,13 +36,13 @@ internal const val ExportQueueFailed = "Couldn't export the queue"
 
 internal suspend fun shareQueue(
   messages: Messages,
-  read: (String) -> String? = ::platformAppDataText,
+  read: (String) -> String?,
   share: (String, String, String) -> Unit = ::platformShareFile,
   now: () -> Instant = { Clock.System.now() },
 ) {
   try {
     withContext(Dispatchers.IO) {
-      share(QueueExportName, "application/json", queueExport(read("tabs.json"), read("seen.json"), now()))
+      share(QueueExportName, "application/json", queueExport(read(TABS_FILE_NAME), read(SEEN_FILE_NAME), now()))
     }
   } catch (e: CancellationException) {
     throw e

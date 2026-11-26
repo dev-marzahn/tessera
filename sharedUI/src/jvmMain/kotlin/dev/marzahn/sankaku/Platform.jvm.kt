@@ -26,13 +26,13 @@ import dev.marzahn.sankaku.data.DiskTextFile
 import dev.marzahn.sankaku.data.InMemoryTextFile
 import dev.marzahn.sankaku.data.PostSizes
 import dev.marzahn.sankaku.data.TextFile
+import dev.marzahn.sankaku.data.TextFiles
+import dev.marzahn.sankaku.di.storedFilesModule
 import dev.marzahn.sankaku.features.post.DirectorySaveFolder
 import dev.marzahn.sankaku.features.post.SaveFolder
 import dev.marzahn.sankaku.log.AppEnvironment
 import dev.marzahn.sankaku.log.CrashReports
 import dev.marzahn.sankaku.net.InterfaceWatcher
-import dev.marzahn.sankaku.tabs.FileTabStateStore
-import dev.marzahn.sankaku.tabs.TabStateStore
 import org.koin.core.module.Module
 import okio.Path.Companion.toOkioPath
 import org.koin.dsl.module
@@ -61,45 +61,29 @@ fun desktopCrashReports(): CrashReports = CrashReports(DiskTextFile(File(APP_DAT
 internal fun tokenKeyring(ownDataDir: Boolean, create: () -> Keyring): Keyring? =
   if (ownDataDir) null else runCatching(create).getOrNull()
 
-fun desktopPlatformModule(crashReports: CrashReports): Module = module {
-  val keyring = tokenKeyring(ownDataDir = dataDirOverride != null) { Keyring.create() }
-  single<TokenStore> { keyring?.let(::KeyringTokenStore) ?: InMemoryTokenStore() }
-  single { if (keyring != null) TokenStorageStatus.Keychain else TokenStorageStatus.InMemory }
+private fun ownersKeyring(): Keyring? = tokenKeyring(ownDataDir = dataDirOverride != null) { Keyring.create() }
+
+private val isPackaged = System.getProperty("jpackage.app-path") != null
+
+fun desktopPlatformModule(crashReports: CrashReports, openKeyring: () -> Keyring? = ::ownersKeyring): Module = module {
+  includes(storedFilesModule)
+  val keyringWhenATokenIsNeeded by lazy(openKeyring)
+  single<TokenStore> { keyringWhenATokenIsNeeded?.let(::KeyringTokenStore) ?: InMemoryTokenStore() }
+  single { if (keyringWhenATokenIsNeeded != null) TokenStorageStatus.Keychain else TokenStorageStatus.InMemory }
   single {
     DebugFlags(
       sample = System.getProperty("sankaku.sample").toBoolean(),
       expireAccessToken = System.getProperty("sankaku.debug.expireAccessToken").toBoolean(),
       expireSession = System.getProperty("sankaku.debug.expireSession").toBoolean(),
       safeOnly = System.getProperty("sankaku.debug.safeOnly").toBoolean(),
-      crash = if (System.getProperty("jpackage.app-path") == null) DebugCrash.parse(System.getProperty("sankaku.debug.crash")) else null,
-      openBook = if (System.getProperty("jpackage.app-path") == null) System.getProperty("sankaku.debug.openBook")?.trim()?.takeIf { it.isNotEmpty() } else null,
+      crash = if (isPackaged) null else DebugCrash.parse(System.getProperty("sankaku.debug.crash")),
+      openBook = if (isPackaged) null else System.getProperty("sankaku.debug.openBook")?.trim()?.takeIf { it.isNotEmpty() },
     )
   }
   single { crashReports }
   single(CACHE_DIR) { folders.cache.toOkioPath() }
-  single<TextFile>(KNOWN_TAGS_FILE) { DiskTextFile(File(APP_DATA_DIR, "tags.json")) }
-  single<TextFile>(PLAYER_FILE) { DiskTextFile(File(APP_DATA_DIR, "player.json")) }
-  single<TextFile>(REOPEN_HINT_FILE) { DiskTextFile(File(APP_DATA_DIR, "reopen-hint.json")) }
-  single<TextFile>(PRIVACY_FILE) { DiskTextFile(File(APP_DATA_DIR, "privacy.json")) }
-  single<TextFile>(FIRST_LAUNCH_FILE) { DiskTextFile(File(APP_DATA_DIR, "first-launch.json")) }
+  single { TextFiles { name -> DiskTextFile(File(APP_DATA_DIR, name)) } }
   single<TextFile>(ACCESSIBILITY_FILE) { InMemoryTextFile() }
-  single<TextFile>(QUEUE_FILE) { DiskTextFile(File(APP_DATA_DIR, "queue.json")) }
-  single<TextFile>(GRID_FILE) { DiskTextFile(File(APP_DATA_DIR, "grid.json")) }
-  single<TextFile>(CACHE_FILE) { DiskTextFile(File(APP_DATA_DIR, "cache.json")) }
-  single<TextFile>(UPDATES_FILE) { DiskTextFile(File(APP_DATA_DIR, "updates.json")) }
-  single<TextFile>(TIPS_FILE) { DiskTextFile(File(APP_DATA_DIR, "tips.json")) }
-  single<TextFile>(SEEN_FILE) { DiskTextFile(File(APP_DATA_DIR, "seen.json")) }
-  single<TextFile>(FEED_MARKS_FILE) { DiskTextFile(File(APP_DATA_DIR, "feed-marks.json")) }
-  single<TextFile>(TODAY_FILE) { DiskTextFile(File(APP_DATA_DIR, "today.json")) }
-  single<TextFile>(READING_FILE) { DiskTextFile(File(APP_DATA_DIR, "readings.json")) }
-  single<TextFile>(OUTBOX_FILE) { DiskTextFile(File(APP_DATA_DIR, "outbox.json")) }
-  single<TabStateStore> {
-    FileTabStateStore(
-      DiskTextFile(File(APP_DATA_DIR, "tabs.json")),
-      backup = DiskTextFile(File(APP_DATA_DIR, "tabs.v1.bak")),
-      broken = DiskTextFile(File(APP_DATA_DIR, "tabs.json.broken")),
-    )
-  }
   single<SaveFolder> { DirectorySaveFolder(folders.downloads) }
   single<PlatformContext> { PlatformContext.INSTANCE }
   single(createdAtStart = true) { InterfaceWatcher(get(), get()).also { it.start() } }
@@ -132,8 +116,6 @@ actual fun platformShareText(text: String) = Unit
 actual fun platformShareFile(fileName: String, mimeType: String, text: String) = Unit
 
 actual fun platformClearExports() = Unit
-
-actual fun platformAppDataText(name: String): String? = runCatching { File(APP_DATA_DIR, name).readText() }.getOrNull()
 
 actual fun processMemoryBytes(): Long? = MacMemory.physFootprint()
 

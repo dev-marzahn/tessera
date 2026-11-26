@@ -8,6 +8,10 @@ interface TextFile {
   fun delete()
 }
 
+fun interface TextFiles {
+  fun named(name: String): TextFile
+}
+
 class InMemoryTextFile(private var text: String? = null) : TextFile {
   override fun read(): String? = text
 

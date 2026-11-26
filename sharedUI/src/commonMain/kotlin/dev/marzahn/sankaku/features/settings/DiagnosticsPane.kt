@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.marzahn.sankaku.data.TextFiles
 import dev.marzahn.sankaku.log.Diagnostics
 import dev.marzahn.sankaku.log.RequestLogEntry
 import dev.marzahn.sankaku.plainTextClip
@@ -62,8 +63,9 @@ internal fun reportBug(
 internal fun ColumnScope.DiagnosticsSection(
   diagnostics: Diagnostics = koinInject(),
   messages: Messages = koinInject(),
+  files: TextFiles = koinInject(),
   open: (String) -> OpenUrlResult = ::platformOpenUrl,
-  exportQueue: (suspend () -> Unit)? = if (platformIsTouch) ({ shareQueue(messages) }) else null,
+  exportQueue: (suspend () -> Unit)? = if (platformIsTouch) ({ shareQueue(messages, read = { files.named(it).read() }) }) else null,
 ) {
   val clipboard = LocalClipboard.current
   val scope = rememberCoroutineScope()

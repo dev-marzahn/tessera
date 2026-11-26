@@ -25,6 +25,15 @@ scripts/gradlew :desktopApp:run
   unexpectedly". Use it with `-Dsankaku.debug.dataDir`. `thread` fails a background thread instead, which leaves the
   desktop app running and so isn't recorded.
 
+### Demo mode
+
+`scripts/gradlew :desktopApp:runDemo`, or a debug APK launched with `--ez demo true`, starts on twelve generated demo
+posts and never connects to Sankaku. The `:demo` module answers every request inside the app. Signing in, favourites,
+votes and follows go to a fake that forgets them, and nothing is stored, so every launch starts the same way. Use it
+for test runs and screenshots that don't need the live server. Books and recommendations are empty, Save keeps
+nothing, and "Open on Sankaku" still opens the real site. `demo/generate-media.sh <font>` makes the media
+again, with an OFL font such as Noto Sans.
+
 ## Smoke test
 
 `:cli` runs the login flow and every API discovery step against the live API, prints a table, and exits non-zero on
@@ -48,6 +57,8 @@ Steps 16 and 17 keep a ledger between runs outside the repository, in `~/.sankak
 - `:sharedUI` holds all UI. Only `ui/theme` and `ui/components` may opt in to `ExperimentalMaterial3ExpressiveApi`;
   screens use the components from there, so a pre-release signature change breaks few files.
 - `:desktopApp` and `:androidApp` only start the app.
+- `:demo` holds demo mode. Only the debug APK (`androidApp/src/debug`) and `:desktopApp:runDemo` (the `demoLauncher`
+  source set) include it; `check` fails if the release APK's or the DMG's classpath contains it.
 
 ## API rules
 

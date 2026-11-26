@@ -32,6 +32,7 @@ multiplatform-adaptive = "1.3.0"
 multiplatform-lifecycle = "2.11.0"
 multiplatform-nav3 = "1.2.0"
 multiplatform-navigationevent = "1.1.0"
+okio = "3.18.2"
 slf4j = "2.0.20"
 tessera = "100.2.1"
 zoomimage = "1.7.0"
@@ -41,6 +42,7 @@ version-catalog-update = "1.1.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
@@ -93,6 +95,7 @@ zoomimage-compose-coil3 = { module = "io.github.panpf.zoomimage:zoomimage-compos
 composemediaplayer = { module = "io.github.kdroidfilter:composemediaplayer", version.ref = "composeMediaPlayer" }
 androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 
 java-keyring = { module = "com.github.javakeyring:java-keyring", version.ref = "java-keyring" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }

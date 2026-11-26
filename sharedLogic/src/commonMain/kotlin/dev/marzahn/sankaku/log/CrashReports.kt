@@ -60,4 +60,6 @@ internal expect val Throwable.typeName: String
 
 internal expect fun Throwable.frames(): List<String>
 
-expect fun CrashReports.installUncaughtHandler(closesApp: () -> Boolean = { true })
+expect fun installUncaughtHandler(closesApp: () -> Boolean = { true }, recordTo: () -> CrashReports)
+
+fun CrashReports.installUncaughtHandler(closesApp: () -> Boolean = { true }) = installUncaughtHandler(closesApp) { this }
