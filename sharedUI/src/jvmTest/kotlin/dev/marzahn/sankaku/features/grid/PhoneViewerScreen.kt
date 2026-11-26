@@ -61,17 +61,19 @@ internal enum class PhoneWindow(val width: Int, val height: Int) {
 }
 
 @OptIn(ExperimentalTestApi::class)
-internal fun phoneViewerTest(window: PhoneWindow = PhoneWindow.Portrait, block: PhoneViewerScreen.() -> Unit) {
+internal fun <T> phoneViewerTest(window: PhoneWindow = PhoneWindow.Portrait, block: PhoneViewerScreen.() -> T): T {
   val fixture = GridScreenFixture()
   fixture.start()
   try {
-    runDesktopComposeUiTest(window.width, window.height) { PhoneViewerScreen(this).block() }
+    val results = mutableListOf<T>()
+    runDesktopComposeUiTest(window.width, window.height) { results += PhoneViewerScreen(this).block() }
+    return results.single()
   } finally {
     fixture.stop()
   }
 }
 
-internal class ScreenFrame(val finger: Offset, val handleTop: Float, val pillY: Float, val lift: Float)
+internal class ScreenFrame(val finger: Offset, val handleTop: Float, val pillY: Float, val lift: Float, val stop: SheetStop)
 
 @OptIn(ExperimentalTestApi::class)
 internal class PhoneViewerScreen(private val test: ComposeUiTest) {
@@ -182,7 +184,7 @@ internal class PhoneViewerScreen(private val test: ComposeUiTest) {
   fun untilTheSheetReaches(stop: SheetStop) {
     repeat(MAX_SETTLE_FRAMES) {
       test.mainClock.advanceTimeByFrame()
-      if (abs(sheetLift() - sheetStopLifts()[stop.ordinal]) < 1f) return
+      if (abs(sheetLift() - shownStops().at(stop)) < 1f) return
     }
     error("the sheet never reached $stop")
   }
@@ -237,8 +239,10 @@ internal class PhoneViewerScreen(private val test: ComposeUiTest) {
 
   fun sheetLift(): Float = sheetRange().value()
 
-  fun sheetStopLifts(): List<Float> =
-    sheetStops(peekTop = sheetRange().maxValue(), height = test.onRoot().fetchSemanticsNode().size.height.toFloat()).all
+  fun shownStops(): SheetStops =
+    sheetStops(peekTop = sheetRange().maxValue(), height = test.onRoot().fetchSemanticsNode().size.height.toFloat())
+
+  fun sheetStopLifts(): List<Float> = shownStops().all
 
   fun votes(): Rect = test.onNode(voteControl).fetchSemanticsNode().boundsInRoot
 
@@ -259,7 +263,7 @@ internal class PhoneViewerScreen(private val test: ComposeUiTest) {
 
   fun press(at: Offset): Finger = Finger(nextPointer++, at)
 
-  private fun frame(finger: Offset) = ScreenFrame(finger, handleTop(), pillCentreY(), sheetLift())
+  private fun frame(finger: Offset) = ScreenFrame(finger, handleTop(), pillCentreY(), sheetLift(), sheetStop())
 
   inner class Finger internal constructor(private val pointer: Int, start: Offset) {
     var at = start

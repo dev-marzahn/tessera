@@ -9,6 +9,7 @@ import dev.marzahn.sankaku.features.grid.Drag.DragUp
 import dev.marzahn.sankaku.features.grid.Drag.FlickDown
 import dev.marzahn.sankaku.features.grid.Drag.FlickUp
 import dev.marzahn.sankaku.features.grid.Drag.LiftAndDropBack
+import dev.marzahn.sankaku.features.grid.Drag.SlowDragPastHalf
 import dev.marzahn.sankaku.features.grid.Drag.Swipe
 import dev.marzahn.sankaku.features.grid.DragOutcome.Closes
 import dev.marzahn.sankaku.features.grid.DragOutcome.FlingsToNextStop
@@ -17,6 +18,7 @@ import dev.marzahn.sankaku.features.grid.DragOutcome.FollowsFingerAsTheBarDocks
 import dev.marzahn.sankaku.features.grid.DragOutcome.HoldsStill
 import dev.marzahn.sankaku.features.grid.DragOutcome.KeepsDocking
 import dev.marzahn.sankaku.features.grid.DragOutcome.NoFling
+import dev.marzahn.sankaku.features.grid.DragOutcome.SettlesAtNearestStop
 import dev.marzahn.sankaku.features.grid.DragOutcome.SwipesToNext
 import dev.marzahn.sankaku.features.grid.Phase.ClosingAtHalf
 import dev.marzahn.sankaku.features.grid.Phase.ClosingWhileOpening
@@ -57,6 +59,35 @@ class ViewerTouchContractTest {
       assertTrue(CONTRACT.any { it.place == place && it.phase == phase }, "$place while $phase has no touch in the contract")
     }
   }
+
+  @Test
+  fun aFlickFromTheHandleMovesTheSheetLikeTheSameFlickFromThePicture() {
+    val fromPicture = glideAfterAFlickUpFrom(Picture)
+    assertEquals(SheetStop.Peek, fromPicture.stopAtRelease, "the picture's flick let go nearer ${fromPicture.stopAtRelease}, so landing on Half proves no fling")
+    assertEquals(SheetStop.Half, fromPicture.landedOn, "the picture's flick didn't fling the sheet to Half, so it can't stand for a correct flick")
+    val fromHandle = glideAfterAFlickUpFrom(Handle)
+    assertEquals(fromPicture.liftAtRelease, fromHandle.liftAtRelease, SAME_PATH_ROUNDING, "the two flicks let go at different lifts, so their glides can't be compared")
+    for ((index, moved) in fromPicture.movedSinceRelease.zip(fromHandle.movedSinceRelease).withIndex()) {
+      val (picture, handle) = moved
+      assertEquals(picture, handle, SAME_PATH_ROUNDING,"frame ${index + 1} after the lift: the handle's flick moved the sheet $handle px, the picture's $picture px")
+    }
+  }
+}
+
+private class Glide(val liftAtRelease: Float, val stopAtRelease: SheetStop, val movedSinceRelease: List<Float>, val landedOn: SheetStop)
+
+private fun glideAfterAFlickUpFrom(place: Place): Glide = phoneViewerTest(Scene.Portrait.window) {
+  showViewer(*Scene.Portrait.posts.toTypedArray())
+  Peek.reach(this)
+  val finger = press(place.find(this))
+  val atRelease = FlickUp.moves.map(finger::moveBy).last()
+  finger.lift()
+  val movedSinceRelease = List(FRAMES_AFTER_THE_LIFT) {
+    frames(1)
+    sheetLift() - atRelease.lift
+  }
+  untilTheSheetRests()
+  Glide(atRelease.lift, atRelease.stop, movedSinceRelease, sheetStop())
 }
 
 private val CONTRACT = listOf(
@@ -75,6 +106,7 @@ private val CONTRACT = listOf(
   drag(FlyingBar, Opening, LiftAndDropBack, KeepsDocking),
   tap(Handle, Opening, StepsSheet),
   drag(Handle, Opening, DragUp, FollowsFinger),
+  drag(Handle, Opening, FlickUp, FlingsToNextStop),
 
   tap(Picture, OpeningDocked, HidesChrome),
   drag(Picture, OpeningDocked, DragDown, Closes),
@@ -94,6 +126,7 @@ private val CONTRACT = listOf(
   tap(Picture, Peek, HidesChrome),
   tap(Picture, Peek, HidesChrome, LandscapeVideo),
   drag(Picture, Peek, DragUp, FollowsFinger),
+  drag(Picture, Peek, SlowDragPastHalf, SettlesAtNearestStop),
   drag(Picture, Peek, DragDown, Closes),
   drag(Picture, Peek, DragDown, Closes, LandscapeVideo),
   drag(Picture, Peek, Swipe, SwipesToNext),
@@ -112,6 +145,9 @@ private val CONTRACT = listOf(
   drag(StatsRow, Peek, CancelledFlickUp, NoFling),
   tap(Handle, Peek, StepsSheet),
   drag(Handle, Peek, DragUp, FollowsFinger),
+  drag(Handle, Peek, SlowDragPastHalf, SettlesAtNearestStop),
+  drag(Handle, Peek, FlickUp, FlingsToNextStop),
+  drag(Handle, Peek, CancelledFlickUp, NoFling),
 
   tap(Picture, Half, HidesChrome),
   drag(Picture, Half, DragUp, FollowsFinger),
@@ -124,6 +160,9 @@ private val CONTRACT = listOf(
   drag(StatsRow, Half, DragDown, FollowsFinger),
   tap(Handle, Half, StepsSheet),
   drag(Handle, Half, DragDown, FollowsFinger),
+  drag(Handle, Half, FlickDown, FlingsToNextStop),
+  drag(Handle, Half, FlickUp, FlingsToNextStop),
+  drag(Handle, Half, CancelledFlickDown, NoFling),
   drag(SheetContent, Half, DragUp, FollowsFinger),
   drag(SheetContent, Half, DragDown, FollowsFinger),
   drag(SheetContent, Half, FlickDown, FlingsToNextStop),
@@ -309,6 +348,8 @@ private class DragTrace(val start: Offset, val slop: Float, val moves: List<Scre
 private sealed interface Direction {
   val unit: Offset
 
+  val liftPerPixel: Float get() = -unit.y
+
   fun steps(count: Int, size: Float): List<Offset> = List(count) { unit * size }
 }
 
@@ -345,6 +386,7 @@ private sealed interface Ending {
 
 private enum class Drag(val direction: Direction, val moves: List<Offset>, val ending: Ending, val flick: Boolean = false) {
   DragUp(Vertical.Up, Vertical.Up.steps(60, SLOW_STEP), Ending.Lift),
+  SlowDragPastHalf(Vertical.Up, Vertical.Up.steps(90, SLOW_STEP), Ending.Lift),
   DragDown(Vertical.Down, Vertical.Down.steps(20, 2 * SLOW_STEP), Ending.Lift),
   Swipe(Sideways, Sideways.steps(10, SWIPE_STEP), Ending.Lift),
   FlickUp(Vertical.Up, Vertical.Up.steps(4, FAST_STEP), Ending.Lift, flick = true),
@@ -424,9 +466,22 @@ private enum class DragOutcome(val fits: (Drag, Phase) -> Boolean, val holds: Ph
     frames(SETTLE_FRAMES)
     assertEquals(1, shownIndex, "the viewer didn't move to the next post")
   }),
-  FlingsToNextStop({ drag, phase -> drag.flick && drag.ending == Ending.Lift && phase.stop.next(drag.direction) != null }, { before, drag, _ ->
+  FlingsToNextStop({ drag, phase -> drag.flick && drag.ending == Ending.Lift && phase.stop.next(drag.direction) != null }, { before, drag, trace ->
+    val atRelease = trace.moves.last()
+    assertEquals(before.stop, atRelease.stop, "the finger let go nearer ${atRelease.stop}, so the sheet would get there with no fling")
+    frames(FRAMES_AFTER_THE_LIFT)
+    val carried = (sheetLift() - atRelease.lift) * drag.direction.liftPerPixel
+    assertTrue(carried > 0f, "the sheet didn't move on ${drag.direction} after the lift: $carried px in $FRAMES_AFTER_THE_LIFT frames")
     untilTheSheetRests()
     assertEquals(before.stop.next(drag.direction), sheetStop(), "the flick didn't carry the sheet to the next stop")
+  }),
+  SettlesAtNearestStop({ drag, _ -> drag.direction is Vertical && drag.ending == Ending.Lift && !drag.flick }, { before, drag, trace ->
+    val atRelease = trace.moves.last()
+    assertTrue(atRelease.stop != before.stop, "the drag let go nearer ${atRelease.stop}, where it started, so it can't tell settling from springing back")
+    val flungTo = stopAFlingReaches(atRelease.lift, drag.direction)
+    assertTrue(atRelease.stop != flungTo, "the drag let go nearest $flungTo, where a fling ${drag.direction} lands too, so it can't tell settling from flinging")
+    untilTheSheetRests()
+    assertEquals(atRelease.stop, sheetStop(), "the slow drag let go nearest ${atRelease.stop} and the sheet didn't settle there")
   }),
   NoFling({ drag, _ -> drag.flick && drag.ending == Ending.Cancel }, { before, _, _ ->
     frames(SETTLE_FRAMES)
@@ -442,6 +497,12 @@ private enum class DragOutcome(val fits: (Drag, Phase) -> Boolean, val holds: Ph
     }
     assertTrue(stillOpening(), "the open had settled, so it would have docked the bar anyway")
   }),
+}
+
+private fun PhoneViewerScreen.stopAFlingReaches(lift: Float, direction: Direction): SheetStop {
+  val stops = shownStops()
+  val flungTo = settleLift(lift, velocity = -direction.liftPerPixel, stops, flingThreshold = 0f)
+  return SheetStop.entries.first { stops.at(it) == flungTo }
 }
 
 private fun PhoneViewerScreen.followsFinger(before: Before, trace: DragTrace) {
@@ -463,4 +524,6 @@ private const val MOVES_BEFORE_CLOSING = 4
 private const val MOVES_WHILE_CLOSING = 6
 private const val RIDING_MOVES = 10
 private const val SETTLE_FRAMES = 60
+private const val FRAMES_AFTER_THE_LIFT = 6
+private const val SAME_PATH_ROUNDING = 0.01f
 private const val SHEET_CONTENT_BELOW_HANDLE = 200f
